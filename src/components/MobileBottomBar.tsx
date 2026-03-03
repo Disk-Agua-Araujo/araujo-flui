@@ -17,7 +17,7 @@ export function MobileBottomBar() {
           WhatsApp
         </a>
       </Button>
-      <Button className="flex-1" asChild>
+      <Button className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground" asChild>
         <Link to="/pedido">Pedir agora</Link>
       </Button>
     </div>
