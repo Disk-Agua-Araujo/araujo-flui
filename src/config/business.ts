@@ -29,7 +29,7 @@ export const business = {
   reviewCount: 47,
   googleReviewsLink: "#", // replace with actual Google Maps reviews link
   mapsEmbedUrl:
-    "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3654.5!2d-46.53!3d-23.66!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMjPCsDM5JzM2LjAiUyA0NsKwMzEnNDguMCJX!5e0!3m2!1spt-BR!2sbr!4v1700000000000!5m2!1spt-BR!2sbr",
+    "https://www.google.com/maps?q=Av.+Eduardo+Prado,+269+-+Parque+Erasmo+Assunção,+Santo+André+-+SP,+09271-180&output=embed",
   mapsDirectionsLink:
     "https://www.google.com/maps/dir/?api=1&destination=Av.+Eduardo+Prado+269+Santo+André+SP",
   social: {
