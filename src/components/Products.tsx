@@ -21,7 +21,7 @@ export function Products() {
             const Icon = iconMap[p.icon];
             const msg = `Olá! Tenho interesse no produto: ${p.name}. Poderia me informar o preço e disponibilidade?`;
             return (
-              <Card key={p.id} className="group hover:shadow-md transition-shadow">
+              <Card key={p.id} className="group hover:shadow-md transition-shadow border-primary/10">
                 <CardContent className="p-6 flex flex-col items-center text-center gap-3">
                   <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                     <Icon className="h-7 w-7 text-primary" />
@@ -31,7 +31,7 @@ export function Products() {
                   <span className="text-xs font-medium text-primary">Consulte no WhatsApp</span>
                   <Button
                     size="sm"
-                    className="w-full mt-auto bg-[#25D366] hover:bg-[#1da851] text-white"
+                    className="w-full mt-auto bg-whatsapp hover:bg-whatsapp-dark text-white"
                     asChild
                     onClick={() => trackEvent("whatsapp_click", { source: "product", product: p.id })}
                   >

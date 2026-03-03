@@ -6,7 +6,7 @@
 
 @layer base {
   :root {
-    --background: 220 20% 97%; /* #F6F7F9 */
+    --background: 216 33% 97%; /* #F6F8FB */
     --foreground: 220 50% 9%; /* #0B1220 */
 
     --card: 0 0% 100%;
@@ -15,28 +15,33 @@
     --popover: 0 0% 100%;
     --popover-foreground: 220 50% 9%;
 
-    --primary: 209 82% 29%; /* #0A4888 */
+    --primary: 207 90% 29%; /* #08498A */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 20% 95%;
+    --secondary: 216 25% 95%;
     --secondary-foreground: 220 50% 9%;
 
-    --muted: 220 14% 92%;
+    --muted: 216 18% 92%;
     --muted-foreground: 220 10% 44%;
 
-    --accent: 0 68% 48%; /* #C8312D */
+    --accent: 1 68% 50%; /* #D4302C */
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 68% 48%;
+    --destructive: 1 68% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 14% 89%;
-    --input: 220 14% 89%;
-    --ring: 209 82% 29%;
+    --border: 216 18% 89%;
+    --input: 216 18% 89%;
+    --ring: 207 90% 29%;
 
     --radius: 0.75rem;
 
-    --dark-blue: 218 78% 21%; /* #0C285D */
+    --brand-blue: 207 90% 29%; /* #08498A */
+    --brand-blue-dark: 213 85% 23%; /* #09326D */
+    --brand-red: 1 68% 50%; /* #D4302C */
+    --brand-red-dark: 1 66% 41%; /* #AD2625 */
+    --whatsapp: 142 70% 49%; /* #25D366 */
+    --whatsapp-dark: 142 70% 40%; /* #1da851 */
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -55,20 +60,25 @@
     --card-foreground: 220 20% 95%;
     --popover: 220 50% 8%;
     --popover-foreground: 220 20% 95%;
-    --primary: 209 82% 50%;
+    --primary: 207 80% 45%;
     --primary-foreground: 0 0% 100%;
     --secondary: 220 30% 15%;
     --secondary-foreground: 220 20% 95%;
     --muted: 220 30% 15%;
     --muted-foreground: 220 10% 60%;
-    --accent: 0 68% 55%;
+    --accent: 1 68% 55%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 100%;
     --border: 220 30% 18%;
     --input: 220 30% 18%;
-    --ring: 209 82% 50%;
-    --dark-blue: 218 78% 35%;
+    --ring: 207 80% 45%;
+    --brand-blue: 207 80% 45%;
+    --brand-blue-dark: 213 85% 35%;
+    --brand-red: 1 68% 55%;
+    --brand-red-dark: 1 66% 45%;
+    --whatsapp: 142 70% 49%;
+    --whatsapp-dark: 142 70% 40%;
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;

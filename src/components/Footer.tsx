@@ -2,6 +2,7 @@ import { MessageCircle, Facebook, Instagram } from "lucide-react";
 import { Link } from "react-router-dom";
 import { business } from "@/config/business";
 import { trackEvent } from "@/hooks/use-analytics";
+import logo from "@/assets/logo.png";
 
 const quickLinks = [
   { label: "Início", href: "#inicio" },
@@ -19,18 +20,21 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Brand */}
           <div>
-            <div className="flex items-center gap-2 font-bold text-lg mb-3">
-              <MessageCircle className="h-6 w-6" />
-              {business.name}
+            <div className="flex items-center gap-3 mb-3">
+              <img
+                src={logo}
+                alt="Disk Água Araujo"
+                className="h-8 w-auto object-contain brightness-0 invert"
+              />
             </div>
             <p className="text-sm text-background/70">
               Entrega de água mineral de qualidade em Santo André e região.
             </p>
             <div className="flex gap-3 mt-4">
-              <a href={business.social.facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="hover:text-primary transition-colors">
+              <a href={business.social.facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="hover:text-brand-blue transition-colors">
                 <Facebook className="h-5 w-5" />
               </a>
-              <a href={business.social.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="hover:text-primary transition-colors">
+              <a href={business.social.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="hover:text-brand-blue transition-colors">
                 <Instagram className="h-5 w-5" />
               </a>
             </div>
@@ -70,7 +74,7 @@ export function Footer() {
                 href={business.waLink(business.waDefaultMessage)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm font-medium bg-[#25D366] text-white px-3 py-1.5 rounded-full hover:bg-[#1da851] transition-colors"
+                className="inline-flex items-center gap-1 text-sm font-medium bg-whatsapp text-white px-3 py-1.5 rounded-full hover:bg-whatsapp-dark transition-colors"
                 onClick={() => trackEvent("whatsapp_click", { source: "footer" })}
               >
                 <MessageCircle className="h-4 w-4" /> WhatsApp

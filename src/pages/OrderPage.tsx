@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { MessageCircle, Plus, Minus, Copy, Check, Save, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -98,7 +98,6 @@ export default function OrderPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Summary for sidebar / mobile
   const SummaryContent = () => (
     <div className="space-y-3">
       <h3 className="font-bold text-lg">Resumo do pedido</h3>
@@ -257,7 +256,7 @@ export default function OrderPage() {
 
               {/* Actions */}
               <div className="flex flex-col sm:flex-row gap-3">
-                <Button className="flex-1 bg-[#25D366] hover:bg-[#1da851] text-white font-semibold" onClick={handleSubmit}>
+                <Button className="flex-1 bg-whatsapp hover:bg-whatsapp-dark text-white font-semibold" onClick={handleSubmit}>
                   <MessageCircle className="h-4 w-4 mr-2" />
                   Enviar pedido no WhatsApp
                 </Button>

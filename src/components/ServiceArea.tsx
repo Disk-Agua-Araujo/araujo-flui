@@ -12,7 +12,7 @@ export function ServiceArea() {
           Atendemos Santo André e região (consulte disponibilidade).
         </p>
 
-        <div className="max-w-3xl mx-auto rounded-xl overflow-hidden shadow-md border">
+        <div className="max-w-3xl mx-auto rounded-xl overflow-hidden shadow-md border border-primary/10">
           <iframe
             title="Localização Disk Água Araujo"
             src={business.mapsEmbedUrl}
@@ -38,7 +38,7 @@ export function ServiceArea() {
           </Button>
           <Button
             size="sm"
-            className="bg-[#25D366] hover:bg-[#1da851] text-white"
+            className="bg-whatsapp hover:bg-whatsapp-dark text-white"
             asChild
             onClick={() => trackEvent("whatsapp_click", { source: "map" })}
           >

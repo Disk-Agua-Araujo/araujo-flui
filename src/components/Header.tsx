@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { business } from "@/config/business";
 import { trackEvent } from "@/hooks/use-analytics";
 import { Link } from "react-router-dom";
+import logo from "@/assets/logo.png";
 
 const navLinks = [
   { label: "Início", href: "#inicio" },
@@ -19,9 +20,12 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
       <div className="container flex h-16 items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 font-bold text-lg text-primary">
-          <MessageCircle className="h-7 w-7" />
-          <span className="hidden sm:inline">{business.name}</span>
+        <Link to="/" className="flex items-center gap-2">
+          <img
+            src={logo}
+            alt="Disk Água Araujo"
+            className="h-9 md:h-11 w-auto object-contain"
+          />
         </Link>
 
         {/* Desktop nav */}
@@ -51,7 +55,7 @@ export function Header() {
           </Button>
           <Button
             size="sm"
-            className="bg-[#25D366] hover:bg-[#1da851] text-white"
+            className="bg-whatsapp hover:bg-whatsapp-dark text-white"
             asChild
             onClick={() => trackEvent("whatsapp_click", { source: "header" })}
           >
@@ -93,7 +97,7 @@ export function Header() {
             </Button>
             <Button
               size="sm"
-              className="flex-1 bg-[#25D366] hover:bg-[#1da851] text-white"
+              className="flex-1 bg-whatsapp hover:bg-whatsapp-dark text-white"
               asChild
               onClick={() => trackEvent("whatsapp_click", { source: "header_mobile" })}
             >
