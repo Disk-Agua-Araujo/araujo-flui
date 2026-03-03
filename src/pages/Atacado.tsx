@@ -6,13 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MessageCircle, Droplets } from "lucide-react";
-import { getWholesaleProducts, getTiersForProduct } from "@/data/products";
+import { useWholesaleProducts, useTiers } from "@/hooks/use-products";
 import { business } from "@/config/business";
 import { trackEvent } from "@/hooks/use-analytics";
 import { Link } from "react-router-dom";
 
 export default function Atacado() {
-  const wholesaleProducts = getWholesaleProducts();
+  const { data: wholesaleProducts = [], isLoading } = useWholesaleProducts();
+  const { data: allTiers = [] } = useTiers();
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -24,7 +25,9 @@ export default function Atacado() {
             Preços especiais por quantidade. Valores sob consulta — entre em contato para negociar.
           </p>
 
-          {wholesaleProducts.length === 0 ? (
+          {isLoading ? (
+            <p className="text-center text-muted-foreground py-12">Carregando...</p>
+          ) : wholesaleProducts.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
                 Em breve adicionaremos produtos para atacado. Entre em contato pelo WhatsApp!
@@ -33,7 +36,7 @@ export default function Atacado() {
           ) : (
             <div className="space-y-6">
               {wholesaleProducts.map((p) => {
-                const tiers = getTiersForProduct(p.id);
+                const tiers = allTiers.filter((t) => t.product_id === p.id);
                 return (
                   <Card key={p.id}>
                     <CardHeader>
@@ -57,10 +60,10 @@ export default function Atacado() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {tiers.map((t, i) => (
-                              <TableRow key={i}>
-                                <TableCell>{t.minQty} galões</TableCell>
-                                <TableCell className="text-right font-medium">{t.priceText}</TableCell>
+                            {tiers.map((t) => (
+                              <TableRow key={t.id}>
+                                <TableCell>{t.min_qty} galões</TableCell>
+                                <TableCell className="text-right font-medium">{t.price_text}</TableCell>
                               </TableRow>
                             ))}
                           </TableBody>
@@ -71,21 +74,10 @@ export default function Atacado() {
 
                       <div className="flex flex-col sm:flex-row gap-2 mt-4">
                         <Button asChild className="flex-1">
-                          <Link to={`/pedido-empresa`}>
-                            Pedir Atacado
-                          </Link>
+                          <Link to="/pedido-empresa">Pedir Atacado</Link>
                         </Button>
-                        <Button
-                          variant="outline"
-                          className="flex-1 border-whatsapp text-whatsapp hover:bg-whatsapp/10"
-                          asChild
-                          onClick={() => trackEvent("whatsapp_click", { source: "atacado", product: p.id })}
-                        >
-                          <a
-                            href={business.waLink(`Olá! Tenho interesse em atacado: ${p.name}. Gostaria de saber valores.`)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
+                        <Button variant="outline" className="flex-1 border-whatsapp text-whatsapp hover:bg-whatsapp/10" asChild onClick={() => trackEvent("whatsapp_click", { source: "atacado", product: p.id })}>
+                          <a href={business.waLink(`Olá! Tenho interesse em atacado: ${p.name}. Gostaria de saber valores.`)} target="_blank" rel="noopener noreferrer">
                             <MessageCircle className="h-4 w-4 mr-1" /> Consultar valores
                           </a>
                         </Button>
