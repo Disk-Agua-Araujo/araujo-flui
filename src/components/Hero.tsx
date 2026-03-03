@@ -17,27 +17,31 @@ export function Hero() {
   };
 
   const videoBlock = (className: string) => (
-    <div className={`relative rounded-2xl overflow-hidden shadow-lg ${className}`}>
-      <video
-        ref={videoRef}
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="metadata"
-        className="w-full h-full object-cover object-center"
-      >
-        <source src="/media/hero-video.mp4" type="video/mp4" />
-        Seu navegador não suporta vídeo HTML5.
-      </video>
-      <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent pointer-events-none" />
-      <button
-        onClick={toggleMute}
-        className="absolute bottom-3 right-3 z-10 bg-card/80 backdrop-blur p-2 rounded-full shadow-md hover:bg-card transition-colors"
-        aria-label={muted ? "Ativar som" : "Desativar som"}
-      >
-        {muted ? <VolumeX className="h-4 w-4 text-foreground" /> : <Volume2 className="h-4 w-4 text-foreground" />}
-      </button>
+    <div className={`relative ${className}`}>
+      {/* Glow effect */}
+      <div className="absolute -inset-3 rounded-3xl bg-gradient-to-br from-primary/40 via-accent/20 to-primary/30 blur-2xl opacity-70 animate-pulse" />
+      <div className="relative rounded-2xl overflow-hidden shadow-2xl ring-1 ring-primary/20">
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          className="w-full h-full object-cover object-center"
+        >
+          <source src="/media/hero-video.mp4" type="video/mp4" />
+          Seu navegador não suporta vídeo HTML5.
+        </video>
+        <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent pointer-events-none" />
+        <button
+          onClick={toggleMute}
+          className="absolute bottom-3 right-3 z-10 bg-card/80 backdrop-blur p-2 rounded-full shadow-md hover:bg-card transition-colors"
+          aria-label={muted ? "Ativar som" : "Desativar som"}
+        >
+          {muted ? <VolumeX className="h-4 w-4 text-foreground" /> : <Volume2 className="h-4 w-4 text-foreground" />}
+        </button>
+      </div>
     </div>
   );
 
@@ -100,13 +104,15 @@ export function Hero() {
 
           {/* Desktop: video column */}
           <div className="hidden md:block relative h-full min-h-[520px]">
+            {/* Glow effect */}
+            <div className="absolute -inset-4 bg-gradient-to-br from-primary/40 via-accent/20 to-primary/30 blur-3xl opacity-60" />
             <video
               autoPlay
               muted
               loop
               playsInline
               preload="metadata"
-              className="absolute inset-0 w-full h-full object-cover object-center rounded-l-3xl"
+              className="absolute inset-0 w-full h-full object-cover object-center rounded-l-3xl shadow-2xl ring-1 ring-primary/20"
             >
               <source src="/media/hero-video.mp4" type="video/mp4" />
             </video>
