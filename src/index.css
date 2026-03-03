@@ -6,51 +6,51 @@
 
 @layer base {
   :root {
-    --background: 216 33% 97%; /* #F6F8FB */
-    --foreground: 220 50% 9%; /* #0B1220 */
+    --background: 213 60% 92%; /* azul bem claro ~#D6E6F7 */
+    --foreground: 212 96% 15%; /* texto escuro azulado */
 
     --card: 0 0% 100%;
-    --card-foreground: 220 50% 9%;
+    --card-foreground: 212 96% 15%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 50% 9%;
+    --popover-foreground: 212 96% 15%;
 
-    --primary: 207 90% 29%; /* #08498A */
+    --primary: 212 96% 25%; /* #033D7B */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 216 25% 95%;
-    --secondary-foreground: 220 50% 9%;
+    --secondary: 213 40% 88%;
+    --secondary-foreground: 212 96% 15%;
 
-    --muted: 216 18% 92%;
-    --muted-foreground: 220 10% 44%;
+    --muted: 213 30% 86%;
+    --muted-foreground: 212 20% 40%;
 
-    --accent: 1 68% 50%; /* #D4302C */
+    --accent: 0 87% 54%; /* #F02222 */
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 1 68% 50%;
+    --destructive: 0 87% 54%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 216 18% 89%;
-    --input: 216 18% 89%;
-    --ring: 207 90% 29%;
+    --border: 213 30% 82%;
+    --input: 213 30% 82%;
+    --ring: 212 96% 25%;
 
     --radius: 0.75rem;
 
-    --brand-blue: 207 90% 29%; /* #08498A */
-    --brand-blue-dark: 213 85% 23%; /* #09326D */
-    --brand-red: 1 68% 50%; /* #D4302C */
-    --brand-red-dark: 1 66% 41%; /* #AD2625 */
-    --whatsapp: 142 70% 49%; /* #25D366 */
-    --whatsapp-dark: 142 70% 40%; /* #1da851 */
+    --brand-blue: 212 96% 25%; /* #033D7B */
+    --brand-blue-dark: 212 96% 18%; /* shade mais escuro */
+    --brand-red: 0 87% 54%; /* #F02222 */
+    --brand-red-dark: 0 87% 44%;
+    --whatsapp: 142 70% 49%;
+    --whatsapp-dark: 142 70% 40%;
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary: 212 96% 25%;
     --sidebar-primary-foreground: 0 0% 98%;
     --sidebar-accent: 240 4.8% 95.9%;
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-ring: 212 96% 25%;
   }
 
   .dark {
@@ -60,33 +60,33 @@
     --card-foreground: 220 20% 95%;
     --popover: 220 50% 8%;
     --popover-foreground: 220 20% 95%;
-    --primary: 207 80% 45%;
+    --primary: 212 80% 40%;
     --primary-foreground: 0 0% 100%;
     --secondary: 220 30% 15%;
     --secondary-foreground: 220 20% 95%;
     --muted: 220 30% 15%;
     --muted-foreground: 220 10% 60%;
-    --accent: 1 68% 55%;
+    --accent: 0 87% 58%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 100%;
     --border: 220 30% 18%;
     --input: 220 30% 18%;
-    --ring: 207 80% 45%;
-    --brand-blue: 207 80% 45%;
-    --brand-blue-dark: 213 85% 35%;
-    --brand-red: 1 68% 55%;
-    --brand-red-dark: 1 66% 45%;
+    --ring: 212 80% 40%;
+    --brand-blue: 212 80% 40%;
+    --brand-blue-dark: 212 85% 30%;
+    --brand-red: 0 87% 58%;
+    --brand-red-dark: 0 87% 48%;
     --whatsapp: 142 70% 49%;
     --whatsapp-dark: 142 70% 40%;
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary: 212 76.3% 48%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 240 3.7% 15.9%;
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-ring: 212 80% 40%;
   }
 }
 
