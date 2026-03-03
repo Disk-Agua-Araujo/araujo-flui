@@ -19,7 +19,7 @@ export function Hero() {
   const videoBlock = (className: string) => (
     <div className={`relative ${className}`}>
       {/* Glow effect */}
-      <div className="absolute -inset-3 rounded-3xl bg-gradient-to-br from-primary/40 via-accent/20 to-primary/30 blur-2xl opacity-70 animate-pulse" />
+      <div className="absolute -inset-2 rounded-3xl bg-gradient-to-br from-primary/20 via-accent/10 to-primary/15 blur-xl opacity-50" />
       <div className="relative rounded-2xl overflow-hidden shadow-2xl ring-1 ring-primary/20">
         <video
           ref={videoRef}
@@ -28,7 +28,7 @@ export function Hero() {
           loop
           playsInline
           preload="metadata"
-          className="w-full h-full object-cover object-center"
+          className="w-full h-full object-contain object-center bg-black/90"
         >
           <source src="/media/hero-video.mp4" type="video/mp4" />
           Seu navegador não suporta vídeo HTML5.
@@ -105,14 +105,14 @@ export function Hero() {
           {/* Desktop: video column */}
           <div className="hidden md:block relative h-full min-h-[520px]">
             {/* Glow effect */}
-            <div className="absolute -inset-4 bg-gradient-to-br from-primary/40 via-accent/20 to-primary/30 blur-3xl opacity-60" />
+            <div className="absolute -inset-3 bg-gradient-to-br from-primary/20 via-accent/10 to-primary/15 blur-2xl opacity-40" />
             <video
               autoPlay
               muted
               loop
               playsInline
               preload="metadata"
-              className="absolute inset-0 w-full h-full object-cover object-center rounded-l-3xl shadow-2xl ring-1 ring-primary/20"
+              className="absolute inset-0 w-full h-full object-contain object-center rounded-l-3xl shadow-2xl ring-1 ring-primary/20 bg-black/90"
             >
               <source src="/media/hero-video.mp4" type="video/mp4" />
             </video>
