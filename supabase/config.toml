@@ -2,3 +2,6 @@ project_id = "senrdqpflygjcqpnlxjt"
 
 [functions.geocode]
 verify_jwt = false
+
+[functions.admin-login]
+verify_jwt = false

@@ -1,27 +1,55 @@
-import { MessageCircle, ShoppingCart, Star, Truck, Heart } from "lucide-react";
+import { MessageCircle, ShoppingCart, Star, Truck, Heart, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { business } from "@/config/business";
 import { trackEvent } from "@/hooks/use-analytics";
 import { Link } from "react-router-dom";
+import { useRef, useState } from "react";
 
 export function Hero() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [muted, setMuted] = useState(true);
+
+  const toggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !muted;
+      setMuted(!muted);
+    }
+  };
+
+  const videoBlock = (className: string) => (
+    <div className={`relative rounded-2xl overflow-hidden shadow-lg ${className}`}>
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        className="w-full h-full object-cover object-center"
+      >
+        <source src="/media/hero-video.mp4" type="video/mp4" />
+        Seu navegador não suporta vídeo HTML5.
+      </video>
+      <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent pointer-events-none" />
+      <button
+        onClick={toggleMute}
+        className="absolute bottom-3 right-3 z-10 bg-card/80 backdrop-blur p-2 rounded-full shadow-md hover:bg-card transition-colors"
+        aria-label={muted ? "Ativar som" : "Desativar som"}
+      >
+        {muted ? <VolumeX className="h-4 w-4 text-foreground" /> : <Volume2 className="h-4 w-4 text-foreground" />}
+      </button>
+    </div>
+  );
+
   return (
     <section id="inicio" className="relative overflow-hidden">
-      {/* Thin accent line */}
       <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-accent to-primary z-10" />
 
       <div className="container py-12 md:py-0">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-0 items-center min-h-[auto] md:min-h-[520px]">
-          {/* Mobile: image first */}
-          <div className="md:hidden relative rounded-2xl overflow-hidden shadow-lg aspect-[4/3]">
-            <img
-              src="/hero-frente-loja.jpg"
-              alt="Fachada da Disk Água Araujo em Santo André"
-              className="w-full h-full object-cover object-center"
-              loading="eager"
-              fetchPriority="high"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent" />
+          {/* Mobile: video first */}
+          <div className="md:hidden">
+            {videoBlock("aspect-video")}
           </div>
 
           {/* Text column */}
@@ -70,16 +98,19 @@ export function Hero() {
             </div>
           </div>
 
-          {/* Desktop: image column */}
+          {/* Desktop: video column */}
           <div className="hidden md:block relative h-full min-h-[520px]">
-            <img
-              src="/hero-frente-loja.jpg"
-              alt="Fachada da Disk Água Araujo em Santo André"
+            <video
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
               className="absolute inset-0 w-full h-full object-cover object-center rounded-l-3xl"
-              loading="eager"
-              fetchPriority="high"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-background/60 via-transparent to-transparent rounded-l-3xl" />
+            >
+              <source src="/media/hero-video.mp4" type="video/mp4" />
+            </video>
+            <div className="absolute inset-0 bg-gradient-to-r from-background/60 via-transparent to-transparent rounded-l-3xl pointer-events-none" />
           </div>
         </div>
       </div>

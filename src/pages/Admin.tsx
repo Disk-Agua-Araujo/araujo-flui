@@ -11,16 +11,16 @@ import { LogOut, Package, ClipboardList, PlusCircle, BarChart3 } from "lucide-re
 import logo from "@/assets/logo.png";
 
 export default function Admin() {
-  const { user, isAdmin, isOwner, loading, signOut } = useAuth();
+  const { username, isAdmin, isOwner, loading, signOut } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && (!user || !isAdmin)) {
+    if (!loading && !isAdmin) {
       navigate("/admin/login", { replace: true });
     }
-  }, [user, isAdmin, loading, navigate]);
+  }, [isAdmin, loading, navigate]);
 
-  if (loading || !user || !isAdmin) {
+  if (loading || !isAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <p className="text-muted-foreground">Carregando...</p>
@@ -28,9 +28,13 @@ export default function Admin() {
     );
   }
 
+  const handleSignOut = () => {
+    signOut();
+    navigate("/admin/login", { replace: true });
+  };
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Top bar */}
       <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur">
         <div className="container flex h-14 items-center justify-between">
           <div className="flex items-center gap-3">
@@ -38,8 +42,8 @@ export default function Admin() {
             <span className="text-sm font-semibold hidden sm:inline">Painel Admin</span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground hidden sm:inline">{user.email}</span>
-            <Button variant="ghost" size="sm" onClick={signOut}>
+            <span className="text-xs text-muted-foreground hidden sm:inline">{username}</span>
+            <Button variant="ghost" size="sm" onClick={handleSignOut}>
               <LogOut className="h-4 w-4 mr-1" /> Sair
             </Button>
           </div>
