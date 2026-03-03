@@ -53,7 +53,7 @@ export function Hero() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-0 items-center min-h-[auto] md:min-h-[520px]">
           {/* Mobile: video first */}
           <div className="md:hidden">
-            {videoBlock("aspect-video")}
+            {videoBlock("aspect-[9/16] max-w-[280px] mx-auto")}
           </div>
 
           {/* Text column */}
@@ -103,20 +103,22 @@ export function Hero() {
           </div>
 
           {/* Desktop: video column */}
-          <div className="hidden md:block relative h-full min-h-[520px]">
+          <div className="hidden md:flex items-center justify-center relative h-full min-h-[520px]">
             {/* Glow effect */}
             <div className="absolute -inset-3 bg-gradient-to-br from-primary/20 via-accent/10 to-primary/15 blur-2xl opacity-40" />
-            <video
-              autoPlay
-              muted
-              loop
-              playsInline
-              preload="metadata"
-              className="absolute inset-0 w-full h-full object-cover object-center rounded-l-3xl shadow-2xl ring-1 ring-primary/20"
-            >
-              <source src="/media/hero-video.mp4" type="video/mp4" />
-            </video>
-            <div className="absolute inset-0 bg-gradient-to-r from-background/60 via-transparent to-transparent rounded-l-3xl pointer-events-none" />
+            <div className="relative w-[320px] h-[480px] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-primary/20">
+              <video
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                className="w-full h-full object-cover object-center"
+              >
+                <source src="/media/hero-video.mp4" type="video/mp4" />
+              </video>
+              <div className="absolute inset-0 bg-gradient-to-r from-background/40 via-transparent to-transparent pointer-events-none" />
+            </div>
           </div>
         </div>
       </div>
