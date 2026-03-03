@@ -30,7 +30,7 @@ const canais = [
 
 export function NewOrderTab() {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { username } = useAuth();
   const [products, setProducts] = useState<Tables<"products">[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [labelData, setLabelData] = useState<LabelData | null>(null);
@@ -90,7 +90,7 @@ export function NewOrderTab() {
       // 1. Create customer
       const { data: customer, error: custErr } = await supabase
         .from("customers")
-        .insert({ name: nome, phone: telefone, type: tipo, cnpj: tipo === "PJ" ? cnpj : null, created_by: user?.id })
+        .insert({ name: nome, phone: telefone, type: tipo, cnpj: tipo === "PJ" ? cnpj : null, created_by: username })
         .select()
         .single();
       if (custErr) throw custErr;
@@ -113,7 +113,7 @@ export function NewOrderTab() {
           delivery_date: date ? format(date, "yyyy-MM-dd") : null,
           delivery_time: hora || null,
           notes: obs || null,
-          created_by: user?.id,
+          created_by: username,
         })
         .select()
         .single();

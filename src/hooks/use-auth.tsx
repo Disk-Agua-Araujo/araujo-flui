@@ -1,83 +1,84 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
-import type { User } from "@supabase/supabase-js";
 
-type AppRole = "admin_owner" | "admin_manager" | null;
+type AdminRole = "admin_owner" | "admin_manager" | null;
 
 interface AuthContextType {
-  user: User | null;
-  role: AppRole;
+  username: string | null;
+  role: AdminRole;
   loading: boolean;
   isAdmin: boolean;
   isOwner: boolean;
-  signInWithGoogle: () => Promise<void>;
-  signOut: () => Promise<void>;
+  signIn: (username: string, password: string) => Promise<void>;
+  signOut: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+const TOKEN_KEY = "admin_token";
+const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-login`;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<AppRole>(null);
+  const [username, setUsername] = useState<string | null>(null);
+  const [role, setRole] = useState<AdminRole>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchRole = async (userId: string) => {
-    const { data } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .maybeSingle();
-    setRole((data?.role as AppRole) ?? null);
+  const verifyToken = async (token: string) => {
+    try {
+      const res = await fetch(`${FUNCTIONS_URL}?action=verify`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("invalid");
+      const data = await res.json();
+      if (data.valid) {
+        setUsername(data.sub);
+        setRole(data.role as AdminRole);
+      } else {
+        localStorage.removeItem(TOKEN_KEY);
+      }
+    } catch {
+      localStorage.removeItem(TOKEN_KEY);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        const u = session?.user ?? null;
-        setUser(u);
-        if (u) {
-          await fetchRole(u.id);
-        } else {
-          setRole(null);
-        }
-        setLoading(false);
-      }
-    );
-
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      const u = session?.user ?? null;
-      setUser(u);
-      if (u) {
-        await fetchRole(u.id);
-      }
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      verifyToken(token);
+    } else {
       setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    }
   }, []);
 
-  const signInWithGoogle = async () => {
-    await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin + "/admin",
+  const signIn = async (user: string, password: string) => {
+    const res = await fetch(FUNCTIONS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: user, password }),
     });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Erro ao fazer login");
+    localStorage.setItem(TOKEN_KEY, data.token);
+    setUsername(data.username);
+    setRole(data.role as AdminRole);
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
+  const signOut = () => {
+    localStorage.removeItem(TOKEN_KEY);
+    setUsername(null);
     setRole(null);
   };
 
   return (
     <AuthContext.Provider
       value={{
-        user,
+        username,
         role,
         loading,
         isAdmin: role === "admin_owner" || role === "admin_manager",
         isOwner: role === "admin_owner",
-        signInWithGoogle,
+        signIn,
         signOut,
       }}
     >

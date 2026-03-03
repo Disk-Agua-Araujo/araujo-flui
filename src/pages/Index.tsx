@@ -9,6 +9,7 @@ import { FAQ } from "@/components/FAQ";
 import { Contact } from "@/components/Contact";
 import { Footer } from "@/components/Footer";
 import { MobileBottomBar } from "@/components/MobileBottomBar";
+import { SectionDivider } from "@/components/SectionDivider";
 
 const Index = () => {
   return (
@@ -16,12 +17,19 @@ const Index = () => {
       <Header />
       <main className="flex-1">
         <Hero />
+        <SectionDivider />
         <QuickOrder />
+        <SectionDivider />
         <Products />
+        <SectionDivider />
         <HowItWorks />
+        <SectionDivider />
         <ServiceArea />
+        <SectionDivider />
         <Reviews />
+        <SectionDivider />
         <FAQ />
+        <SectionDivider />
         <Contact />
       </main>
       <Footer />
