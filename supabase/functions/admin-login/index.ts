@@ -95,9 +95,11 @@ serve(async (req) => {
   const action = url.searchParams.get("action") || "login";
 
   const jwtSecret = Deno.env.get("ADMIN_JWT_SECRET");
+  const credsRawEarly = Deno.env.get("ADMIN_CREDENTIALS");
+  console.log("ENV check — ADMIN_JWT_SECRET set:", !!jwtSecret, "ADMIN_CREDENTIALS set:", !!credsRawEarly);
   if (!jwtSecret) {
     return new Response(
-      JSON.stringify({ error: "Server misconfigured" }),
+      JSON.stringify({ error: "Configuração do servidor ausente (JWT). Contate o administrador." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -134,7 +136,7 @@ serve(async (req) => {
   const credsRaw = Deno.env.get("ADMIN_CREDENTIALS");
   if (!credsRaw) {
     return new Response(
-      JSON.stringify({ error: "Server misconfigured" }),
+      JSON.stringify({ error: "Configuração do servidor ausente (credenciais). Contate o administrador." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -142,9 +144,10 @@ serve(async (req) => {
   let creds: { username: string; password: string; role: string }[];
   try {
     creds = JSON.parse(credsRaw);
-  } catch {
+  } catch (e) {
+    console.error("Failed to parse ADMIN_CREDENTIALS:", e, "raw value length:", credsRaw.length, "first 20 chars:", credsRaw.substring(0, 20));
     return new Response(
-      JSON.stringify({ error: "Server misconfigured" }),
+      JSON.stringify({ error: "Configuração do servidor inválida (credenciais). Contate o administrador." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
