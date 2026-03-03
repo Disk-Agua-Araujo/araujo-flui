@@ -8,9 +8,9 @@ export const business = {
   tagline: "Confiança, agilidade e qualidade na sua porta!",
   subtitle:
     "Entrega rápida de galões de 20L em Santo André para residências e empresas. Água mineral de procedência garantida e atendimento humanizado.",
-  phone: "(11) 94006-0056",
-  phoneIntl: "+5511940060056",
-  telLink: "tel:+5511940060056",
+  phone: "(11) 4479-9012",
+  phoneIntl: "+551144799012",
+  telLink: "tel:+551144799012",
   waLink: (message = "") =>
     `https://wa.me/5511940060056${message ? `?text=${encodeURIComponent(message)}` : ""}`,
   waDefaultMessage:
