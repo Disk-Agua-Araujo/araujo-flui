@@ -8,7 +8,7 @@ export function MobileBottomBar() {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden border-t bg-card/95 backdrop-blur p-2 flex gap-2">
       <Button
-        className="flex-1 bg-[#25D366] hover:bg-[#1da851] text-white font-semibold"
+        className="flex-1 bg-whatsapp hover:bg-whatsapp-dark text-white font-semibold"
         asChild
         onClick={() => trackEvent("whatsapp_click", { source: "mobile_bar" })}
       >

@@ -89,7 +89,7 @@ export function QuickOrder() {
   return (
     <section id="pedido-rapido" className="py-12 md:py-16 bg-gradient-to-b from-background to-primary/5">
       <div className="container max-w-lg">
-        <Card className="shadow-lg">
+        <Card className="shadow-lg border-primary/10">
           <CardHeader>
             <CardTitle className="text-center text-primary text-xl">⚡ Pedido rápido</CardTitle>
           </CardHeader>
@@ -124,37 +124,21 @@ export function QuickOrder() {
             {/* Fields */}
             <div className="space-y-3">
               <div>
-                <Input
-                  placeholder="Seu nome"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  maxLength={100}
-                />
+                <Input placeholder="Seu nome" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} />
                 {errors.name && <p className="text-xs text-destructive mt-1">{errors.name}</p>}
               </div>
               <div>
-                <Input
-                  placeholder="Seu WhatsApp"
-                  value={whatsapp}
-                  onChange={(e) => setWhatsapp(e.target.value)}
-                  type="tel"
-                  maxLength={20}
-                />
+                <Input placeholder="Seu WhatsApp" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} type="tel" maxLength={20} />
                 {errors.whatsapp && <p className="text-xs text-destructive mt-1">{errors.whatsapp}</p>}
               </div>
               <div>
-                <Input
-                  placeholder="Endereço / Bairro"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  maxLength={200}
-                />
+                <Input placeholder="Endereço / Bairro" value={address} onChange={(e) => setAddress(e.target.value)} maxLength={200} />
                 {errors.address && <p className="text-xs text-destructive mt-1">{errors.address}</p>}
               </div>
             </div>
 
             <Button
-              className="w-full bg-[#25D366] hover:bg-[#1da851] text-white font-semibold"
+              className="w-full bg-whatsapp hover:bg-whatsapp-dark text-white font-semibold"
               onClick={handleSubmit}
             >
               <MessageCircle className="h-4 w-4 mr-2" />

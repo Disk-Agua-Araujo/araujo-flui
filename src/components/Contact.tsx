@@ -7,38 +7,10 @@ import { business } from "@/config/business";
 import { trackEvent } from "@/hooks/use-analytics";
 
 const contactCards = [
-  {
-    icon: MessageCircle,
-    label: "WhatsApp",
-    value: business.phone,
-    action: business.waLink(business.waDefaultMessage),
-    external: true,
-    event: "whatsapp_click" as const,
-  },
-  {
-    icon: Phone,
-    label: "Telefone",
-    value: business.phone,
-    action: business.telLink,
-    external: false,
-    event: "call_click" as const,
-  },
-  {
-    icon: MapPin,
-    label: "Endereço",
-    value: business.address.full,
-    action: business.mapsDirectionsLink,
-    external: true,
-    event: null,
-  },
-  {
-    icon: Clock,
-    label: "Horário",
-    value: `${business.hours}\n${business.hoursNote}`,
-    action: null,
-    external: false,
-    event: null,
-  },
+  { icon: MessageCircle, label: "WhatsApp", value: business.phone, action: business.waLink(business.waDefaultMessage), external: true, event: "whatsapp_click" as const },
+  { icon: Phone, label: "Telefone", value: business.phone, action: business.telLink, external: false, event: "call_click" as const },
+  { icon: MapPin, label: "Endereço", value: business.address.full, action: business.mapsDirectionsLink, external: true, event: null },
+  { icon: Clock, label: "Horário", value: `${business.hours}\n${business.hoursNote}`, action: null, external: false, event: null },
 ];
 
 export function Contact() {
@@ -61,22 +33,14 @@ export function Contact() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto mb-12">
           {contactCards.map((c, i) => (
-            <Card key={i} className="hover:shadow-md transition-shadow">
+            <Card key={i} className="hover:shadow-md transition-shadow border-primary/10">
               <CardContent className="p-4 flex flex-col items-center text-center gap-2">
                 <c.icon className="h-6 w-6 text-primary" />
                 <span className="font-semibold text-sm">{c.label}</span>
                 <span className="text-xs text-muted-foreground whitespace-pre-line">{c.value}</span>
                 {c.action && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-1"
-                    asChild
-                    onClick={() => c.event && trackEvent(c.event, { source: "contact_card" })}
-                  >
-                    <a href={c.action} target={c.external ? "_blank" : undefined} rel={c.external ? "noopener noreferrer" : undefined}>
-                      Abrir
-                    </a>
+                  <Button variant="ghost" size="sm" className="mt-1" asChild onClick={() => c.event && trackEvent(c.event, { source: "contact_card" })}>
+                    <a href={c.action} target={c.external ? "_blank" : undefined} rel={c.external ? "noopener noreferrer" : undefined}>Abrir</a>
                   </Button>
                 )}
               </CardContent>
@@ -111,14 +75,14 @@ export function Contact() {
         </div>
 
         {/* Final CTA */}
-        <div className="mt-12 bg-primary rounded-2xl p-8 text-center text-primary-foreground">
+        <div className="mt-12 rounded-2xl p-8 text-center text-primary-foreground" style={{ background: "linear-gradient(135deg, hsl(var(--brand-blue-dark)), hsl(var(--brand-blue)))" }}>
           <h3 className="text-xl md:text-2xl font-bold mb-3">Peça agora e receba com agilidade</h3>
           <p className="text-primary-foreground/80 mb-6 text-sm">
             Entrega rápida de água mineral em Santo André. Fale conosco!
           </p>
           <Button
             size="lg"
-            className="bg-[#25D366] hover:bg-[#1da851] text-white font-semibold"
+            className="bg-whatsapp hover:bg-whatsapp-dark text-white font-semibold"
             asChild
             onClick={() => trackEvent("whatsapp_click", { source: "cta_band" })}
           >
