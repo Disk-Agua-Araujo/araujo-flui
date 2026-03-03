@@ -1,3 +1,5 @@
+import { supabase } from "@/integrations/supabase/client";
+
 // Store coordinates (Av. Eduardo Prado, 269 - Santo André)
 export const STORE_COORDS = { lat: -23.6600, lng: -46.5300 };
 export const MAX_DELIVERY_KM = 5;
@@ -21,25 +23,43 @@ function toRad(deg: number) {
 }
 
 export type GeoValidationResult =
-  | { ok: true; distanceKm: number }
+  | { ok: true; distanceKm: number; lat: number; lng: number }
   | { ok: false; reason: "too_far"; distanceKm: number }
   | { ok: false; reason: "no_geocoding" };
 
 /**
- * Validate delivery address distance.
- * Without a geocoding API key, returns "no_geocoding" so the UI can show a fallback.
+ * Validate delivery address distance using the geocode edge function.
+ * Falls back to "no_geocoding" if the API key isn't configured.
  */
 export async function validateDeliveryDistance(
-  _address: string
+  address: string
 ): Promise<GeoValidationResult> {
-  // TODO: With a geocoding API key, geocode the address and calculate distance
-  // For now, return no_geocoding fallback
-  return { ok: false, reason: "no_geocoding" };
+  try {
+    const { data, error } = await supabase.functions.invoke("geocode", {
+      body: { address },
+    });
+
+    if (error || data?.error === "no_api_key" || data?.error === "geocode_failed") {
+      return { ok: false, reason: "no_geocoding" };
+    }
+
+    if (data?.lat != null && data?.lng != null) {
+      const d = haversineKm(STORE_COORDS.lat, STORE_COORDS.lng, data.lat, data.lng);
+      if (d <= MAX_DELIVERY_KM) {
+        return { ok: true, distanceKm: d, lat: data.lat, lng: data.lng };
+      }
+      return { ok: false, reason: "too_far", distanceKm: d };
+    }
+
+    return { ok: false, reason: "no_geocoding" };
+  } catch {
+    return { ok: false, reason: "no_geocoding" };
+  }
 }
 
 /** Validate if known lat/lng is within delivery range */
 export function isWithinRange(lat: number, lng: number): GeoValidationResult {
   const d = haversineKm(STORE_COORDS.lat, STORE_COORDS.lng, lat, lng);
-  if (d <= MAX_DELIVERY_KM) return { ok: true, distanceKm: d };
+  if (d <= MAX_DELIVERY_KM) return { ok: true, distanceKm: d, lat, lng };
   return { ok: false, reason: "too_far", distanceKm: d };
 }

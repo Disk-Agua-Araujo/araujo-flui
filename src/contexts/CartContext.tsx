@@ -1,14 +1,23 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
-import type { Product } from "@/data/products";
+
+export interface CartProduct {
+  id: string;
+  name: string;
+  description: string;
+  type: string;
+  icon: string;
+  active: boolean;
+  priceText: string;
+}
 
 export interface CartItem {
-  product: Product;
+  product: CartProduct;
   qty: number;
 }
 
 interface CartContextType {
   items: CartItem[];
-  addItem: (product: Product, qty?: number) => void;
+  addItem: (product: CartProduct, qty?: number) => void;
   removeItem: (productId: string) => void;
   updateQty: (productId: string, qty: number) => void;
   clearCart: () => void;
@@ -20,7 +29,7 @@ const CartContext = createContext<CartContextType | null>(null);
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
 
-  const addItem = useCallback((product: Product, qty = 1) => {
+  const addItem = useCallback((product: CartProduct, qty = 1) => {
     setItems((prev) => {
       const existing = prev.find((i) => i.product.id === product.id);
       if (existing) {
