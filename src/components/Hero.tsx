@@ -28,7 +28,7 @@ export function Hero() {
           loop
           playsInline
           preload="metadata"
-          className="w-full h-full object-contain object-center bg-black/90"
+          className="w-full h-full object-cover object-center"
         >
           <source src="/media/hero-video.mp4" type="video/mp4" />
           Seu navegador não suporta vídeo HTML5.
@@ -112,7 +112,7 @@ export function Hero() {
               loop
               playsInline
               preload="metadata"
-              className="absolute inset-0 w-full h-full object-contain object-center rounded-l-3xl shadow-2xl ring-1 ring-primary/20 bg-black/90"
+              className="absolute inset-0 w-full h-full object-cover object-center rounded-l-3xl shadow-2xl ring-1 ring-primary/20"
             >
               <source src="/media/hero-video.mp4" type="video/mp4" />
             </video>
