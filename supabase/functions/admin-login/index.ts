@@ -1,27 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-// Credentials stored as secret ADMIN_CREDENTIALS:
-// [{"username":"MLucindodisk","password":"MDisk2025/01/06","role":"admin_owner"},
-//  {"username":"ISALucindodisk","password":"ISADisk2025/01/06","role":"admin_manager"}]
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Admin credentials stored as env – set via secrets tool
-// ADMIN_CREDENTIALS = JSON array: [{"username":"...","password":"...","role":"admin_owner"}, ...]
-// ADMIN_JWT_SECRET  = string used to sign tokens
-
-async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
+// Hardcoded admin credentials (server-side only, never sent to client)
+const ADMIN_USERS = [
+  { username: "MLucindodisk", password: "MDisk2025/01/06", role: "admin_owner" },
+  { username: "ISALucindodisk", password: "ISADisk2025/01/06", role: "admin_manager" },
+];
 
 async function signJWT(
   payload: Record<string, unknown>,
@@ -66,7 +55,6 @@ async function verifyJWT(
       ["verify"]
     );
 
-    // Restore base64
     const sigStr = signature.replace(/-/g, "+").replace(/_/g, "/");
     const sigBytes = Uint8Array.from(atob(sigStr), (c) => c.charCodeAt(0));
 
@@ -95,11 +83,9 @@ serve(async (req) => {
   const action = url.searchParams.get("action") || "login";
 
   const jwtSecret = Deno.env.get("ADMIN_JWT_SECRET");
-  const credsRawEarly = Deno.env.get("ADMIN_CREDENTIALS");
-  console.log("ENV check — ADMIN_JWT_SECRET set:", !!jwtSecret, "ADMIN_CREDENTIALS set:", !!credsRawEarly);
   if (!jwtSecret) {
     return new Response(
-      JSON.stringify({ error: "Configuração do servidor ausente (JWT). Contate o administrador." }),
+      JSON.stringify({ error: "Configuração do servidor ausente. Contate o administrador." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -122,43 +108,34 @@ serve(async (req) => {
 
   // ── LOGIN ──────────────────────────────────────────────
   if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405, headers: corsHeaders });
+    return new Response("Método não permitido", { status: 405, headers: corsHeaders });
   }
 
-  const { username, password } = await req.json();
-  if (!username || !password) {
+  let body: { username?: string; password?: string };
+  try {
+    body = await req.json();
+  } catch {
     return new Response(
-      JSON.stringify({ error: "Usuário e senha são obrigatórios" }),
+      JSON.stringify({ error: "Requisição inválida." }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 
-  const credsRaw = Deno.env.get("ADMIN_CREDENTIALS");
-  if (!credsRaw) {
+  const { username, password } = body;
+  if (!username || !password) {
     return new Response(
-      JSON.stringify({ error: "Configuração do servidor ausente (credenciais). Contate o administrador." }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: "Usuário e senha são obrigatórios." }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 
-  let creds: { username: string; password: string; role: string }[];
-  try {
-    creds = JSON.parse(credsRaw);
-  } catch (e) {
-    console.error("Failed to parse ADMIN_CREDENTIALS:", e, "raw value length:", credsRaw.length, "first 20 chars:", credsRaw.substring(0, 20));
-    return new Response(
-      JSON.stringify({ error: "Configuração do servidor inválida (credenciais). Contate o administrador." }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-
-  const match = creds.find(
+  const match = ADMIN_USERS.find(
     (c) => c.username === username && c.password === password
   );
 
   if (!match) {
     return new Response(
-      JSON.stringify({ error: "Usuário ou senha inválidos" }),
+      JSON.stringify({ error: "Usuário ou senha inválidos." }),
       { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -168,7 +145,7 @@ serve(async (req) => {
       sub: match.username,
       role: match.role,
       iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12, // 12h
+      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12,
     },
     jwtSecret
   );
