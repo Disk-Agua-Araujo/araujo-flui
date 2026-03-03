@@ -8,9 +8,10 @@ import logo from "@/assets/logo.png";
 
 const navLinks = [
   { label: "Início", href: "#inicio" },
-  { label: "Produtos", href: "#produtos" },
-  { label: "Como funciona", href: "#como-funciona" },
-  { label: "Avaliações", href: "#avaliacoes" },
+  { label: "Loja", href: "/loja", isRoute: true },
+  { label: "Catálogo", href: "/catalogo", isRoute: true },
+  { label: "Empresas", href: "/pedido-empresa", isRoute: true },
+  { label: "Atacado", href: "/atacado", isRoute: true },
   { label: "Contato", href: "#contato" },
 ];
 
@@ -30,15 +31,25 @@ export function Header() {
 
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-6">
-          {navLinks.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {l.label}
-            </a>
-          ))}
+          {navLinks.map((l) =>
+            (l as any).isRoute ? (
+              <Link
+                key={l.href}
+                to={l.href}
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {l.label}
+              </Link>
+            ) : (
+              <a
+                key={l.href}
+                href={l.href}
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {l.label}
+              </a>
+            )
+          )}
         </nav>
 
         <div className="hidden md:flex items-center gap-2">
@@ -79,16 +90,27 @@ export function Header() {
       {/* Mobile menu */}
       {open && (
         <nav className="md:hidden border-t bg-card pb-4">
-          {navLinks.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              className="block px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-              onClick={() => setOpen(false)}
-            >
-              {l.label}
-            </a>
-          ))}
+          {navLinks.map((l) =>
+            (l as any).isRoute ? (
+              <Link
+                key={l.href}
+                to={l.href}
+                className="block px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                onClick={() => setOpen(false)}
+              >
+                {l.label}
+              </Link>
+            ) : (
+              <a
+                key={l.href}
+                href={l.href}
+                className="block px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                onClick={() => setOpen(false)}
+              >
+                {l.label}
+              </a>
+            )
+          )}
           <div className="flex gap-2 px-4 pt-2">
             <Button variant="outline" size="sm" className="flex-1" asChild onClick={() => trackEvent("call_click")}>
               <a href={business.telLink}>

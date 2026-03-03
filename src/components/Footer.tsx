@@ -6,9 +6,10 @@ import logo from "@/assets/logo.png";
 
 const quickLinks = [
   { label: "Início", href: "#inicio" },
-  { label: "Produtos", href: "#produtos" },
-  { label: "Avaliações", href: "#avaliacoes" },
-  { label: "Contato", href: "#contato" },
+  { label: "Loja", to: "/loja" },
+  { label: "Catálogo", to: "/catalogo" },
+  { label: "Empresas", to: "/pedido-empresa" },
+  { label: "Atacado", to: "/atacado" },
   { label: "Fazer pedido", to: "/pedido" },
 ];
 
