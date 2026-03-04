@@ -197,8 +197,11 @@ export type Database = {
           description: string | null
           icon: string | null
           id: string
+          min_stock_qty: number
           name: string
           price_text: string | null
+          stock_qty: number
+          track_stock: boolean
           type: Database["public"]["Enums"]["product_type"]
         }
         Insert: {
@@ -207,8 +210,11 @@ export type Database = {
           description?: string | null
           icon?: string | null
           id?: string
+          min_stock_qty?: number
           name: string
           price_text?: string | null
+          stock_qty?: number
+          track_stock?: boolean
           type?: Database["public"]["Enums"]["product_type"]
         }
         Update: {
@@ -217,11 +223,62 @@ export type Database = {
           description?: string | null
           icon?: string | null
           id?: string
+          min_stock_qty?: number
           name?: string
           price_text?: string | null
+          stock_qty?: number
+          track_stock?: boolean
           type?: Database["public"]["Enums"]["product_type"]
         }
         Relationships: []
+      }
+      stock_movements: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          order_id: string | null
+          product_id: string
+          qty: number
+          reason: string | null
+          type: Database["public"]["Enums"]["stock_movement_type"]
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          order_id?: string | null
+          product_id: string
+          qty: number
+          reason?: string | null
+          type: Database["public"]["Enums"]["stock_movement_type"]
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          order_id?: string | null
+          product_id?: string
+          qty?: number
+          reason?: string | null
+          type?: Database["public"]["Enums"]["stock_movement_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -275,6 +332,40 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      adjust_stock: {
+        Args: {
+          p_created_by?: string
+          p_product_id: string
+          p_qty: number
+          p_reason?: string
+          p_type: Database["public"]["Enums"]["stock_movement_type"]
+        }
+        Returns: number
+      }
+      create_full_site_order: {
+        Args: {
+          p_city?: string
+          p_complement?: string
+          p_customer_cnpj?: string
+          p_customer_name: string
+          p_customer_phone: string
+          p_customer_type?: Database["public"]["Enums"]["customer_type"]
+          p_delivery_date?: string
+          p_delivery_time?: string
+          p_items?: Json
+          p_neighborhood?: string
+          p_notes?: string
+          p_number?: string
+          p_state?: string
+          p_street?: string
+          p_zip?: string
+        }
+        Returns: Json
+      }
+      deduct_stock_for_order: {
+        Args: { p_created_by?: string; p_order_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -291,6 +382,7 @@ export type Database = {
       order_channel: "site" | "whatsapp" | "ligacao" | "admin"
       order_status: "novo" | "agendado" | "em_rota" | "entregue" | "cancelado"
       product_type: "varejo" | "atacado" | "ambos"
+      stock_movement_type: "in" | "out" | "adjust"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -423,6 +515,7 @@ export const Constants = {
       order_channel: ["site", "whatsapp", "ligacao", "admin"],
       order_status: ["novo", "agendado", "em_rota", "entregue", "cancelado"],
       product_type: ["varejo", "atacado", "ambos"],
+      stock_movement_type: ["in", "out", "adjust"],
     },
   },
 } as const
