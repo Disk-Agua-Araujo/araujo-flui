@@ -8,9 +8,13 @@ export const business = {
   tagline: "Confiança, agilidade e qualidade na sua porta!",
   subtitle:
     "Entrega rápida de galões de 20L em Santo André para residências e empresas. Água mineral de procedência garantida e atendimento humanizado.",
+  // Telefone fixo (ligações)
   phone: "(11) 4479-9012",
   phoneIntl: "+551144799012",
   telLink: "tel:+551144799012",
+  // WhatsApp (atendimento)
+  waPhone: "(11) 94006-0056",
+  waPhoneIntl: "+5511940060056",
   waLink: (message = "") =>
     `https://wa.me/5511940060056${message ? `?text=${encodeURIComponent(message)}` : ""}`,
   waDefaultMessage:
@@ -27,14 +31,14 @@ export const business = {
   hoursNote: "Confira os horários atualizados no Google",
   rating: 4.3,
   reviewCount: 47,
-  googleReviewsLink: "#", // replace with actual Google Maps reviews link
+  googleReviewsLink: "#",
   mapsEmbedUrl:
     "https://www.google.com/maps?q=Av.+Eduardo+Prado,+269+-+Parque+Erasmo+Assunção,+Santo+André+-+SP,+09271-180&output=embed",
   mapsDirectionsLink:
     "https://www.google.com/maps/dir/?api=1&destination=Av.+Eduardo+Prado+269+Santo+André+SP",
   social: {
-    facebook: "#", // replace with actual link
-    instagram: "#", // replace with actual link
+    facebook: "#",
+    instagram: "#",
   },
   reviews: [
     {

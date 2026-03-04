@@ -5,11 +5,10 @@ import { trackEvent } from "@/hooks/use-analytics";
 import logo from "@/assets/logo.png";
 
 const quickLinks = [
-  { label: "Início", href: "#inicio" },
+  { label: "Início", href: "/#inicio" },
   { label: "Loja", to: "/loja" },
   { label: "Catálogo", to: "/catalogo" },
   { label: "Empresas", to: "/pedido-empresa" },
-  { label: "Atacado", to: "/atacado" },
   { label: "Fazer pedido", to: "/pedido" },
 ];
 
@@ -65,10 +64,19 @@ export function Footer() {
             <p className="text-sm text-background/70 mb-1">{business.address.full}</p>
             <a
               href={business.telLink}
-              className="text-sm text-background/70 hover:text-background transition-colors"
+              className="text-sm text-background/70 hover:text-background transition-colors block"
               onClick={() => trackEvent("call_click")}
             >
-              {business.phone}
+              📞 {business.phone}
+            </a>
+            <a
+              href={business.waLink(business.waDefaultMessage)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-background/70 hover:text-background transition-colors block mt-1"
+              onClick={() => trackEvent("whatsapp_click", { source: "footer" })}
+            >
+              💬 {business.waPhone}
             </a>
             <div className="mt-3">
               <a

@@ -9,7 +9,6 @@ import Index from "./pages/Index";
 import OrderPage from "./pages/OrderPage";
 import Catalogo from "./pages/Catalogo";
 import PedidoEmpresa from "./pages/PedidoEmpresa";
-import Atacado from "./pages/Atacado";
 import Loja from "./pages/Loja";
 import Privacidade from "./pages/Privacidade";
 import Termos from "./pages/Termos";
@@ -32,7 +31,6 @@ const App = () => (
               <Route path="/pedido" element={<OrderPage />} />
               <Route path="/catalogo" element={<Catalogo />} />
               <Route path="/pedido-empresa" element={<PedidoEmpresa />} />
-              <Route path="/atacado" element={<Atacado />} />
               <Route path="/loja" element={<Loja />} />
               <Route path="/privacidade" element={<Privacidade />} />
               <Route path="/termos" element={<Termos />} />
