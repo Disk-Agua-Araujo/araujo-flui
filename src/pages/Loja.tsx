@@ -12,11 +12,12 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import {
-  ShoppingCart, Plus, Minus, Trash2, MessageCircle, Droplets, Sparkles, Archive, Zap, MapPin, AlertTriangle,
+  ShoppingCart, Plus, Minus, Trash2, MessageCircle, Droplets, Sparkles, Archive, Zap, MapPin, AlertTriangle, Check, Copy, Loader2,
 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useRetailProducts } from "@/hooks/use-products";
-import { buildOrderMessage, openWhatsApp } from "@/services/whatsapp";
+import { buildOrderMessage, sendOrderToDiskWhatsApp } from "@/services/whatsapp";
+import { createSiteOrder } from "@/services/orders";
 import { validateDeliveryDistance, MAX_DELIVERY_KM } from "@/lib/geo";
 import { trackEvent } from "@/hooks/use-analytics";
 import { useToast } from "@/hooks/use-toast";
@@ -47,6 +48,9 @@ export default function Loja() {
   const [submitted, setSubmitted] = useState(false);
   const [labelData, setLabelData] = useState<LabelData | null>(null);
   const [geoWarning, setGeoWarning] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [waResult, setWaResult] = useState<{ sent: boolean; fallback: boolean; message: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,11 +63,14 @@ export default function Loja() {
       return;
     }
 
+    setSaving(true);
+
     const fullAddr = `${rua}, ${numero} - ${bairro}, Santo André - SP`;
     const geoResult = await validateDeliveryDistance(fullAddr);
     if (geoResult.ok === false) {
       if (geoResult.reason === "too_far") {
         toast({ title: "Fora da área de entrega", description: `Entregamos até ${MAX_DELIVERY_KM}km.`, variant: "destructive" });
+        setSaving(false);
         return;
       }
       if (geoResult.reason === "no_geocoding") {
@@ -71,27 +78,53 @@ export default function Loja() {
       }
     }
 
-    const pedidoId = `VAR-${Date.now().toString(36).toUpperCase()}`;
-    const itens = items.map((i) => ({ nome: i.product.name, qtd: i.qty }));
+    try {
+      // 1. Save to database
+      const orderResult = await createSiteOrder({
+        customer: { name: nome, phone: whatsapp, type: "PF" },
+        address: { street: rua, number: numero, neighborhood: bairro, city: "Santo André", state: "SP", complement: complemento },
+        items: items.map((i) => ({ product_id: i.product.id, qty: i.qty })),
+        notes: `Pagamento: ${pagamento}. ${obs}`.trim(),
+      });
 
-    const message = buildOrderMessage({
-      tipo: "VAREJO",
-      canal: "site",
-      cliente: nome,
-      telefone: whatsapp,
-      endereco: { rua, numero, bairro, cidade: "Santo André", uf: "SP", complemento },
-      obs: `Pagamento: ${pagamento}. ${obs}`,
-      itens,
-      status: "Novo",
-      pedidoId,
-    });
+      const pedidoId = orderResult.order_id.slice(0, 8).toUpperCase();
+      const itens = items.map((i) => ({ nome: i.product.name, qtd: i.qty }));
 
-    setLabelData({ pedidoId, cliente: nome, endereco: fullAddr, complemento, itens });
+      // 2. Send to WhatsApp
+      const msgData = {
+        tipo: "VAREJO" as const,
+        canal: "site" as const,
+        cliente: nome,
+        telefone: whatsapp,
+        endereco: { rua, numero, bairro, cidade: "Santo André", uf: "SP", complemento },
+        obs: `Pagamento: ${pagamento}. ${obs}`,
+        itens,
+        status: "Novo",
+        pedidoId,
+      };
 
-    trackEvent("order_created", { tipo: "varejo", canal: "site", pedidoId });
-    openWhatsApp(message);
-    setSubmitted(true);
-    clearCart();
+      const result = await sendOrderToDiskWhatsApp(msgData);
+      setWaResult(result);
+
+      setLabelData({ pedidoId, cliente: nome, endereco: fullAddr, complemento, itens });
+
+      trackEvent("order_created", { tipo: "varejo", canal: "site", pedidoId });
+      setSubmitted(true);
+      clearCart();
+      toast({ title: "Pedido registrado com sucesso!" });
+    } catch (err: any) {
+      toast({ title: "Erro ao salvar pedido", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCopy = () => {
+    if (waResult?.message) {
+      navigator.clipboard.writeText(waResult.message);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   if (submitted && labelData) {
@@ -102,8 +135,13 @@ export default function Loja() {
           <Card>
             <CardHeader>
               <CardTitle className="text-center">
-                <Badge className="bg-whatsapp text-white mb-2">Pedido enviado!</Badge>
-                <br />Seu pedido foi criado com sucesso
+                <Badge className="bg-whatsapp text-white mb-2">
+                  {waResult?.fallback ? "Pedido registrado!" : "Pedido enviado!"}
+                </Badge>
+                <br />
+                {waResult?.fallback
+                  ? "Pedido registrado. Envie no WhatsApp com 1 clique."
+                  : "Pedido registrado e enviado ao WhatsApp"}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -114,7 +152,20 @@ export default function Loja() {
                 </div>
               )}
               <OrderLabel data={labelData} />
-              <Button className="w-full" onClick={() => setSubmitted(false)}>Fazer outro pedido</Button>
+              {waResult?.fallback && (
+                <div className="space-y-2">
+                  <Button variant="outline" className="w-full" onClick={handleCopy}>
+                    {copied ? <Check className="h-4 w-4 mr-1" /> : <Copy className="h-4 w-4 mr-1" />}
+                    {copied ? "Copiado!" : "Copiar mensagem"}
+                  </Button>
+                  <Button className="w-full bg-whatsapp hover:bg-whatsapp-dark text-white" asChild>
+                    <a href={`https://wa.me/5511940060056?text=${encodeURIComponent(waResult.message)}`} target="_blank" rel="noopener noreferrer">
+                      <MessageCircle className="h-4 w-4 mr-1" /> Abrir WhatsApp novamente
+                    </a>
+                  </Button>
+                </div>
+              )}
+              <Button className="w-full" variant="ghost" onClick={() => setSubmitted(false)}>Fazer outro pedido</Button>
             </CardContent>
           </Card>
         </main>
@@ -181,8 +232,9 @@ export default function Loja() {
                     </div>
                     <div><Label htmlFor="c-obs">Observações</Label><Textarea id="c-obs" value={obs} onChange={(e) => setObs(e.target.value)} rows={2} /></div>
                     <div className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> Entregamos até {MAX_DELIVERY_KM}km</div>
-                    <Button type="submit" className="w-full bg-whatsapp hover:bg-whatsapp-dark text-white">
-                      <MessageCircle className="h-4 w-4 mr-1" /> Finalizar pedido
+                    <Button type="submit" className="w-full bg-whatsapp hover:bg-whatsapp-dark text-white" disabled={saving}>
+                      {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <MessageCircle className="h-4 w-4 mr-1" />}
+                      {saving ? "Salvando..." : "Finalizar pedido"}
                     </Button>
                   </form>
                 </div>

@@ -7,7 +7,7 @@ import { business } from "@/config/business";
 import { trackEvent } from "@/hooks/use-analytics";
 
 const contactCards = [
-  { icon: MessageCircle, label: "WhatsApp", value: business.phone, action: business.waLink(business.waDefaultMessage), external: true, event: "whatsapp_click" as const },
+  { icon: MessageCircle, label: "WhatsApp", value: business.waPhone, action: business.waLink(business.waDefaultMessage), external: true, event: "whatsapp_click" as const },
   { icon: Phone, label: "Telefone", value: business.phone, action: business.telLink, external: false, event: "call_click" as const },
   { icon: MapPin, label: "Endereço", value: business.address.full, action: business.mapsDirectionsLink, external: true, event: null },
   { icon: Clock, label: "Horário", value: `${business.hours}\n${business.hoursNote}`, action: null, external: false, event: null },
@@ -53,10 +53,9 @@ export function Contact() {
           <Card className="shadow-lg">
             <CardContent className="p-6">
               <h3 className="font-bold text-lg mb-4 text-center">Fale com a gente</h3>
-              <form onSubmit={handleSubmit} data-netlify="true" name="contato" className="space-y-3">
-                <input type="hidden" name="form-name" value="contato" />
-                <Input placeholder="Nome" value={cName} onChange={(e) => setCName(e.target.value)} required maxLength={100} name="nome" />
-                <Input placeholder="WhatsApp" value={cWa} onChange={(e) => setCWa(e.target.value)} required maxLength={20} type="tel" name="whatsapp" />
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <Input placeholder="Nome" value={cName} onChange={(e) => setCName(e.target.value)} required maxLength={100} />
+                <Input placeholder="WhatsApp" value={cWa} onChange={(e) => setCWa(e.target.value)} required maxLength={20} type="tel" />
                 <textarea
                   className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 min-h-[80px] resize-none"
                   placeholder="Sua mensagem"
@@ -64,7 +63,6 @@ export function Contact() {
                   onChange={(e) => setCMsg(e.target.value)}
                   required
                   maxLength={500}
-                  name="mensagem"
                 />
                 <Button className="w-full" type="submit">
                   <Send className="h-4 w-4 mr-2" /> Enviar mensagem

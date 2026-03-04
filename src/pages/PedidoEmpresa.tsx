@@ -14,11 +14,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, MessageCircle, MapPin, Minus, Plus, AlertTriangle } from "lucide-react";
+import { CalendarIcon, MessageCircle, MapPin, Minus, Plus, AlertTriangle, Loader2, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
 import { validateDeliveryDistance, MAX_DELIVERY_KM } from "@/lib/geo";
-import { buildOrderMessage, openWhatsApp } from "@/services/whatsapp";
+import { sendOrderToDiskWhatsApp } from "@/services/whatsapp";
+import { createSiteOrder } from "@/services/orders";
 import { useProducts } from "@/hooks/use-products";
 import { trackEvent } from "@/hooks/use-analytics";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +33,9 @@ export default function PedidoEmpresa() {
   const { data: availableProducts = [] } = useProducts();
   const [submitted, setSubmitted] = useState(false);
   const [labelData, setLabelData] = useState<LabelData | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [waResult, setWaResult] = useState<{ sent: boolean; fallback: boolean; message: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const [cnpj, setCnpj] = useState("");
   const [empresa, setEmpresa] = useState("");
@@ -55,9 +59,18 @@ export default function PedidoEmpresa() {
   const selectedItems = Object.entries(qtys)
     .filter(([, q]) => q > 0)
     .map(([id, qty]) => ({
+      productId: id,
       nome: availableProducts.find((p) => p.id === id)?.name || id,
       qtd: qty,
     }));
+
+  const handleCopy = () => {
+    if (waResult?.message) {
+      navigator.clipboard.writeText(waResult.message);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,11 +95,14 @@ export default function PedidoEmpresa() {
       return;
     }
 
+    setSaving(true);
+
     const fullAddr = `${rua}, ${numero} - ${bairro}, ${cidade} - SP`;
     const geoResult = await validateDeliveryDistance(fullAddr);
     if (geoResult.ok === false) {
       if (geoResult.reason === "too_far") {
         toast({ title: "Fora da área de entrega", description: `Entregamos até ${MAX_DELIVERY_KM}km.`, variant: "destructive" });
+        setSaving(false);
         return;
       }
       if (geoResult.reason === "no_geocoding") {
@@ -94,37 +110,58 @@ export default function PedidoEmpresa() {
       }
     }
 
-    const pedidoId = `EMP-${Date.now().toString(36).toUpperCase()}`;
-    const entregaData = format(date, "dd/MM/yyyy");
+    try {
+      // 1. Save to database
+      const entregaData = format(date, "yyyy-MM-dd");
+      const orderResult = await createSiteOrder({
+        customer: { name: empresa, phone: telefone, type: "PJ", cnpj },
+        address: { street: rua, number: numero, neighborhood: bairro, city: cidade, state: "SP", complement: complemento, zip: cep },
+        items: selectedItems.map((i) => ({ product_id: i.productId, qty: i.qtd })),
+        notes: obs || undefined,
+        delivery_date: entregaData,
+        delivery_time: hora,
+      });
 
-    const message = buildOrderMessage({
-      tipo: "EMPRESA",
-      canal: "site",
-      cliente: empresa,
-      cnpj,
-      telefone,
-      endereco: { rua, numero, bairro, cidade, uf: "SP", complemento },
-      obs,
-      itens: selectedItems,
-      entregaData,
-      entregaHora: hora,
-      status: "Novo",
-      pedidoId,
-    });
+      const pedidoId = orderResult.order_id.slice(0, 8).toUpperCase();
+      const entregaDataFormatted = format(date, "dd/MM/yyyy");
 
-    setLabelData({
-      pedidoId,
-      cliente: empresa,
-      endereco: `${rua}, ${numero} - ${bairro}, ${cidade}/SP`,
-      complemento,
-      itens: selectedItems,
-      entregaData,
-      entregaHora: hora,
-    });
+      // 2. Send to WhatsApp
+      const msgData = {
+        tipo: "EMPRESA" as const,
+        canal: "site" as const,
+        cliente: empresa,
+        cnpj,
+        telefone,
+        endereco: { rua, numero, bairro, cidade, uf: "SP", complemento },
+        obs,
+        itens: selectedItems.map((i) => ({ nome: i.nome, qtd: i.qtd })),
+        entregaData: entregaDataFormatted,
+        entregaHora: hora,
+        status: "Novo",
+        pedidoId,
+      };
 
-    trackEvent("order_created", { tipo: "empresa", canal: "site", pedidoId });
-    openWhatsApp(message);
-    setSubmitted(true);
+      const result = await sendOrderToDiskWhatsApp(msgData);
+      setWaResult(result);
+
+      setLabelData({
+        pedidoId,
+        cliente: empresa,
+        endereco: `${rua}, ${numero} - ${bairro}, ${cidade}/SP`,
+        complemento,
+        itens: selectedItems.map((i) => ({ nome: i.nome, qtd: i.qtd })),
+        entregaData: entregaDataFormatted,
+        entregaHora: hora,
+      });
+
+      trackEvent("order_created", { tipo: "empresa", canal: "site", pedidoId });
+      setSubmitted(true);
+      toast({ title: "Pedido registrado com sucesso!" });
+    } catch (err: any) {
+      toast({ title: "Erro ao salvar pedido", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (submitted && labelData) {
@@ -135,8 +172,13 @@ export default function PedidoEmpresa() {
           <Card>
             <CardHeader>
               <CardTitle className="text-center">
-                <Badge className="bg-whatsapp text-white mb-2">Pedido criado!</Badge>
-                <br />Pedido pronto para enviar
+                <Badge className="bg-whatsapp text-white mb-2">
+                  {waResult?.fallback ? "Pedido registrado!" : "Pedido enviado!"}
+                </Badge>
+                <br />
+                {waResult?.fallback
+                  ? "Pedido registrado. Envie no WhatsApp com 1 clique."
+                  : "Pedido registrado e enviado ao WhatsApp"}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -147,7 +189,20 @@ export default function PedidoEmpresa() {
                 </div>
               )}
               <OrderLabel data={labelData} />
-              <Button className="w-full" onClick={() => { setSubmitted(false); setQtys({}); }}>Novo pedido</Button>
+              {waResult?.fallback && (
+                <div className="space-y-2">
+                  <Button variant="outline" className="w-full" onClick={handleCopy}>
+                    {copied ? <Check className="h-4 w-4 mr-1" /> : <Copy className="h-4 w-4 mr-1" />}
+                    {copied ? "Copiado!" : "Copiar mensagem"}
+                  </Button>
+                  <Button className="w-full bg-whatsapp hover:bg-whatsapp-dark text-white" asChild>
+                    <a href={`https://wa.me/5511940060056?text=${encodeURIComponent(waResult.message)}`} target="_blank" rel="noopener noreferrer">
+                      <MessageCircle className="h-4 w-4 mr-1" /> Abrir WhatsApp novamente
+                    </a>
+                  </Button>
+                </div>
+              )}
+              <Button className="w-full" variant="ghost" onClick={() => { setSubmitted(false); setQtys({}); }}>Novo pedido</Button>
             </CardContent>
           </Card>
         </main>
@@ -245,8 +300,9 @@ export default function PedidoEmpresa() {
             <Textarea id="obs" value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Instruções especiais, ponto de referência, etc." />
           </div>
 
-          <Button type="submit" size="lg" className="w-full bg-whatsapp hover:bg-whatsapp-dark text-white">
-            <MessageCircle className="h-5 w-5 mr-2" /> Agendar pedido (WhatsApp)
+          <Button type="submit" size="lg" className="w-full bg-whatsapp hover:bg-whatsapp-dark text-white" disabled={saving}>
+            {saving ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <MessageCircle className="h-5 w-5 mr-2" />}
+            {saving ? "Salvando..." : "Agendar pedido"}
           </Button>
         </form>
       </main>

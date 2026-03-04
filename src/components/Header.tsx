@@ -4,19 +4,54 @@ import { Button } from "@/components/ui/button";
 import { business } from "@/config/business";
 import { trackEvent } from "@/hooks/use-analytics";
 import { Link } from "react-router-dom";
+import { useNavigateToSection } from "@/lib/navigation";
 import logo from "@/assets/logo.png";
 
-const navLinks = [
-  { label: "Início", href: "#inicio" },
+type NavItem = { label: string; href?: string; sectionId?: string; isRoute?: boolean };
+
+const navLinks: NavItem[] = [
+  { label: "Início", sectionId: "inicio" },
   { label: "Loja", href: "/loja", isRoute: true },
   { label: "Catálogo", href: "/catalogo", isRoute: true },
   { label: "Empresas", href: "/pedido-empresa", isRoute: true },
-  { label: "Atacado", href: "/atacado", isRoute: true },
-  { label: "Contato", href: "#contato" },
+  { label: "Contato", sectionId: "contato" },
 ];
 
 export function Header() {
   const [open, setOpen] = useState(false);
+  const navigateToSection = useNavigateToSection();
+
+  const renderNavItem = (l: NavItem, mobile = false) => {
+    const className = mobile
+      ? "block px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+      : "text-sm font-medium text-muted-foreground hover:text-foreground transition-colors";
+
+    if (l.isRoute && l.href) {
+      return (
+        <Link
+          key={l.label}
+          to={l.href}
+          className={className}
+          onClick={() => mobile && setOpen(false)}
+        >
+          {l.label}
+        </Link>
+      );
+    }
+
+    return (
+      <button
+        key={l.label}
+        className={`${className} ${mobile ? "" : "cursor-pointer"}`}
+        onClick={() => {
+          if (l.sectionId) navigateToSection(l.sectionId);
+          if (mobile) setOpen(false);
+        }}
+      >
+        {l.label}
+      </button>
+    );
+  };
 
   return (
     <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
@@ -31,25 +66,7 @@ export function Header() {
 
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-6">
-          {navLinks.map((l) =>
-            (l as any).isRoute ? (
-              <Link
-                key={l.href}
-                to={l.href}
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {l.label}
-              </Link>
-            ) : (
-              <a
-                key={l.href}
-                href={l.href}
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {l.label}
-              </a>
-            )
-          )}
+          {navLinks.map((l) => renderNavItem(l))}
         </nav>
 
         <div className="hidden md:flex items-center gap-2">
@@ -90,27 +107,7 @@ export function Header() {
       {/* Mobile menu */}
       {open && (
         <nav className="md:hidden border-t bg-card pb-4">
-          {navLinks.map((l) =>
-            (l as any).isRoute ? (
-              <Link
-                key={l.href}
-                to={l.href}
-                className="block px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                onClick={() => setOpen(false)}
-              >
-                {l.label}
-              </Link>
-            ) : (
-              <a
-                key={l.href}
-                href={l.href}
-                className="block px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                onClick={() => setOpen(false)}
-              >
-                {l.label}
-              </a>
-            )
-          )}
+          {navLinks.map((l) => renderNavItem(l, true))}
           <div className="flex gap-2 px-4 pt-2">
             <Button variant="outline" size="sm" className="flex-1" asChild onClick={() => trackEvent("call_click")}>
               <a href={business.telLink}>
