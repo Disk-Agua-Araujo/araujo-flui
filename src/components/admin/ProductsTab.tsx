@@ -10,21 +10,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Save } from "lucide-react";
+import { Plus, Pencil, Trash2, Save, Package, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import type { Tables } from "@/integrations/supabase/types";
 
-type Product = Tables<"products">;
+type Product = Tables<"products"> & { stock_qty?: number; min_stock_qty?: number; track_stock?: boolean };
 type Tier = Tables<"wholesale_price_tiers">;
 
 export function ProductsTab() {
   const { toast } = useToast();
+  const { username } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [tiers, setTiers] = useState<Tier[]>([]);
   const [loading, setLoading] = useState(true);
   const [editProduct, setEditProduct] = useState<Partial<Product> | null>(null);
   const [editTiers, setEditTiers] = useState<Partial<Tier>[]>([]);
   const [saving, setSaving] = useState(false);
+  const [stockDialog, setStockDialog] = useState<Product | null>(null);
+  const [stockAdjust, setStockAdjust] = useState({ qty: 0, type: "in" as "in" | "out" | "adjust", reason: "" });
 
   const fetchAll = async () => {
     setLoading(true);
@@ -32,7 +36,7 @@ export function ProductsTab() {
       supabase.from("products").select("*").order("created_at"),
       supabase.from("wholesale_price_tiers").select("*").order("min_qty"),
     ]);
-    setProducts(prods ?? []);
+    setProducts((prods as Product[]) ?? []);
     setTiers(ts ?? []);
     setLoading(false);
   };
@@ -44,7 +48,7 @@ export function ProductsTab() {
       setEditProduct({ ...product });
       setEditTiers(tiers.filter((t) => t.product_id === product.id).map((t) => ({ ...t })));
     } else {
-      setEditProduct({ name: "", description: "", type: "varejo", icon: "droplets", active: true, price_text: "Consulte no WhatsApp" });
+      setEditProduct({ name: "", description: "", type: "varejo", icon: "droplets", active: true, price_text: "Consulte no WhatsApp", track_stock: false, stock_qty: 0, min_stock_qty: 0 });
       setEditTiers([]);
     }
   };
@@ -57,44 +61,33 @@ export function ProductsTab() {
     setSaving(true);
     try {
       let productId = editProduct.id;
+      const productData = {
+        name: editProduct.name,
+        description: editProduct.description,
+        type: editProduct.type as any,
+        icon: editProduct.icon,
+        active: editProduct.active,
+        price_text: editProduct.price_text,
+        track_stock: editProduct.track_stock ?? false,
+        min_stock_qty: editProduct.min_stock_qty ?? 0,
+      };
+
       if (productId) {
-        // Update
-        const { error } = await supabase.from("products").update({
-          name: editProduct.name,
-          description: editProduct.description,
-          type: editProduct.type as any,
-          icon: editProduct.icon,
-          active: editProduct.active,
-          price_text: editProduct.price_text,
-        }).eq("id", productId);
+        const { error } = await supabase.from("products").update(productData).eq("id", productId);
         if (error) throw error;
       } else {
-        // Insert
-        const { data, error } = await supabase.from("products").insert({
-          name: editProduct.name!,
-          description: editProduct.description,
-          type: editProduct.type as any,
-          icon: editProduct.icon,
-          active: editProduct.active ?? true,
-          price_text: editProduct.price_text,
-        }).select().single();
+        const { data, error } = await supabase.from("products").insert({ ...productData, stock_qty: editProduct.stock_qty ?? 0 } as any).select().single();
         if (error) throw error;
         productId = data.id;
       }
 
       // Manage tiers
       if (editProduct.type === "atacado" || editProduct.type === "ambos") {
-        // Delete old tiers
         await supabase.from("wholesale_price_tiers").delete().eq("product_id", productId!);
-        // Insert new tiers
         const validTiers = editTiers.filter((t) => t.min_qty && t.min_qty > 0);
         if (validTiers.length > 0) {
           const { error } = await supabase.from("wholesale_price_tiers").insert(
-            validTiers.map((t) => ({
-              product_id: productId!,
-              min_qty: t.min_qty!,
-              price_text: t.price_text || "Consulte",
-            }))
+            validTiers.map((t) => ({ product_id: productId!, min_qty: t.min_qty!, price_text: t.price_text || "Consulte" }))
           );
           if (error) throw error;
         }
@@ -113,11 +106,30 @@ export function ProductsTab() {
   const handleDelete = async (id: string) => {
     if (!confirm("Excluir este produto?")) return;
     const { error } = await supabase.from("products").delete().eq("id", id);
-    if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Produto excluído" });
+    if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
+    else { toast({ title: "Produto excluído" }); fetchAll(); }
+  };
+
+  const handleStockAdjust = async () => {
+    if (!stockDialog || stockAdjust.qty <= 0) return;
+    setSaving(true);
+    try {
+      const { error } = await (supabase.rpc as any)("adjust_stock", {
+        p_product_id: stockDialog.id,
+        p_qty: stockAdjust.qty,
+        p_type: stockAdjust.type,
+        p_reason: stockAdjust.reason || null,
+        p_created_by: username,
+      });
+      if (error) throw error;
+      toast({ title: "Estoque atualizado!" });
+      setStockDialog(null);
+      setStockAdjust({ qty: 0, type: "in", reason: "" });
       fetchAll();
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -125,9 +137,7 @@ export function ProductsTab() {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold">Produtos</h2>
-        <Button onClick={() => openEditor()}>
-          <Plus className="h-4 w-4 mr-1" /> Novo produto
-        </Button>
+        <Button onClick={() => openEditor()}><Plus className="h-4 w-4 mr-1" /> Novo produto</Button>
       </div>
 
       <Card>
@@ -138,42 +148,59 @@ export function ProductsTab() {
                 <TableHead>Nome</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Preço</TableHead>
+                <TableHead>Estoque</TableHead>
                 <TableHead>Ativo</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
               ) : products.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Nenhum produto. Clique em "Novo produto".</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhum produto.</TableCell></TableRow>
               ) : (
-                products.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{p.type}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">{p.price_text}</TableCell>
-                    <TableCell>{p.active ? <Badge className="bg-green-100 text-green-800">Sim</Badge> : <Badge variant="secondary">Não</Badge>}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditor(p)}><Pencil className="h-3.5 w-3.5" /></Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(p.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                    </TableCell>
-                  </TableRow>
-                ))
+                products.map((p) => {
+                  const lowStock = p.track_stock && (p.stock_qty ?? 0) <= (p.min_stock_qty ?? 0);
+                  return (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-medium">{p.name}</TableCell>
+                      <TableCell><Badge variant="outline">{p.type}</Badge></TableCell>
+                      <TableCell className="text-sm">{p.price_text}</TableCell>
+                      <TableCell>
+                        {p.track_stock ? (
+                          <div className="flex items-center gap-1">
+                            <span className={`font-medium ${lowStock ? "text-destructive" : ""}`}>{p.stock_qty ?? 0}</span>
+                            {lowStock && <AlertTriangle className="h-3.5 w-3.5 text-destructive" />}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{p.active ? <Badge className="bg-green-100 text-green-800">Sim</Badge> : <Badge variant="secondary">Não</Badge>}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex gap-1 justify-end">
+                          {p.track_stock && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setStockDialog(p); setStockAdjust({ qty: 0, type: "in", reason: "" }); }} title="Ajustar estoque">
+                              <Package className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditor(p)}><Pencil className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(p.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
-      {/* Editor dialog */}
+      {/* Product editor dialog */}
       <Dialog open={!!editProduct} onOpenChange={() => setEditProduct(null)}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editProduct?.id ? "Editar produto" : "Novo produto"}</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>{editProduct?.id ? "Editar produto" : "Novo produto"}</DialogTitle></DialogHeader>
           {editProduct && (
             <div className="space-y-4">
               <div><Label>Nome *</Label><Input value={editProduct.name ?? ""} onChange={(e) => setEditProduct({ ...editProduct, name: e.target.value })} /></div>
@@ -190,15 +217,33 @@ export function ProductsTab() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label>Ícone</Label>
-                  <Input value={editProduct.icon ?? ""} onChange={(e) => setEditProduct({ ...editProduct, icon: e.target.value })} placeholder="droplets" />
-                </div>
+                <div><Label>Ícone</Label><Input value={editProduct.icon ?? ""} onChange={(e) => setEditProduct({ ...editProduct, icon: e.target.value })} placeholder="droplets" /></div>
               </div>
               <div><Label>Preço (texto)</Label><Input value={editProduct.price_text ?? ""} onChange={(e) => setEditProduct({ ...editProduct, price_text: e.target.value })} /></div>
               <div className="flex items-center gap-2">
                 <Switch checked={editProduct.active ?? true} onCheckedChange={(v) => setEditProduct({ ...editProduct, active: v })} />
                 <Label>Ativo</Label>
+              </div>
+
+              {/* Stock settings */}
+              <div className="border-t pt-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Switch checked={editProduct.track_stock ?? false} onCheckedChange={(v) => setEditProduct({ ...editProduct, track_stock: v })} />
+                  <Label>Controlar estoque</Label>
+                </div>
+                {editProduct.track_stock && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Estoque atual</Label>
+                      <Input type="number" value={editProduct.stock_qty ?? 0} onChange={(e) => setEditProduct({ ...editProduct, stock_qty: parseInt(e.target.value) || 0 })} disabled={!!editProduct.id} />
+                      {editProduct.id && <p className="text-xs text-muted-foreground mt-1">Use "Ajustar estoque" para alterar</p>}
+                    </div>
+                    <div>
+                      <Label>Estoque mínimo</Label>
+                      <Input type="number" value={editProduct.min_stock_qty ?? 0} onChange={(e) => setEditProduct({ ...editProduct, min_stock_qty: parseInt(e.target.value) || 0 })} />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Wholesale tiers */}
@@ -236,6 +281,34 @@ export function ProductsTab() {
 
               <Button onClick={handleSave} className="w-full" disabled={saving}>
                 <Save className="h-4 w-4 mr-1" /> {saving ? "Salvando..." : "Salvar"}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Stock adjust dialog */}
+      <Dialog open={!!stockDialog} onOpenChange={() => setStockDialog(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Ajustar estoque: {stockDialog?.name}</DialogTitle></DialogHeader>
+          {stockDialog && (
+            <div className="space-y-4">
+              <p className="text-sm">Estoque atual: <strong>{(stockDialog as any).stock_qty ?? 0}</strong></p>
+              <div>
+                <Label>Tipo</Label>
+                <Select value={stockAdjust.type} onValueChange={(v) => setStockAdjust({ ...stockAdjust, type: v as any })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="in">Entrada</SelectItem>
+                    <SelectItem value="out">Saída</SelectItem>
+                    <SelectItem value="adjust">Ajuste (define valor)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div><Label>Quantidade</Label><Input type="number" min={1} value={stockAdjust.qty || ""} onChange={(e) => setStockAdjust({ ...stockAdjust, qty: parseInt(e.target.value) || 0 })} /></div>
+              <div><Label>Motivo</Label><Input value={stockAdjust.reason} onChange={(e) => setStockAdjust({ ...stockAdjust, reason: e.target.value })} placeholder="Ex: Reposição, Inventário..." /></div>
+              <Button onClick={handleStockAdjust} className="w-full" disabled={saving || stockAdjust.qty <= 0}>
+                <Save className="h-4 w-4 mr-1" /> {saving ? "Salvando..." : "Confirmar ajuste"}
               </Button>
             </div>
           )}

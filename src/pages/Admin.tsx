@@ -7,7 +7,8 @@ import { OrdersTab } from "@/components/admin/OrdersTab";
 import { NewOrderTab } from "@/components/admin/NewOrderTab";
 import { ProductsTab } from "@/components/admin/ProductsTab";
 import { ReportsTab } from "@/components/admin/ReportsTab";
-import { LogOut, Package, ClipboardList, PlusCircle, BarChart3 } from "lucide-react";
+import { CustomersTab } from "@/components/admin/CustomersTab";
+import { LogOut, Package, ClipboardList, PlusCircle, BarChart3, Users } from "lucide-react";
 import logo from "@/assets/logo.png";
 
 export default function Admin() {
@@ -52,7 +53,7 @@ export default function Admin() {
 
       <main className="container py-6">
         <Tabs defaultValue="orders">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 mb-6">
             <TabsTrigger value="orders" className="gap-1">
               <ClipboardList className="h-4 w-4" />
               <span className="hidden sm:inline">Pedidos</span>
@@ -60,6 +61,10 @@ export default function Admin() {
             <TabsTrigger value="new-order" className="gap-1">
               <PlusCircle className="h-4 w-4" />
               <span className="hidden sm:inline">Novo Pedido</span>
+            </TabsTrigger>
+            <TabsTrigger value="customers" className="gap-1">
+              <Users className="h-4 w-4" />
+              <span className="hidden sm:inline">Clientes</span>
             </TabsTrigger>
             <TabsTrigger value="products" className="gap-1">
               <Package className="h-4 w-4" />
@@ -75,6 +80,7 @@ export default function Admin() {
 
           <TabsContent value="orders"><OrdersTab /></TabsContent>
           <TabsContent value="new-order"><NewOrderTab /></TabsContent>
+          <TabsContent value="customers"><CustomersTab /></TabsContent>
           <TabsContent value="products"><ProductsTab /></TabsContent>
           {isOwner && <TabsContent value="reports"><ReportsTab /></TabsContent>}
         </Tabs>

@@ -9,8 +9,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { openWhatsApp, buildOrderMessage } from "@/services/whatsapp";
-import { Search, MessageCircle, Printer, Eye, RefreshCw } from "lucide-react";
+import { Search, MessageCircle, Printer, Eye, RefreshCw, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
 
@@ -30,6 +31,9 @@ const statusLabels: Record<string, string> = {
   cancelado: "Cancelado",
 };
 
+// Statuses that trigger stock deduction
+const STOCK_TRIGGER_STATUS = "em_rota";
+
 type OrderRow = {
   id: string;
   channel: string;
@@ -45,6 +49,7 @@ type OrderRow = {
 
 export function OrdersTab() {
   const { toast } = useToast();
+  const { username } = useAuth();
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -78,9 +83,7 @@ export function OrdersTab() {
 
   const filtered = useMemo(() => {
     let result = orders;
-    if (statusFilter !== "all") {
-      result = result.filter((o) => o.status === statusFilter);
-    }
+    if (statusFilter !== "all") result = result.filter((o) => o.status === statusFilter);
     if (periodFilter !== "all") {
       const now = new Date();
       let cutoff: Date;
@@ -102,6 +105,23 @@ export function OrdersTab() {
   }, [orders, statusFilter, periodFilter, search]);
 
   const updateStatus = async (orderId: string, newStatus: string) => {
+    // If transitioning to stock trigger status, deduct stock first
+    if (newStatus === STOCK_TRIGGER_STATUS) {
+      try {
+        const { error: stockErr } = await (supabase.rpc as any)("deduct_stock_for_order", {
+          p_order_id: orderId,
+          p_created_by: username,
+        });
+        if (stockErr) {
+          toast({ title: "Estoque insuficiente", description: stockErr.message, variant: "destructive" });
+          return;
+        }
+      } catch (err: any) {
+        toast({ title: "Erro no estoque", description: err.message, variant: "destructive" });
+        return;
+      }
+    }
+
     const { error } = await supabase
       .from("orders")
       .update({ status: newStatus as any })
@@ -118,9 +138,7 @@ export function OrdersTab() {
     setLabelData({
       pedidoId: o.id.slice(0, 8).toUpperCase(),
       cliente: o.customers?.name ?? "—",
-      endereco: o.addresses
-        ? `${o.addresses.street}, ${o.addresses.number} - ${o.addresses.neighborhood}, ${o.addresses.city}`
-        : "—",
+      endereco: o.addresses ? `${o.addresses.street}, ${o.addresses.number} - ${o.addresses.neighborhood}, ${o.addresses.city}` : "—",
       complemento: o.addresses?.complement ?? undefined,
       itens: o.order_items.map((i) => ({ nome: i.products?.name ?? "—", qtd: i.qty })),
       entregaData: o.delivery_date ? format(new Date(o.delivery_date + "T12:00:00"), "dd/MM/yyyy") : undefined,
@@ -136,11 +154,8 @@ export function OrdersTab() {
       cnpj: o.customers?.cnpj ?? undefined,
       telefone: o.customers?.phone ?? "",
       endereco: {
-        rua: o.addresses?.street ?? "",
-        numero: o.addresses?.number ?? "",
-        bairro: o.addresses?.neighborhood ?? "",
-        cidade: o.addresses?.city ?? "",
-        uf: "SP",
+        rua: o.addresses?.street ?? "", numero: o.addresses?.number ?? "",
+        bairro: o.addresses?.neighborhood ?? "", cidade: o.addresses?.city ?? "", uf: "SP",
         complemento: o.addresses?.complement ?? undefined,
       },
       obs: o.notes ?? undefined,
@@ -155,16 +170,10 @@ export function OrdersTab() {
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar cliente ou produto..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
+          <Input placeholder="Buscar cliente ou produto..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
@@ -189,7 +198,6 @@ export function OrdersTab() {
         </Button>
       </div>
 
-      {/* Table */}
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -236,15 +244,9 @@ export function OrdersTab() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex gap-1 justify-end">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedOrder(o)} title="Detalhes">
-                          <Eye className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleLabel(o)} title="Etiqueta">
-                          <Printer className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleWhatsApp(o)} title="WhatsApp">
-                          <MessageCircle className="h-3.5 w-3.5" />
-                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedOrder(o)} title="Detalhes"><Eye className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleLabel(o)} title="Etiqueta"><Printer className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleWhatsApp(o)} title="WhatsApp"><MessageCircle className="h-3.5 w-3.5" /></Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -255,12 +257,9 @@ export function OrdersTab() {
         </CardContent>
       </Card>
 
-      {/* Order detail dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
         <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Pedido {selectedOrder?.id.slice(0, 8).toUpperCase()}</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Pedido {selectedOrder?.id.slice(0, 8).toUpperCase()}</DialogTitle></DialogHeader>
           {selectedOrder && (
             <div className="space-y-3 text-sm">
               <p><strong>Cliente:</strong> {selectedOrder.customers?.name}</p>
@@ -272,9 +271,7 @@ export function OrdersTab() {
               <p><strong>Entrega:</strong> {selectedOrder.delivery_date ?? "—"} {selectedOrder.delivery_time ?? ""}</p>
               <p><strong>Itens:</strong></p>
               <ul className="list-disc list-inside">
-                {selectedOrder.order_items.map((i, idx) => (
-                  <li key={idx}>{i.products?.name}: {i.qty}</li>
-                ))}
+                {selectedOrder.order_items.map((i, idx) => (<li key={idx}>{i.products?.name}: {i.qty}</li>))}
               </ul>
               {selectedOrder.notes && <p><strong>Obs:</strong> {selectedOrder.notes}</p>}
               <div className="flex gap-2 pt-2">
@@ -290,7 +287,6 @@ export function OrdersTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Label dialog */}
       <Dialog open={!!labelData} onOpenChange={() => setLabelData(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Etiqueta</DialogTitle></DialogHeader>
