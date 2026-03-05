@@ -3,7 +3,7 @@ import { Menu, X, Phone, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { business } from "@/config/business";
 import { trackEvent } from "@/hooks/use-analytics";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useNavigateToSection } from "@/lib/navigation";
 import logo from "@/assets/logo.png";
 
@@ -20,6 +20,14 @@ const navLinks: NavItem[] = [
 export function Header() {
   const [open, setOpen] = useState(false);
   const navigateToSection = useNavigateToSection();
+  const location = useLocation();
+
+  const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (location.pathname === "/") {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   const renderNavItem = (l: NavItem, mobile = false) => {
     const className = mobile
@@ -56,7 +64,7 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
       <div className="container flex h-16 md:h-[72px] items-center justify-between">
-        <Link to="/" className="flex items-center gap-2">
+        <Link to="/" className="flex items-center gap-2" onClick={handleLogoClick}>
           <img
             src={logo}
             alt="Disk Água Araujo"
@@ -64,7 +72,6 @@ export function Header() {
           />
         </Link>
 
-        {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-6">
           {navLinks.map((l) => renderNavItem(l))}
         </nav>
@@ -94,7 +101,6 @@ export function Header() {
           </Button>
         </div>
 
-        {/* Mobile hamburger */}
         <button
           className="md:hidden p-2 rounded-md hover:bg-muted"
           onClick={() => setOpen(!open)}
@@ -104,7 +110,6 @@ export function Header() {
         </button>
       </div>
 
-      {/* Mobile menu */}
       {open && (
         <nav className="md:hidden border-t bg-card pb-4">
           {navLinks.map((l) => renderNavItem(l, true))}

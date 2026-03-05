@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -11,15 +11,38 @@ import { CustomersTab } from "@/components/admin/CustomersTab";
 import { LogOut, Package, ClipboardList, PlusCircle, BarChart3, Users } from "lucide-react";
 import logo from "@/assets/logo.png";
 
+const TAB_VALUES = ["orders", "new-order", "customers", "products", "reports"] as const;
+
+type TabValue = (typeof TAB_VALUES)[number];
+
+function isValidTab(value: string | null): value is TabValue {
+  return !!value && TAB_VALUES.includes(value as TabValue);
+}
+
 export default function Admin() {
   const { username, isAdmin, isOwner, loading, signOut } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<TabValue>("orders");
 
   useEffect(() => {
     if (!loading && !isAdmin) {
       navigate("/admin/login", { replace: true });
     }
   }, [isAdmin, loading, navigate]);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (isValidTab(tab)) {
+      if (tab === "reports" && !isOwner) {
+        setActiveTab("orders");
+        return;
+      }
+      setActiveTab(tab);
+      return;
+    }
+    setActiveTab("orders");
+  }, [searchParams, isOwner]);
 
   if (loading || !isAdmin) {
     return (
@@ -32,6 +55,12 @@ export default function Admin() {
   const handleSignOut = () => {
     signOut();
     navigate("/admin/login", { replace: true });
+  };
+
+  const handleTabChange = (tab: string) => {
+    if (!isValidTab(tab)) return;
+    setActiveTab(tab);
+    setSearchParams({ tab });
   };
 
   return (
@@ -52,7 +81,7 @@ export default function Admin() {
       </header>
 
       <main className="container py-6">
-        <Tabs defaultValue="orders">
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 mb-6">
             <TabsTrigger value="orders" className="gap-1">
               <ClipboardList className="h-4 w-4" />

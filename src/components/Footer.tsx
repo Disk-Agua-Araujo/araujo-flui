@@ -1,5 +1,5 @@
 import { MessageCircle, Facebook, Instagram } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { business } from "@/config/business";
 import { trackEvent } from "@/hooks/use-analytics";
 import logo from "@/assets/logo.png";
@@ -14,19 +14,27 @@ const quickLinks = [
 
 export function Footer() {
   const year = new Date().getFullYear();
+  const location = useLocation();
+
+  const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (location.pathname === "/") {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
   return (
     <footer className="bg-foreground text-background py-10 pb-24 md:pb-10">
       <div className="container">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* Brand */}
           <div>
-            <div className="flex items-center gap-3 mb-3">
+            <Link to="/" onClick={handleLogoClick} className="inline-flex items-center gap-3 mb-3">
               <img
                 src={logo}
                 alt="Disk Água Araujo"
                 className="h-10 w-auto object-contain brightness-0 invert"
               />
-            </div>
+            </Link>
             <p className="text-sm text-background/70">
               Entrega de água mineral de qualidade em Santo André e região.
             </p>
@@ -40,7 +48,6 @@ export function Footer() {
             </div>
           </div>
 
-          {/* Links */}
           <div>
             <h4 className="font-semibold mb-3 text-sm uppercase tracking-wider">Links rápidos</h4>
             <ul className="space-y-2">
@@ -58,7 +65,6 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Contact */}
           <div>
             <h4 className="font-semibold mb-3 text-sm uppercase tracking-wider">Contato</h4>
             <p className="text-sm text-background/70 mb-1">{business.address.full}</p>
