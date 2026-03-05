@@ -1,5 +1,6 @@
 const TOKEN_KEY = "admin_token";
 const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-panel`;
+const PUBLIC_BEARER = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 type ApiResponse<T> = { data?: T; error?: string; ok?: boolean };
 
@@ -22,7 +23,8 @@ async function callAdminApi<T>(action: string, payload?: unknown): Promise<T> {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${PUBLIC_BEARER}`,
+      "x-admin-token": token,
     },
     body: JSON.stringify({ action, payload }),
   });

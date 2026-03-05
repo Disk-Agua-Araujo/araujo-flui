@@ -12,7 +12,7 @@ type AdminPayload = {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-token",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -77,8 +77,7 @@ async function verifyJWT(token: string, secret: string): Promise<AdminPayload | 
 }
 
 async function authenticate(req: Request) {
-  const authHeader = req.headers.get("authorization") || "";
-  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const token = req.headers.get("x-admin-token") || "";
   const payload = await verifyJWT(token, ADMIN_JWT_SECRET);
 
   if (!payload) return null;
