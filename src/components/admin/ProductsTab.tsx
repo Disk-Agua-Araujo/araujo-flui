@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,15 +11,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2, Save, Package, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
-import type { Tables } from "@/integrations/supabase/types";
+import { adminApi, type AdminProductRow, type AdminTierRow } from "@/services/admin-api";
 
-type Product = Tables<"products"> & { stock_qty?: number; min_stock_qty?: number; track_stock?: boolean };
-type Tier = Tables<"wholesale_price_tiers">;
+type Product = AdminProductRow;
+type Tier = AdminTierRow;
 
 export function ProductsTab() {
   const { toast } = useToast();
-  const { username } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [tiers, setTiers] = useState<Tier[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,13 +29,16 @@ export function ProductsTab() {
 
   const fetchAll = async () => {
     setLoading(true);
-    const [{ data: prods }, { data: ts }] = await Promise.all([
-      supabase.from("products").select("*").order("created_at"),
-      supabase.from("wholesale_price_tiers").select("*").order("min_qty"),
-    ]);
-    setProducts((prods as Product[]) ?? []);
-    setTiers(ts ?? []);
-    setLoading(false);
+    try {
+      const data = await adminApi.listProducts();
+      setProducts(data.products ?? []);
+      setTiers(data.tiers ?? []);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao carregar produtos";
+      toast({ title: "Erro", description: message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchAll(); }, []);
@@ -47,57 +47,56 @@ export function ProductsTab() {
     if (product) {
       setEditProduct({ ...product });
       setEditTiers(tiers.filter((t) => t.product_id === product.id).map((t) => ({ ...t })));
-    } else {
-      setEditProduct({ name: "", description: "", type: "varejo", icon: "droplets", active: true, price_text: "Consulte no WhatsApp", track_stock: false, stock_qty: 0, min_stock_qty: 0 });
-      setEditTiers([]);
+      return;
     }
+
+    setEditProduct({
+      name: "",
+      description: "",
+      type: "varejo",
+      icon: "droplets",
+      active: true,
+      price_text: "Consulte no WhatsApp",
+      track_stock: false,
+      stock_qty: 0,
+      min_stock_qty: 0,
+    });
+    setEditTiers([]);
   };
 
   const handleSave = async () => {
-    if (!editProduct?.name) {
+    if (!editProduct?.name?.trim()) {
       toast({ title: "Nome é obrigatório", variant: "destructive" });
       return;
     }
+
     setSaving(true);
     try {
-      let productId = editProduct.id;
-      const productData = {
-        name: editProduct.name,
-        description: editProduct.description,
-        type: editProduct.type as any,
-        icon: editProduct.icon,
-        active: editProduct.active,
-        price_text: editProduct.price_text,
-        track_stock: editProduct.track_stock ?? false,
-        min_stock_qty: editProduct.min_stock_qty ?? 0,
-      };
-
-      if (productId) {
-        const { error } = await supabase.from("products").update(productData).eq("id", productId);
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase.from("products").insert({ ...productData, stock_qty: editProduct.stock_qty ?? 0 } as any).select().single();
-        if (error) throw error;
-        productId = data.id;
-      }
-
-      // Manage tiers
-      if (editProduct.type === "atacado" || editProduct.type === "ambos") {
-        await supabase.from("wholesale_price_tiers").delete().eq("product_id", productId!);
-        const validTiers = editTiers.filter((t) => t.min_qty && t.min_qty > 0);
-        if (validTiers.length > 0) {
-          const { error } = await supabase.from("wholesale_price_tiers").insert(
-            validTiers.map((t) => ({ product_id: productId!, min_qty: t.min_qty!, price_text: t.price_text || "Consulte" }))
-          );
-          if (error) throw error;
-        }
-      }
+      await adminApi.saveProduct({
+        product: {
+          id: editProduct.id,
+          name: editProduct.name.trim(),
+          description: editProduct.description?.trim() || null,
+          type: (editProduct.type || "varejo") as Product["type"],
+          icon: editProduct.icon?.trim() || null,
+          active: editProduct.active ?? true,
+          price_text: editProduct.price_text?.trim() || null,
+          track_stock: editProduct.track_stock ?? false,
+          min_stock_qty: editProduct.min_stock_qty ?? 0,
+          stock_qty: editProduct.stock_qty ?? 0,
+        },
+        tiers: editTiers
+          .filter((t) => Number(t.min_qty) > 0)
+          .map((t) => ({ min_qty: Number(t.min_qty), price_text: t.price_text || "Consulte" })),
+      });
 
       toast({ title: "Produto salvo!" });
       setEditProduct(null);
       fetchAll();
-    } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao salvar produto";
+      toast({ title: "Erro", description: message, variant: "destructive" });
+      console.error("products-save", err);
     } finally {
       setSaving(false);
     }
@@ -105,29 +104,34 @@ export function ProductsTab() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Excluir este produto?")) return;
-    const { error } = await supabase.from("products").delete().eq("id", id);
-    if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
-    else { toast({ title: "Produto excluído" }); fetchAll(); }
+    try {
+      await adminApi.deleteProduct(id);
+      toast({ title: "Produto excluído" });
+      fetchAll();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao excluir produto";
+      toast({ title: "Erro", description: message, variant: "destructive" });
+    }
   };
 
   const handleStockAdjust = async () => {
     if (!stockDialog || stockAdjust.qty <= 0) return;
     setSaving(true);
+
     try {
-      const { error } = await (supabase.rpc as any)("adjust_stock", {
-        p_product_id: stockDialog.id,
-        p_qty: stockAdjust.qty,
-        p_type: stockAdjust.type,
-        p_reason: stockAdjust.reason || null,
-        p_created_by: username,
+      await adminApi.adjustStock({
+        product_id: stockDialog.id,
+        qty: stockAdjust.qty,
+        type: stockAdjust.type,
+        reason: stockAdjust.reason || undefined,
       });
-      if (error) throw error;
       toast({ title: "Estoque atualizado!" });
       setStockDialog(null);
       setStockAdjust({ qty: 0, type: "in", reason: "" });
       fetchAll();
-    } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao ajustar estoque";
+      toast({ title: "Erro", description: message, variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -160,7 +164,7 @@ export function ProductsTab() {
                 <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhum produto.</TableCell></TableRow>
               ) : (
                 products.map((p) => {
-                  const lowStock = p.track_stock && (p.stock_qty ?? 0) <= (p.min_stock_qty ?? 0);
+                  const lowStock = p.track_stock && p.stock_qty <= p.min_stock_qty;
                   return (
                     <TableRow key={p.id}>
                       <TableCell className="font-medium">{p.name}</TableCell>
@@ -169,7 +173,7 @@ export function ProductsTab() {
                       <TableCell>
                         {p.track_stock ? (
                           <div className="flex items-center gap-1">
-                            <span className={`font-medium ${lowStock ? "text-destructive" : ""}`}>{p.stock_qty ?? 0}</span>
+                            <span className={`font-medium ${lowStock ? "text-destructive" : ""}`}>{p.stock_qty}</span>
                             {lowStock && <AlertTriangle className="h-3.5 w-3.5 text-destructive" />}
                           </div>
                         ) : (
@@ -197,7 +201,6 @@ export function ProductsTab() {
         </CardContent>
       </Card>
 
-      {/* Product editor dialog */}
       <Dialog open={!!editProduct} onOpenChange={() => setEditProduct(null)}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editProduct?.id ? "Editar produto" : "Novo produto"}</DialogTitle></DialogHeader>
@@ -208,7 +211,7 @@ export function ProductsTab() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Tipo</Label>
-                  <Select value={editProduct.type ?? "varejo"} onValueChange={(v) => setEditProduct({ ...editProduct, type: v as any })}>
+                  <Select value={editProduct.type ?? "varejo"} onValueChange={(v) => setEditProduct({ ...editProduct, type: v as Product["type"] })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="varejo">Varejo</SelectItem>
@@ -225,7 +228,6 @@ export function ProductsTab() {
                 <Label>Ativo</Label>
               </div>
 
-              {/* Stock settings */}
               <div className="border-t pt-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Switch checked={editProduct.track_stock ?? false} onCheckedChange={(v) => setEditProduct({ ...editProduct, track_stock: v })} />
@@ -246,7 +248,6 @@ export function ProductsTab() {
                 )}
               </div>
 
-              {/* Wholesale tiers */}
               {(editProduct.type === "atacado" || editProduct.type === "ambos") && (
                 <div className="border-t pt-4">
                   <div className="flex justify-between items-center mb-2">
@@ -287,16 +288,15 @@ export function ProductsTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Stock adjust dialog */}
       <Dialog open={!!stockDialog} onOpenChange={() => setStockDialog(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Ajustar estoque: {stockDialog?.name}</DialogTitle></DialogHeader>
           {stockDialog && (
             <div className="space-y-4">
-              <p className="text-sm">Estoque atual: <strong>{(stockDialog as any).stock_qty ?? 0}</strong></p>
+              <p className="text-sm">Estoque atual: <strong>{stockDialog.stock_qty}</strong></p>
               <div>
                 <Label>Tipo</Label>
-                <Select value={stockAdjust.type} onValueChange={(v) => setStockAdjust({ ...stockAdjust, type: v as any })}>
+                <Select value={stockAdjust.type} onValueChange={(v) => setStockAdjust({ ...stockAdjust, type: v as "in" | "out" | "adjust" })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="in">Entrada</SelectItem>

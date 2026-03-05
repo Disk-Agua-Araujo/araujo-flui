@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -9,11 +8,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { openWhatsApp, buildOrderMessage } from "@/services/whatsapp";
-import { Search, MessageCircle, Printer, Eye, RefreshCw, AlertTriangle } from "lucide-react";
+import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
+import { adminApi, type AdminOrderRow } from "@/services/admin-api";
 
 const statusColors: Record<string, string> = {
   novo: "bg-blue-100 text-blue-800",
@@ -31,59 +30,40 @@ const statusLabels: Record<string, string> = {
   cancelado: "Cancelado",
 };
 
-// Statuses that trigger stock deduction
-const STOCK_TRIGGER_STATUS = "em_rota";
-
-type OrderRow = {
-  id: string;
-  channel: string;
-  delivery_date: string | null;
-  delivery_time: string | null;
-  status: string;
-  notes: string | null;
-  created_at: string;
-  customers: { id: string; name: string; phone: string | null; cnpj: string | null } | null;
-  addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null } | null;
-  order_items: { qty: number; products: { name: string } | null }[];
-};
+const PAGE_SIZE = 20;
 
 export function OrdersTab() {
   const { toast } = useToast();
-  const { username } = useAuth();
-  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [orders, setOrders] = useState<AdminOrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [periodFilter, setPeriodFilter] = useState("all");
-  const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
   const [labelData, setLabelData] = useState<LabelData | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const fetchOrders = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("orders")
-      .select(`
-        id, channel, delivery_date, delivery_time, status, notes, created_at,
-        customers(id, name, phone, cnpj),
-        addresses(street, number, neighborhood, city, complement),
-        order_items(qty, products(name))
-      `)
-      .order("created_at", { ascending: false })
-      .limit(200);
-
-    if (error) {
-      toast({ title: "Erro ao carregar pedidos", description: error.message, variant: "destructive" });
-    } else {
-      setOrders((data as unknown as OrderRow[]) ?? []);
+    try {
+      const data = await adminApi.listOrders();
+      setOrders(data ?? []);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao carregar pedidos";
+      toast({ title: "Erro ao carregar pedidos", description: message, variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  useEffect(() => { fetchOrders(); }, []);
+  useEffect(() => {
+    fetchOrders();
+  }, []);
 
   const filtered = useMemo(() => {
     let result = orders;
     if (statusFilter !== "all") result = result.filter((o) => o.status === statusFilter);
+
     if (periodFilter !== "all") {
       const now = new Date();
       let cutoff: Date;
@@ -92,61 +72,54 @@ export function OrdersTab() {
       else cutoff = startOfMonth(now);
       result = result.filter((o) => new Date(o.created_at) >= cutoff);
     }
+
     if (search) {
       const s = search.toLowerCase();
       result = result.filter(
         (o) =>
           o.customers?.name?.toLowerCase().includes(s) ||
           o.order_items.some((i) => i.products?.name?.toLowerCase().includes(s)) ||
-          o.id.toLowerCase().includes(s)
+          o.id.toLowerCase().includes(s),
       );
     }
+
     return result;
   }, [orders, statusFilter, periodFilter, search]);
 
-  const updateStatus = async (orderId: string, newStatus: string) => {
-    // If transitioning to stock trigger status, deduct stock first
-    if (newStatus === STOCK_TRIGGER_STATUS) {
-      try {
-        const { error: stockErr } = await (supabase.rpc as any)("deduct_stock_for_order", {
-          p_order_id: orderId,
-          p_created_by: username,
-        });
-        if (stockErr) {
-          toast({ title: "Estoque insuficiente", description: stockErr.message, variant: "destructive" });
-          return;
-        }
-      } catch (err: any) {
-        toast({ title: "Erro no estoque", description: err.message, variant: "destructive" });
-        return;
-      }
-    }
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter, periodFilter]);
 
-    const { error } = await supabase
-      .from("orders")
-      .update({ status: newStatus as any })
-      .eq("id", orderId);
-    if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
-    } else {
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const paginatedOrders = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+
+  const updateStatus = async (orderId: string, newStatus: string) => {
+    try {
+      await adminApi.updateOrderStatus(orderId, newStatus);
       toast({ title: "Status atualizado" });
       fetchOrders();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao atualizar status";
+      toast({ title: "Não foi possível atualizar", description: message, variant: "destructive" });
     }
   };
 
-  const handleLabel = (o: OrderRow) => {
+  const handleLabel = (o: AdminOrderRow) => {
     setLabelData({
       pedidoId: o.id.slice(0, 8).toUpperCase(),
       cliente: o.customers?.name ?? "—",
-      endereco: o.addresses ? `${o.addresses.street}, ${o.addresses.number} - ${o.addresses.neighborhood}, ${o.addresses.city}` : "—",
+      endereco: o.addresses
+        ? `${o.addresses.street}, ${o.addresses.number} - ${o.addresses.neighborhood}, ${o.addresses.city}`
+        : "—",
       complemento: o.addresses?.complement ?? undefined,
       itens: o.order_items.map((i) => ({ nome: i.products?.name ?? "—", qtd: i.qty })),
-      entregaData: o.delivery_date ? format(new Date(o.delivery_date + "T12:00:00"), "dd/MM/yyyy") : undefined,
+      entregaData: o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM/yyyy") : undefined,
       entregaHora: o.delivery_time ?? undefined,
     });
   };
 
-  const handleWhatsApp = (o: OrderRow) => {
+  const handleWhatsApp = (o: AdminOrderRow) => {
     const msg = buildOrderMessage({
       tipo: o.customers?.cnpj ? "EMPRESA" : "VAREJO",
       canal: o.channel as any,
@@ -154,13 +127,16 @@ export function OrdersTab() {
       cnpj: o.customers?.cnpj ?? undefined,
       telefone: o.customers?.phone ?? "",
       endereco: {
-        rua: o.addresses?.street ?? "", numero: o.addresses?.number ?? "",
-        bairro: o.addresses?.neighborhood ?? "", cidade: o.addresses?.city ?? "", uf: "SP",
+        rua: o.addresses?.street ?? "",
+        numero: o.addresses?.number ?? "",
+        bairro: o.addresses?.neighborhood ?? "",
+        cidade: o.addresses?.city ?? "",
+        uf: "SP",
         complemento: o.addresses?.complement ?? undefined,
       },
       obs: o.notes ?? undefined,
       itens: o.order_items.map((i) => ({ nome: i.products?.name ?? "—", qtd: i.qty })),
-      entregaData: o.delivery_date ? format(new Date(o.delivery_date + "T12:00:00"), "dd/MM/yyyy") : undefined,
+      entregaData: o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM/yyyy") : undefined,
       entregaHora: o.delivery_time ?? undefined,
       status: statusLabels[o.status] ?? o.status,
       pedidoId: o.id.slice(0, 8).toUpperCase(),
@@ -173,8 +149,14 @@ export function OrdersTab() {
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar cliente ou produto..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+          <Input
+            placeholder="Buscar cliente, produto ou ID..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
         </div>
+
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
@@ -184,6 +166,7 @@ export function OrdersTab() {
             ))}
           </SelectContent>
         </Select>
+
         <Select value={periodFilter} onValueChange={setPeriodFilter}>
           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Período" /></SelectTrigger>
           <SelectContent>
@@ -193,6 +176,7 @@ export function OrdersTab() {
             <SelectItem value="month">Mês</SelectItem>
           </SelectContent>
         </Select>
+
         <Button variant="outline" size="icon" onClick={fetchOrders} disabled={loading}>
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
@@ -215,16 +199,16 @@ export function OrdersTab() {
             <TableBody>
               {loading ? (
                 <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
-              ) : filtered.length === 0 ? (
+              ) : paginatedOrders.length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
               ) : (
-                filtered.map((o) => (
+                paginatedOrders.map((o) => (
                   <TableRow key={o.id}>
                     <TableCell className="font-mono text-xs">{o.id.slice(0, 8)}</TableCell>
                     <TableCell className="font-medium">{o.customers?.name ?? "—"}</TableCell>
                     <TableCell className="hidden md:table-cell text-xs">{o.channel}</TableCell>
                     <TableCell className="hidden md:table-cell text-xs">
-                      {o.delivery_date ? format(new Date(o.delivery_date + "T12:00:00"), "dd/MM") : "—"}
+                      {o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM") : "—"}
                       {o.delivery_time ? ` ${o.delivery_time}` : ""}
                     </TableCell>
                     <TableCell className="text-xs">
@@ -256,6 +240,30 @@ export function OrdersTab() {
           </Table>
         </CardContent>
       </Card>
+
+      {filtered.length > PAGE_SIZE && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">Página {currentPage} de {totalPages}</p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Próxima <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
         <DialogContent className="max-w-lg">
