@@ -13,7 +13,6 @@ import { MobileBottomBar } from "@/components/MobileBottomBar";
 import { SectionDivider } from "@/components/SectionDivider";
 
 const Index = () => {
-  // Handle hash scrolling from other pages (e.g. /#contato)
   useEffect(() => {
     const hash = window.location.hash.slice(1);
     if (hash) {
@@ -31,15 +30,21 @@ const Index = () => {
         <SectionDivider />
         <QuickOrder />
         <SectionDivider />
-        <Products />
+        <div className="bg-card">
+          <Products />
+        </div>
         <SectionDivider />
         <HowItWorks />
         <SectionDivider />
-        <ServiceArea />
+        <div className="bg-card">
+          <ServiceArea />
+        </div>
         <SectionDivider />
         <Reviews />
         <SectionDivider />
-        <FAQ />
+        <div className="bg-card">
+          <FAQ />
+        </div>
         <SectionDivider />
         <Contact />
       </main>

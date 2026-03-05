@@ -55,12 +55,12 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
-      <div className="container flex h-16 items-center justify-between">
+      <div className="container flex h-16 md:h-[72px] items-center justify-between">
         <Link to="/" className="flex items-center gap-2">
           <img
             src={logo}
             alt="Disk Água Araujo"
-            className="h-9 md:h-11 w-auto object-contain"
+            className="h-10 md:h-14 w-auto object-contain"
           />
         </Link>
 
