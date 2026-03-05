@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -7,33 +6,26 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Download, Package, ClipboardList, TrendingUp } from "lucide-react";
 import { format, startOfMonth, startOfWeek, startOfDay, subDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-
-type OrderWithItems = {
-  id: string;
-  channel: string;
-  status: string;
-  delivery_date: string | null;
-  created_at: string;
-  customers: { name: string } | null;
-  order_items: { qty: number; products: { name: string } | null }[];
-};
+import { adminApi, type AdminOrderRow } from "@/services/admin-api";
 
 export function ReportsTab() {
   const { toast } = useToast();
-  const [orders, setOrders] = useState<OrderWithItems[]>([]);
+  const [orders, setOrders] = useState<AdminOrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState("month");
 
   useEffect(() => {
     const fetchOrders = async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("orders")
-        .select("id, channel, status, delivery_date, created_at, customers(name), order_items(qty, products(name))")
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (!error) setOrders((data as unknown as OrderWithItems[]) ?? []);
-      setLoading(false);
+      try {
+        const data = await adminApi.listReportsOrders();
+        setOrders(data ?? []);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Erro ao carregar relatórios";
+        toast({ title: "Erro", description: message, variant: "destructive" });
+      } finally {
+        setLoading(false);
+      }
     };
     fetchOrders();
   }, []);
@@ -54,34 +46,37 @@ export function ReportsTab() {
     const cancelados = filteredOrders.filter((o) => o.status === "cancelado").length;
     const totalItems = filteredOrders.reduce(
       (sum, o) => sum + o.order_items.reduce((s, i) => s + i.qty, 0),
-      0
+      0,
     );
-    // Product breakdown
+
     const productMap: Record<string, number> = {};
     filteredOrders.forEach((o) =>
       o.order_items.forEach((i) => {
         const name = i.products?.name ?? "Desconhecido";
         productMap[name] = (productMap[name] || 0) + i.qty;
-      })
+      }),
     );
-    const productBreakdown = Object.entries(productMap)
-      .sort(([, a], [, b]) => b - a);
+
+    const productBreakdown = Object.entries(productMap).sort(([, a], [, b]) => b - a);
     return { total, entregues, cancelados, totalItems, productBreakdown };
   }, [filteredOrders]);
 
   const exportCSV = () => {
     const header = "ID,Cliente,Canal,Status,Data Entrega,Itens,Criado em\n";
-    const rows = filteredOrders.map((o) =>
-      [
-        o.id.slice(0, 8),
-        `"${o.customers?.name ?? ""}"`,
-        o.channel,
-        o.status,
-        o.delivery_date ?? "",
-        `"${o.order_items.map((i) => `${i.products?.name}x${i.qty}`).join("; ")}"`,
-        format(new Date(o.created_at), "dd/MM/yyyy HH:mm"),
-      ].join(",")
-    ).join("\n");
+    const rows = filteredOrders
+      .map((o) =>
+        [
+          o.id.slice(0, 8),
+          `"${o.customers?.name ?? ""}"`,
+          o.channel,
+          o.status,
+          o.delivery_date ?? "",
+          `"${o.order_items.map((i) => `${i.products?.name}x${i.qty}`).join("; ")}"`,
+          format(new Date(o.created_at), "dd/MM/yyyy HH:mm"),
+        ].join(","),
+      )
+      .join("\n");
+
     const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -112,7 +107,6 @@ export function ReportsTab() {
         </div>
       </div>
 
-      {/* Stats cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6 text-center">
@@ -123,7 +117,7 @@ export function ReportsTab() {
         </Card>
         <Card>
           <CardContent className="pt-6 text-center">
-            <TrendingUp className="h-6 w-6 mx-auto text-green-600 mb-1" />
+            <TrendingUp className="h-6 w-6 mx-auto text-primary mb-1" />
             <p className="text-2xl font-bold">{stats.entregues}</p>
             <p className="text-xs text-muted-foreground">Entregues</p>
           </CardContent>
@@ -143,7 +137,6 @@ export function ReportsTab() {
         </Card>
       </div>
 
-      {/* Product breakdown */}
       <Card>
         <CardHeader><CardTitle className="text-lg">Vendas por produto</CardTitle></CardHeader>
         <CardContent className="p-0">

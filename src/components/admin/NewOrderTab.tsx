@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,36 +12,38 @@ import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, Minus, Plus, MessageCircle, MapPin, Save } from "lucide-react";
+import { CalendarIcon, Minus, Plus, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
 import { buildOrderMessage, openWhatsApp } from "@/services/whatsapp";
-import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { trackEvent } from "@/hooks/use-analytics";
-import type { Tables } from "@/integrations/supabase/types";
+import { adminApi, type AdminProductRow } from "@/services/admin-api";
 
-const horarios = ["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"];
+const horarios = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
 const canais = [
   { value: "ligacao", label: "Ligação" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "admin", label: "Cadastro interno" },
-];
+] as const;
+
+const PREFILL_KEY = "admin-new-order-customer";
 
 export function NewOrderTab() {
   const { toast } = useToast();
-  const { username } = useAuth();
-  const [products, setProducts] = useState<Tables<"products">[]>([]);
+  const [searchParams] = useSearchParams();
+
+  const [products, setProducts] = useState<AdminProductRow[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [labelData, setLabelData] = useState<LabelData | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Form
-  const [canal, setCanal] = useState("ligacao");
+  const [canal, setCanal] = useState<(typeof canais)[number]["value"]>("ligacao");
   const [tipo, setTipo] = useState<"PF" | "PJ">("PF");
   const [nome, setNome] = useState("");
   const [cnpj, setCnpj] = useState("");
   const [telefone, setTelefone] = useState("");
+  const [email, setEmail] = useState("");
   const [rua, setRua] = useState("");
   const [numero, setNumero] = useState("");
   const [bairro, setBairro] = useState("");
@@ -52,10 +54,37 @@ export function NewOrderTab() {
   const [hora, setHora] = useState("");
   const [qtys, setQtys] = useState<Record<string, number>>({});
 
+  const fetchProducts = async () => {
+    try {
+      const { products } = await adminApi.listProducts();
+      setProducts((products || []).filter((p) => p.active));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao carregar produtos";
+      toast({ title: "Erro ao carregar produtos", description: message, variant: "destructive" });
+    }
+  };
+
   useEffect(() => {
-    supabase.from("products").select("*").eq("active", true).then(({ data }) => {
-      if (data) setProducts(data);
-    });
+    fetchProducts();
+
+    const fromShortcut = localStorage.getItem(PREFILL_KEY);
+    if (fromShortcut) {
+      try {
+        const customer = JSON.parse(fromShortcut) as { name?: string; phone?: string; type?: "PF" | "PJ"; cnpj?: string; email?: string };
+        if (customer.name) setNome(customer.name);
+        if (customer.phone) setTelefone(customer.phone);
+        if (customer.type) setTipo(customer.type);
+        if (customer.cnpj) setCnpj(customer.cnpj);
+        if (customer.email) setEmail(customer.email);
+      } catch {
+        // noop
+      }
+      localStorage.removeItem(PREFILL_KEY);
+    }
+
+    if (searchParams.get("tab") === "new-order") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }, []);
 
   const updateQty = (id: string, delta: number) => {
@@ -70,66 +99,76 @@ export function NewOrderTab() {
       qtd: qty,
     }));
 
+  const resetForm = () => {
+    setSubmitted(false);
+    setLabelData(null);
+    setCanal("ligacao");
+    setTipo("PF");
+    setNome("");
+    setTelefone("");
+    setEmail("");
+    setCnpj("");
+    setRua("");
+    setNumero("");
+    setBairro("");
+    setCidade("Santo André");
+    setComplemento("");
+    setObs("");
+    setDate(undefined);
+    setHora("");
+    setQtys({});
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nome || !telefone || !rua || !numero || !bairro) {
-      toast({ title: "Preencha os campos obrigatórios", variant: "destructive" });
+
+    if (!nome.trim() || !telefone.trim() || !rua.trim() || !numero.trim() || !bairro.trim()) {
+      toast({ title: "Campos obrigatórios", description: "Preencha nome, telefone e endereço completo.", variant: "destructive" });
       return;
     }
+
+    if (tipo === "PJ" && !cnpj.trim()) {
+      toast({ title: "CNPJ obrigatório", description: "Para Pessoa Jurídica, informe o CNPJ.", variant: "destructive" });
+      return;
+    }
+
     if (tipo === "PJ" && cnpj && !isValidCnpj(cnpj)) {
       toast({ title: "CNPJ inválido", variant: "destructive" });
       return;
     }
+
     if (selectedItems.length === 0) {
       toast({ title: "Selecione ao menos um produto", variant: "destructive" });
       return;
     }
 
     setSaving(true);
+
     try {
-      // 1. Create customer
-      const { data: customer, error: custErr } = await supabase
-        .from("customers")
-        .insert({ name: nome, phone: telefone, type: tipo, cnpj: tipo === "PJ" ? cnpj : null, created_by: username })
-        .select()
-        .single();
-      if (custErr) throw custErr;
+      const result = await adminApi.createAdminOrder({
+        channel: canal,
+        customer: {
+          name: nome.trim(),
+          phone: telefone,
+          type: tipo,
+          cnpj: tipo === "PJ" ? cnpj : null,
+          email: email.trim() || null,
+        },
+        address: {
+          street: rua.trim(),
+          number: numero.trim(),
+          neighborhood: bairro.trim(),
+          city: cidade.trim(),
+          state: "SP",
+          complement: complemento.trim() || undefined,
+        },
+        items: selectedItems.map((i) => ({ product_id: i.productId, qty: i.qtd })),
+        notes: obs.trim() || undefined,
+        delivery_date: date ? format(date, "yyyy-MM-dd") : undefined,
+        delivery_time: hora || undefined,
+      });
 
-      // 2. Create address
-      const { data: address, error: addrErr } = await supabase
-        .from("addresses")
-        .insert({ customer_id: customer.id, street: rua, number: numero, neighborhood: bairro, city: cidade, complement: complemento || null })
-        .select()
-        .single();
-      if (addrErr) throw addrErr;
-
-      // 3. Create order
-      const { data: order, error: ordErr } = await supabase
-        .from("orders")
-        .insert({
-          channel: canal as any,
-          customer_id: customer.id,
-          address_id: address.id,
-          delivery_date: date ? format(date, "yyyy-MM-dd") : null,
-          delivery_time: hora || null,
-          notes: obs || null,
-          created_by: username,
-        })
-        .select()
-        .single();
-      if (ordErr) throw ordErr;
-
-      // 4. Create order items
-      const items = selectedItems.map((i) => ({
-        order_id: order.id,
-        product_id: i.productId,
-        qty: i.qtd,
-      }));
-      const { error: itemsErr } = await supabase.from("order_items").insert(items);
-      if (itemsErr) throw itemsErr;
-
-      // Success
-      const pedidoId = order.id.slice(0, 8).toUpperCase();
+      const pedidoId = result.order_id.slice(0, 8).toUpperCase();
       const entregaData = date ? format(date, "dd/MM/yyyy") : undefined;
 
       setLabelData({
@@ -144,7 +183,7 @@ export function NewOrderTab() {
 
       const message = buildOrderMessage({
         tipo: tipo === "PJ" ? "EMPRESA" : "VAREJO",
-        canal: canal as any,
+        canal,
         cliente: nome,
         cnpj: tipo === "PJ" ? cnpj : undefined,
         telefone,
@@ -157,12 +196,14 @@ export function NewOrderTab() {
         pedidoId,
       });
 
-      trackEvent("order_created", { tipo: tipo === "PJ" ? "empresa" : "varejo", canal, pedidoId });
       openWhatsApp(message);
+      trackEvent("order_created", { tipo: tipo === "PJ" ? "empresa" : "varejo", canal, pedidoId });
       setSubmitted(true);
       toast({ title: "Pedido salvo com sucesso!" });
-    } catch (err: any) {
-      toast({ title: "Erro ao salvar", description: err.message, variant: "destructive" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao salvar pedido";
+      toast({ title: "Erro ao salvar", description: message, variant: "destructive" });
+      console.error("new-order", err);
     } finally {
       setSaving(false);
     }
@@ -179,9 +220,7 @@ export function NewOrderTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <OrderLabel data={labelData} />
-          <Button className="w-full" onClick={() => { setSubmitted(false); setQtys({}); setNome(""); setTelefone(""); setCnpj(""); setRua(""); setNumero(""); setBairro(""); setComplemento(""); setObs(""); }}>
-            Novo pedido
-          </Button>
+          <Button className="w-full" onClick={resetForm}>Novo pedido</Button>
         </CardContent>
       </Card>
     );
@@ -194,14 +233,14 @@ export function NewOrderTab() {
         <CardContent className="grid grid-cols-2 gap-4">
           <div>
             <Label>Canal *</Label>
-            <Select value={canal} onValueChange={setCanal}>
+            <Select value={canal} onValueChange={(v) => setCanal(v as (typeof canais)[number]["value"])}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>{canais.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div>
             <Label>Tipo *</Label>
-            <Select value={tipo} onValueChange={(v) => setTipo(v as "PF" | "PJ")}>
+            <Select value={tipo} onValueChange={(v) => setTipo(v as "PF" | "PJ")}> 
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="PF">Pessoa Física</SelectItem>
@@ -216,18 +255,13 @@ export function NewOrderTab() {
         <CardHeader><CardTitle className="text-lg">Dados do cliente</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label>Nome *</Label>
-              <Input value={nome} onChange={(e) => setNome(e.target.value)} required />
-            </div>
-            <div>
-              <Label>Telefone *</Label>
-              <Input type="tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} required />
-            </div>
+            <div><Label>Nome *</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} required /></div>
+            <div><Label>Telefone *</Label><Input type="tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} required /></div>
           </div>
+          <div><Label>Email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
           {tipo === "PJ" && (
             <div>
-              <Label>CNPJ</Label>
+              <Label>CNPJ *</Label>
               <Input value={cnpj} onChange={(e) => setCnpj(maskCnpj(e.target.value))} maxLength={18} />
             </div>
           )}
@@ -235,7 +269,7 @@ export function NewOrderTab() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><MapPin className="h-5 w-5" /> Endereço</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-lg">Endereço</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-3 gap-4">
             <div className="col-span-2"><Label>Rua *</Label><Input value={rua} onChange={(e) => setRua(e.target.value)} required /></div>
@@ -253,7 +287,7 @@ export function NewOrderTab() {
         <CardHeader><CardTitle className="text-lg">Produtos</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           {products.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Nenhum produto cadastrado. Vá na aba "Produtos" para criar.</p>
+            <p className="text-muted-foreground text-sm">Nenhum produto cadastrado.</p>
           ) : (
             products.map((p) => (
               <div key={p.id} className="flex items-center justify-between border rounded-md p-3">
@@ -305,7 +339,7 @@ export function NewOrderTab() {
 
       <div>
         <Label>Observações</Label>
-        <Textarea value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Instruções especiais, ponto de referência..." />
+        <Textarea value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Instruções especiais..." />
       </div>
 
       <Button type="submit" size="lg" className="w-full" disabled={saving}>
