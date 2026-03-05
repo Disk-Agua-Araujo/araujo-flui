@@ -21,6 +21,7 @@ export type Database = {
           created_at: string
           customer_id: string
           id: string
+          is_primary: boolean | null
           lat: number | null
           lng: number | null
           neighborhood: string
@@ -36,6 +37,7 @@ export type Database = {
           created_at?: string
           customer_id: string
           id?: string
+          is_primary?: boolean | null
           lat?: number | null
           lng?: number | null
           neighborhood: string
@@ -51,6 +53,7 @@ export type Database = {
           created_at?: string
           customer_id?: string
           id?: string
+          is_primary?: boolean | null
           lat?: number | null
           lng?: number | null
           neighborhood?: string
@@ -75,28 +78,34 @@ export type Database = {
           cnpj: string | null
           created_at: string
           created_by: string | null
+          email: string | null
           id: string
           name: string
           phone: string | null
           type: Database["public"]["Enums"]["customer_type"]
+          updated_at: string | null
         }
         Insert: {
           cnpj?: string | null
           created_at?: string
           created_by?: string | null
+          email?: string | null
           id?: string
           name: string
           phone?: string | null
           type?: Database["public"]["Enums"]["customer_type"]
+          updated_at?: string | null
         }
         Update: {
           cnpj?: string | null
           created_at?: string
           created_by?: string | null
+          email?: string | null
           id?: string
           name?: string
           phone?: string | null
           type?: Database["public"]["Enums"]["customer_type"]
+          updated_at?: string | null
         }
         Relationships: []
       }
