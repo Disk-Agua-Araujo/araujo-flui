@@ -24,7 +24,7 @@ export function Footer() {
               <img
                 src={logo}
                 alt="Disk Água Araujo"
-                className="h-8 w-auto object-contain brightness-0 invert"
+                className="h-10 w-auto object-contain brightness-0 invert"
               />
             </div>
             <p className="text-sm text-background/70">
