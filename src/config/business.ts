@@ -31,7 +31,7 @@ export const business = {
   hoursNote: "Confira os horários atualizados no Google",
   rating: 4.3,
   reviewCount: 47,
-  googleReviewsLink: "#",
+  googleReviewsLink: "https://www.google.com/search?q=disk+agua+araujo&oq=disk&gs_lcrp=EgZjaHJvbWUqDggBEEUYJxg7GIAEGIoFMgYIABBFGDwyDggBEEUYJxg7GIAEGIoFMgYIAhBFGDkyBggDEEUYOzIKCAQQABixAxiABDIHCAUQABiABDIGCAYQRRg8MgYIBxBFGDzSAQgyNjc1ajBqN6gCALACAA&sourceid=chrome&ie=UTF-8#lrd=0x94ce683a267374c9:0xb8786aa44c252951,1,,,,",
   mapsEmbedUrl:
     "https://www.google.com/maps?q=Av.+Eduardo+Prado,+269+-+Parque+Erasmo+Assunção,+Santo+André+-+SP,+09271-180&output=embed",
   mapsDirectionsLink:
