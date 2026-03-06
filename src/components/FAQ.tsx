@@ -11,10 +11,10 @@ export function FAQ() {
         <p className="text-center text-muted-foreground mb-8">Tire suas dúvidas sobre nossos serviços</p>
 
         <Accordion type="single" collapsible className="w-full space-y-3">
-          {filtered.length === 0 ? (
+          {items.length === 0 ? (
             <p className="text-center text-muted-foreground py-6">Nenhuma pergunta encontrada.</p>
           ) : (
-            filtered.map((item, i) => (
+            items.map((item, i) => (
               <AccordionItem
                 key={i}
                 value={`faq-${i}`}
