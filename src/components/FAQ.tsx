@@ -2,33 +2,13 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { business } from "@/config/business";
 
 export function FAQ() {
-  const [search, setSearch] = useState("");
-
-  const filtered = useMemo(() => {
-    if (!search.trim()) return business.faq;
-    const s = search.toLowerCase();
-    return business.faq.filter(
-      (item) => item.q.toLowerCase().includes(s) || item.a.toLowerCase().includes(s)
-    );
-  }, [search]);
+  const items = business.faq;
 
   return (
     <section className="py-12 md:py-16">
       <div className="container max-w-2xl">
         <h2 className="text-2xl md:text-3xl font-bold text-center mb-2">Perguntas frequentes</h2>
         <p className="text-center text-muted-foreground mb-8">Tire suas dúvidas sobre nossos serviços</p>
-
-        {/* Search */}
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar pergunta…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-card"
-            maxLength={100}
-          />
-        </div>
 
         <Accordion type="single" collapsible className="w-full space-y-3">
           {filtered.length === 0 ? (
