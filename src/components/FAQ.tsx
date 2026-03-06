@@ -1,7 +1,4 @@
-import { useState, useMemo } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
 import { business } from "@/config/business";
 
 export function FAQ() {
