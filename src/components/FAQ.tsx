@@ -2,7 +2,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { business } from "@/config/business";
 
 export function FAQ() {
-  const items = business.faq;
+  const items: Array<{ q: string; a: string }> = business.faq;
 
   return (
     <section className="py-12 md:py-16">
