@@ -6,11 +6,73 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Hardcoded admin credentials (server-side only, never sent to client)
-const ADMIN_USERS = [
-  { username: "MLucindodisk", password: "MDisk2025/01/06", role: "admin_owner" },
-  { username: "ISALucindodisk", password: "ISADisk2025/01/06", role: "admin_manager" },
-];
+// In-memory rate limiting (per-isolate; resets on cold start but still effective)
+const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+
+function checkRateLimit(key: string): { allowed: boolean; retryAfter?: number } {
+  const now = Date.now();
+  const record = loginAttempts.get(key);
+  if (!record) return { allowed: true };
+  if (record.lockedUntil > now) {
+    return { allowed: false, retryAfter: Math.ceil((record.lockedUntil - now) / 1000) };
+  }
+  if (record.count >= MAX_ATTEMPTS) {
+    record.lockedUntil = now + LOCKOUT_MS;
+    return { allowed: false, retryAfter: Math.ceil(LOCKOUT_MS / 1000) };
+  }
+  return { allowed: true };
+}
+
+function recordFailure(key: string) {
+  const now = Date.now();
+  const record = loginAttempts.get(key) || { count: 0, lockedUntil: 0 };
+  record.count += 1;
+  if (record.count >= MAX_ATTEMPTS) {
+    record.lockedUntil = now + LOCKOUT_MS;
+  }
+  loginAttempts.set(key, record);
+}
+
+function clearFailures(key: string) {
+  loginAttempts.delete(key);
+}
+
+/** Timing-safe string comparison */
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode("comparison-key");
+  const key = await crypto.subtle.importKey(
+    "raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sigA = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(a)));
+  const sigB = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(b)));
+  if (sigA.length !== sigB.length) return false;
+  let result = 0;
+  for (let i = 0; i < sigA.length; i++) {
+    result |= sigA[i] ^ sigB[i];
+  }
+  return result === 0;
+}
+
+interface AdminUser {
+  username: string;
+  password: string;
+  role: string;
+}
+
+function getAdminUsers(): AdminUser[] {
+  const raw = Deno.env.get("ADMIN_CREDENTIALS");
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+    return [];
+  } catch {
+    return [];
+  }
+}
 
 async function signJWT(
   payload: Record<string, unknown>,
@@ -122,23 +184,59 @@ serve(async (req) => {
   }
 
   const { username, password } = body;
-  if (!username || !password) {
+  if (!username || !password || username.length > 100 || password.length > 200) {
     return new Response(
       JSON.stringify({ error: "Usuário e senha são obrigatórios." }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 
-  const match = ADMIN_USERS.find(
-    (c) => c.username === username && c.password === password
-  );
+  // Rate limit check
+  const rateLimitKey = username.toLowerCase();
+  const rateCheck = checkRateLimit(rateLimitKey);
+  if (!rateCheck.allowed) {
+    const headers: Record<string, string> = {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+    };
+    if (rateCheck.retryAfter) {
+      headers["Retry-After"] = String(rateCheck.retryAfter);
+    }
+    return new Response(
+      JSON.stringify({ error: "Muitas tentativas. Tente novamente mais tarde." }),
+      { status: 429, headers }
+    );
+  }
+
+  const adminUsers = getAdminUsers();
+  if (adminUsers.length === 0) {
+    console.error("ADMIN_CREDENTIALS secret is missing or invalid");
+    return new Response(
+      JSON.stringify({ error: "Configuração do servidor ausente. Contate o administrador." }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Find matching user with timing-safe comparison
+  let match: AdminUser | null = null;
+  for (const user of adminUsers) {
+    const usernameMatch = await timingSafeEqual(user.username, username);
+    const passwordMatch = await timingSafeEqual(user.password, password);
+    if (usernameMatch && passwordMatch) {
+      match = user;
+      break;
+    }
+  }
 
   if (!match) {
+    recordFailure(rateLimitKey);
     return new Response(
       JSON.stringify({ error: "Usuário ou senha inválidos." }),
       { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
+
+  clearFailures(rateLimitKey);
 
   const token = await signJWT(
     {
