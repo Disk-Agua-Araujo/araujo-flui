@@ -38,26 +38,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        localStorage.removeItem(TOKEN_KEY);
-        return;
-      }
-      const data = await res.json();
-      if (data.valid) {
-        setUsername(data.sub);
-        setRole(data.role as AdminRole);
-      } else {
-        localStorage.removeItem(TOKEN_KEY);
-      }
+      sessionStorage.removeItem(TOKEN_KEY);
+      return;
+    }
+    const data = await res.json();
+    if (data.valid) {
+      setUsername(data.sub);
+      setRole(data.role as AdminRole);
+    } else {
+      sessionStorage.removeItem(TOKEN_KEY);
+    }
     } catch (err) {
       console.error("[auth] Token verification failed:", err);
-      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_KEY);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    const token = localStorage.getItem(TOKEN_KEY);
+    const token = sessionStorage.getItem(TOKEN_KEY);
     if (token) {
       verifyToken(token);
     } else {
@@ -78,13 +78,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("[auth] Login failed:", res.status, data);
       throw new Error(data.error || "Erro ao fazer login");
     }
-    localStorage.setItem(TOKEN_KEY, data.token);
+    sessionStorage.setItem(TOKEN_KEY, data.token);
     setUsername(data.username);
     setRole(data.role as AdminRole);
   };
 
   const signOut = () => {
-    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
     setUsername(null);
     setRole(null);
   };
