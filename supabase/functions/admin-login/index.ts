@@ -6,10 +6,10 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// In-memory rate limiting (per-isolate; resets on cold start but still effective)
+// Rate limiting
 const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
 const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+const LOCKOUT_MS = 15 * 60 * 1000;
 
 function checkRateLimit(key: string): { allowed: boolean; retryAfter?: number } {
   const now = Date.now();
@@ -26,11 +26,10 @@ function checkRateLimit(key: string): { allowed: boolean; retryAfter?: number } 
 }
 
 function recordFailure(key: string) {
-  const now = Date.now();
   const record = loginAttempts.get(key) || { count: 0, lockedUntil: 0 };
   record.count += 1;
   if (record.count >= MAX_ATTEMPTS) {
-    record.lockedUntil = now + LOCKOUT_MS;
+    record.lockedUntil = Date.now() + LOCKOUT_MS;
   }
   loginAttempts.set(key, record);
 }
@@ -39,10 +38,9 @@ function clearFailures(key: string) {
   loginAttempts.delete(key);
 }
 
-/** Timing-safe string comparison */
 async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   const encoder = new TextEncoder();
-  const keyData = encoder.encode("comparison-key");
+  const keyData = encoder.encode("comparison-key-hmac");
   const key = await crypto.subtle.importKey(
     "raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
   );
@@ -50,9 +48,7 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   const sigB = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(b)));
   if (sigA.length !== sigB.length) return false;
   let result = 0;
-  for (let i = 0; i < sigA.length; i++) {
-    result |= sigA[i] ^ sigB[i];
-  }
+  for (let i = 0; i < sigA.length; i++) result |= sigA[i] ^ sigB[i];
   return result === 0;
 }
 
@@ -62,72 +58,67 @@ interface AdminUser {
   role: string;
 }
 
-function getAdminUsers(): AdminUser[] {
+function getAdminUsers(): { users: AdminUser[]; error: string | null } {
   const raw = Deno.env.get("ADMIN_CREDENTIALS");
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed;
-    return [];
-  } catch {
-    return [];
+  if (!raw || raw.trim() === "") {
+    console.error("[admin-login] ADMIN_CREDENTIALS secret is missing or empty");
+    return { users: [], error: "missing" };
   }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    console.error("[admin-login] ADMIN_CREDENTIALS is not valid JSON:", e);
+    return { users: [], error: "invalid_json" };
+  }
+
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    console.error("[admin-login] ADMIN_CREDENTIALS must be a non-empty JSON array");
+    return { users: [], error: "empty_array" };
+  }
+
+  for (let i = 0; i < parsed.length; i++) {
+    const u = parsed[i];
+    if (
+      !u || typeof u !== "object" ||
+      typeof u.username !== "string" || !u.username.trim() ||
+      typeof u.password !== "string" || !u.password.trim() ||
+      typeof u.role !== "string" || !["admin_owner", "admin_manager"].includes(u.role)
+    ) {
+      console.error(`[admin-login] ADMIN_CREDENTIALS[${i}] has invalid schema. Expected {username, password, role:"admin_owner"|"admin_manager"}`);
+      return { users: [], error: "invalid_schema" };
+    }
+  }
+
+  return { users: parsed as AdminUser[], error: null };
 }
 
-async function signJWT(
-  payload: Record<string, unknown>,
-  secret: string
-): Promise<string> {
+async function signJWT(payload: Record<string, unknown>, secret: string): Promise<string> {
   const encoder = new TextEncoder();
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const body = btoa(JSON.stringify(payload));
   const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
+    "raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
   );
-  const sig = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(`${header}.${body}`)
-  );
+  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(`${header}.${body}`));
   const signature = btoa(String.fromCharCode(...new Uint8Array(sig)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   return `${header}.${body}.${signature}`;
 }
 
-async function verifyJWT(
-  token: string,
-  secret: string
-): Promise<Record<string, unknown> | null> {
+async function verifyJWT(token: string, secret: string): Promise<Record<string, unknown> | null> {
   try {
     const [header, body, signature] = token.split(".");
     if (!header || !body || !signature) return null;
-
     const encoder = new TextEncoder();
     const key = await crypto.subtle.importKey(
-      "raw",
-      encoder.encode(secret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"]
+      "raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]
     );
-
     const sigStr = signature.replace(/-/g, "+").replace(/_/g, "/");
     const sigBytes = Uint8Array.from(atob(sigStr), (c) => c.charCodeAt(0));
-
-    const valid = await crypto.subtle.verify(
-      "HMAC",
-      key,
-      sigBytes,
-      encoder.encode(`${header}.${body}`)
-    );
+    const valid = await crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(`${header}.${body}`));
     if (!valid) return null;
-
     const payload = JSON.parse(atob(body));
     if (payload.exp && Date.now() / 1000 > payload.exp) return null;
     return payload;
@@ -135,6 +126,15 @@ async function verifyJWT(
     return null;
   }
 }
+
+function jsonResponse(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+const CONFIG_ERROR_MSG = "Configuração do Admin ausente. Verifique os secrets no painel.";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -145,27 +145,19 @@ serve(async (req) => {
   const action = url.searchParams.get("action") || "login";
 
   const jwtSecret = Deno.env.get("ADMIN_JWT_SECRET");
-  if (!jwtSecret) {
-    return new Response(
-      JSON.stringify({ error: "Configuração do servidor ausente. Contate o administrador." }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+  if (!jwtSecret || jwtSecret.length < 32) {
+    console.error("[admin-login] ADMIN_JWT_SECRET is missing or too short (min 32 chars)");
+    return jsonResponse({ error: CONFIG_ERROR_MSG }, 500);
   }
 
   // ── VERIFY ─────────────────────────────────────────────
   if (action === "verify") {
     const authHeader = req.headers.get("authorization") || "";
     const token = authHeader.replace(/^Bearer\s+/i, "");
+    if (!token) return jsonResponse({ valid: false }, 401);
     const payload = await verifyJWT(token, jwtSecret);
-    if (!payload) {
-      return new Response(JSON.stringify({ valid: false }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    return new Response(JSON.stringify({ valid: true, ...payload }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    if (!payload) return jsonResponse({ valid: false }, 401);
+    return jsonResponse({ valid: true, sub: payload.sub, role: payload.role });
   }
 
   // ── LOGIN ──────────────────────────────────────────────
@@ -177,47 +169,37 @@ serve(async (req) => {
   try {
     body = await req.json();
   } catch {
-    return new Response(
-      JSON.stringify({ error: "Requisição inválida." }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse({ error: "Requisição inválida." }, 400);
   }
 
   const { username, password } = body;
   if (!username || !password || username.length > 100 || password.length > 200) {
-    return new Response(
-      JSON.stringify({ error: "Usuário e senha são obrigatórios." }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse({ error: "Usuário e senha são obrigatórios." }, 400);
   }
 
-  // Rate limit check
+  // Rate limit
   const rateLimitKey = username.toLowerCase();
   const rateCheck = checkRateLimit(rateLimitKey);
   if (!rateCheck.allowed) {
-    const headers: Record<string, string> = {
-      ...corsHeaders,
-      "Content-Type": "application/json",
-    };
-    if (rateCheck.retryAfter) {
-      headers["Retry-After"] = String(rateCheck.retryAfter);
-    }
     return new Response(
       JSON.stringify({ error: "Muitas tentativas. Tente novamente mais tarde." }),
-      { status: 429, headers }
+      {
+        status: 429,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+          ...(rateCheck.retryAfter ? { "Retry-After": String(rateCheck.retryAfter) } : {}),
+        },
+      }
     );
   }
 
-  const adminUsers = getAdminUsers();
-  if (adminUsers.length === 0) {
-    console.error("ADMIN_CREDENTIALS secret is missing or invalid");
-    return new Response(
-      JSON.stringify({ error: "Configuração do servidor ausente. Contate o administrador." }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+  const { users: adminUsers, error: credError } = getAdminUsers();
+  if (credError) {
+    return jsonResponse({ error: CONFIG_ERROR_MSG }, 500);
   }
 
-  // Find matching user with timing-safe comparison
+  // Find matching user
   let match: AdminUser | null = null;
   for (const user of adminUsers) {
     const usernameMatch = await timingSafeEqual(user.username, username);
@@ -230,10 +212,7 @@ serve(async (req) => {
 
   if (!match) {
     recordFailure(rateLimitKey);
-    return new Response(
-      JSON.stringify({ error: "Usuário ou senha inválidos." }),
-      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse({ error: "Usuário ou senha inválidos." }, 401);
   }
 
   clearFailures(rateLimitKey);
@@ -243,13 +222,10 @@ serve(async (req) => {
       sub: match.username,
       role: match.role,
       iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12,
+      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
     },
     jwtSecret
   );
 
-  return new Response(
-    JSON.stringify({ token, role: match.role, username: match.username }),
-    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  );
+  return jsonResponse({ token, role: match.role, username: match.username });
 });

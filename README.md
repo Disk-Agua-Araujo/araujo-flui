@@ -60,6 +60,24 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Admin Authentication (Secrets)
+
+The admin panel uses custom JWT auth. Two secrets must be configured in **Settings → Cloud → Secrets**:
+
+### ADMIN_JWT_SECRET
+A strong random string (minimum 32 characters). Used to sign/verify admin JWTs.
+
+### ADMIN_CREDENTIALS
+A JSON array with admin users. **Paste in a single line**:
+
+```json
+[{"username":"YOUR_USER","password":"YOUR_STRONG_PASSWORD","role":"admin_owner"},{"username":"ANOTHER_USER","password":"ANOTHER_PASSWORD","role":"admin_manager"}]
+```
+
+- `role` must be `"admin_owner"` or `"admin_manager"`
+- **Never commit real credentials** to the repository
+- Use strong, unique passwords
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
