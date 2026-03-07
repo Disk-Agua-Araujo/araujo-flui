@@ -222,7 +222,7 @@ serve(async (req) => {
       sub: match.username,
       role: match.role,
       iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
+      exp: Math.floor(Date.now() / 1000) + 60 * 30, // 30 minutes
     },
     jwtSecret
   );
