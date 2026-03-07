@@ -402,6 +402,9 @@ serve(async (req) => {
     }
 
     if (action === "reports.orders") {
+      if (admin.role !== "admin_owner") {
+        return json({ error: "Acesso negado. Apenas o proprietário pode acessar relatórios." }, 403);
+      }
       const { data, error } = await adminClient
         .from("orders")
         .select("id, channel, status, delivery_date, created_at, customers(name), order_items(qty, products(name))")
