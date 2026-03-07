@@ -15,7 +15,15 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 const TOKEN_KEY = "admin_token";
-const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-login`;
+
+function getLoginUrl() {
+  const base = import.meta.env.VITE_SUPABASE_URL;
+  if (!base) {
+    console.error("[auth] VITE_SUPABASE_URL is not set");
+    return null;
+  }
+  return `${base}/functions/v1/admin-login`;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [username, setUsername] = useState<string | null>(null);
@@ -23,11 +31,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const verifyToken = async (token: string) => {
+    const url = getLoginUrl();
+    if (!url) { setLoading(false); return; }
     try {
-      const res = await fetch(`${FUNCTIONS_URL}?action=verify`, {
+      const res = await fetch(`${url}?action=verify`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error("invalid");
+      if (!res.ok) {
+        localStorage.removeItem(TOKEN_KEY);
+        return;
+      }
       const data = await res.json();
       if (data.valid) {
         setUsername(data.sub);
@@ -35,7 +48,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         localStorage.removeItem(TOKEN_KEY);
       }
-    } catch {
+    } catch (err) {
+      console.error("[auth] Token verification failed:", err);
       localStorage.removeItem(TOKEN_KEY);
     } finally {
       setLoading(false);
@@ -52,13 +66,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async (user: string, password: string) => {
-    const res = await fetch(FUNCTIONS_URL, {
+    const url = getLoginUrl();
+    if (!url) throw new Error("Erro de configuração. Tente novamente mais tarde.");
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: user, password }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Erro ao fazer login");
+    if (!res.ok) {
+      console.error("[auth] Login failed:", res.status, data);
+      throw new Error(data.error || "Erro ao fazer login");
+    }
     localStorage.setItem(TOKEN_KEY, data.token);
     setUsername(data.username);
     setRole(data.role as AdminRole);
