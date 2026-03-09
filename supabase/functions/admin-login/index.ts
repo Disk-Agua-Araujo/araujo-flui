@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { compareSync } from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,36 +8,76 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Rate limiting
-const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS = 15 * 60 * 1000;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-function checkRateLimit(key: string): { allowed: boolean; retryAfter?: number } {
-  const now = Date.now();
-  const record = loginAttempts.get(key);
-  if (!record) return { allowed: true };
-  if (record.lockedUntil > now) {
-    return { allowed: false, retryAfter: Math.ceil((record.lockedUntil - now) / 1000) };
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_SECONDS = 15 * 60; // 15 minutes
+
+function getDbClient() {
+  return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+async function checkRateLimit(db: ReturnType<typeof getDbClient>, key: string): Promise<{ allowed: boolean; retryAfter?: number }> {
+  const { data } = await db
+    .from("login_attempts")
+    .select("failed_count, locked_until")
+    .eq("attempt_key", key)
+    .maybeSingle();
+
+  if (!data) return { allowed: true };
+
+  if (data.locked_until) {
+    const lockedUntil = new Date(data.locked_until).getTime();
+    const now = Date.now();
+    if (lockedUntil > now) {
+      return { allowed: false, retryAfter: Math.ceil((lockedUntil - now) / 1000) };
+    }
+    // Lock expired, reset
+    await db.from("login_attempts").delete().eq("attempt_key", key);
+    return { allowed: true };
   }
-  if (record.count >= MAX_ATTEMPTS) {
-    record.lockedUntil = now + LOCKOUT_MS;
-    return { allowed: false, retryAfter: Math.ceil(LOCKOUT_MS / 1000) };
+
+  if (data.failed_count >= MAX_ATTEMPTS) {
+    // Should have been locked, lock now
+    const lockUntil = new Date(Date.now() + LOCKOUT_SECONDS * 1000).toISOString();
+    await db.from("login_attempts").update({ locked_until: lockUntil }).eq("attempt_key", key);
+    return { allowed: false, retryAfter: LOCKOUT_SECONDS };
   }
+
   return { allowed: true };
 }
 
-function recordFailure(key: string) {
-  const record = loginAttempts.get(key) || { count: 0, lockedUntil: 0 };
-  record.count += 1;
-  if (record.count >= MAX_ATTEMPTS) {
-    record.lockedUntil = Date.now() + LOCKOUT_MS;
+async function recordFailure(db: ReturnType<typeof getDbClient>, key: string) {
+  const { data } = await db
+    .from("login_attempts")
+    .select("failed_count")
+    .eq("attempt_key", key)
+    .maybeSingle();
+
+  const newCount = (data?.failed_count || 0) + 1;
+  const lockUntil = newCount >= MAX_ATTEMPTS ? new Date(Date.now() + LOCKOUT_SECONDS * 1000).toISOString() : null;
+
+  if (data) {
+    await db.from("login_attempts").update({
+      failed_count: newCount,
+      locked_until: lockUntil,
+      last_attempt_at: new Date().toISOString(),
+    }).eq("attempt_key", key);
+  } else {
+    await db.from("login_attempts").insert({
+      attempt_key: key,
+      failed_count: newCount,
+      locked_until: lockUntil,
+      last_attempt_at: new Date().toISOString(),
+    });
   }
-  loginAttempts.set(key, record);
 }
 
-function clearFailures(key: string) {
-  loginAttempts.delete(key);
+async function clearFailures(db: ReturnType<typeof getDbClient>, key: string) {
+  await db.from("login_attempts").delete().eq("attempt_key", key);
 }
 
 interface AdminUser {
@@ -73,7 +114,7 @@ function getAdminUsers(): { users: AdminUser[]; error: string | null } {
       typeof u.password_hash !== "string" || !u.password_hash.trim() ||
       typeof u.role !== "string" || !["admin_owner", "admin_manager"].includes(u.role)
     ) {
-      console.error(`[admin-login] ADMIN_CREDENTIALS[${i}] has invalid schema. Expected {username, password_hash, role:"admin_owner"|"admin_manager"}`);
+      console.error(`[admin-login] ADMIN_CREDENTIALS[${i}] has invalid schema.`);
       return { users: [], error: "invalid_schema" };
     }
   }
@@ -164,9 +205,10 @@ serve(async (req) => {
     return jsonResponse({ error: "Usuário e senha são obrigatórios." }, 400);
   }
 
-  // Rate limit
+  // Persistent rate limiting via database
+  const db = getDbClient();
   const rateLimitKey = username.toLowerCase();
-  const rateCheck = checkRateLimit(rateLimitKey);
+  const rateCheck = await checkRateLimit(db, rateLimitKey);
   if (!rateCheck.allowed) {
     return new Response(
       JSON.stringify({ error: "Muitas tentativas. Tente novamente mais tarde." }),
@@ -203,18 +245,19 @@ serve(async (req) => {
   }
 
   if (!match) {
-    recordFailure(rateLimitKey);
+    await recordFailure(db, rateLimitKey);
     return jsonResponse({ error: "Usuário ou senha inválidos." }, 401);
   }
 
-  clearFailures(rateLimitKey);
+  await clearFailures(db, rateLimitKey);
 
+  // JWT with 15 minute expiry (reduced from 30 for security)
   const token = await signJWT(
     {
       sub: match.username,
       role: match.role,
       iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 60 * 30, // 30 minutes
+      exp: Math.floor(Date.now() / 1000) + 60 * 15,
     },
     jwtSecret
   );

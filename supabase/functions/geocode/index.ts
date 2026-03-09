@@ -7,8 +7,8 @@ const corsHeaders = {
 
 // Simple in-memory rate limiting per IP
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
-const MAX_REQUESTS = 20;
-const WINDOW_MS = 60_000; // 1 minute
+const MAX_REQUESTS = 10; // reduced from 20
+const WINDOW_MS = 60_000;
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now();
@@ -21,19 +21,40 @@ function isRateLimited(ip: string): boolean {
   return record.count > MAX_REQUESTS;
 }
 
+// Allowed origins for referer/origin validation
+const ALLOWED_ORIGINS = [
+  "https://araujo-flui.lovable.app",
+  "https://id-preview--",
+  "http://localhost",
+];
+
+function isAllowedOrigin(req: Request): boolean {
+  const origin = req.headers.get("origin") || "";
+  const referer = req.headers.get("referer") || "";
+  const check = origin || referer;
+  if (!check) return false;
+  return ALLOWED_ORIGINS.some((allowed) => check.startsWith(allowed));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Validate that request comes with the anon key (basic auth gate)
+  // Validate origin/referer to prevent external abuse
+  if (!isAllowedOrigin(req)) {
+    return new Response(JSON.stringify({ error: "forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // Validate anon key as additional layer
   const authHeader = req.headers.get("authorization") || "";
   const apiKeyHeader = req.headers.get("apikey") || "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
-  if (!anonKey) {
-    // If anon key not available in env, skip this check
-  } else {
+  if (anonKey) {
     const token = authHeader.replace(/^Bearer\s+/i, "").trim();
     if (token !== anonKey && apiKeyHeader !== anonKey) {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
@@ -64,7 +85,7 @@ serve(async (req) => {
     const apiKey = Deno.env.get("GOOGLE_MAPS_API_KEY");
     if (!apiKey) {
       return new Response(
-        JSON.stringify({ error: "no_api_key", message: "GOOGLE_MAPS_API_KEY not configured" }),
+        JSON.stringify({ error: "no_api_key", message: "Serviço de geocodificação indisponível." }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -75,7 +96,7 @@ serve(async (req) => {
 
     if (data.status !== "OK" || !data.results?.length) {
       return new Response(
-        JSON.stringify({ error: "geocode_failed", message: `Geocoding returned: ${data.status}` }),
+        JSON.stringify({ error: "geocode_failed", message: "Não foi possível localizar o endereço." }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -88,7 +109,7 @@ serve(async (req) => {
   } catch (err) {
     console.error("geocode error:", err);
     return new Response(
-      JSON.stringify({ error: "server_error", message: "Internal server error" }),
+      JSON.stringify({ error: "server_error", message: "Erro interno do servidor." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
