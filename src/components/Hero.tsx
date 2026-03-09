@@ -74,7 +74,7 @@ export function Hero() {
                 className="inline-flex items-center gap-2 bg-primary text-primary-foreground text-sm font-semibold px-4 py-2 rounded-full shadow-md hover:shadow-lg hover:scale-[1.02] transition-all"
               >
                 <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
-                ⭐ {business.rating} no Google · +4.347 avaliações
+                {business.rating} no Google · +4.347 avaliações
               </a>
             </div>
 
