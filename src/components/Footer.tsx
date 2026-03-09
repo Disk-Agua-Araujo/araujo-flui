@@ -1,4 +1,4 @@
-import { MessageCircle, Facebook, Instagram } from "lucide-react";
+import { MessageCircle, Instagram } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { business } from "@/config/business";
 import { trackEvent } from "@/hooks/use-analytics";
@@ -39,10 +39,13 @@ export function Footer() {
               Entrega de água mineral de qualidade em Santo André e região.
             </p>
             <div className="flex gap-3 mt-4">
-              <a href={business.social.facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="hover:text-brand-blue transition-colors">
-                <Facebook className="h-5 w-5" />
-              </a>
-              <a href={business.social.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="hover:text-brand-blue transition-colors">
+              <a
+                href="https://www.instagram.com/diskagua.araujo"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Instagram"
+                className="text-background/70 hover:text-accent transition-colors"
+              >
                 <Instagram className="h-5 w-5" />
               </a>
             </div>

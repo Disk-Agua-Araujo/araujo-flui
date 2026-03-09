@@ -3,6 +3,7 @@ import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
 import { QuickOrder } from "@/components/QuickOrder";
 import { Products } from "@/components/Products";
+import { OurWaters } from "@/components/OurWaters";
 import { HowItWorks } from "@/components/HowItWorks";
 import { ServiceArea } from "@/components/ServiceArea";
 import { Reviews } from "@/components/Reviews";
@@ -33,6 +34,8 @@ const Index = () => {
         <div className="bg-card">
           <Products />
         </div>
+        <SectionDivider />
+        <OurWaters />
         <SectionDivider />
         <HowItWorks />
         <SectionDivider />
