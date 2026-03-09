@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
+import { hashSync } from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 
 serve(async (req) => {
   const corsHeaders = {
@@ -11,7 +11,7 @@ serve(async (req) => {
   const { passwords } = await req.json();
   const results: Record<string, string> = {};
   for (const [key, pwd] of Object.entries(passwords as Record<string, string>)) {
-    results[key] = await bcrypt.hash(pwd);
+    results[key] = hashSync(pwd);
   }
   return new Response(JSON.stringify(results), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });
