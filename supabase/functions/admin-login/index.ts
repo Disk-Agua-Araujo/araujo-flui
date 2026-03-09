@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,23 +39,9 @@ function clearFailures(key: string) {
   loginAttempts.delete(key);
 }
 
-async function timingSafeEqual(a: string, b: string): Promise<boolean> {
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode("comparison-key-hmac");
-  const key = await crypto.subtle.importKey(
-    "raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  const sigA = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(a)));
-  const sigB = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(b)));
-  if (sigA.length !== sigB.length) return false;
-  let result = 0;
-  for (let i = 0; i < sigA.length; i++) result |= sigA[i] ^ sigB[i];
-  return result === 0;
-}
-
 interface AdminUser {
   username: string;
-  password: string;
+  password_hash: string;
   role: string;
 }
 
@@ -83,10 +70,10 @@ function getAdminUsers(): { users: AdminUser[]; error: string | null } {
     if (
       !u || typeof u !== "object" ||
       typeof u.username !== "string" || !u.username.trim() ||
-      typeof u.password !== "string" || !u.password.trim() ||
+      typeof u.password_hash !== "string" || !u.password_hash.trim() ||
       typeof u.role !== "string" || !["admin_owner", "admin_manager"].includes(u.role)
     ) {
-      console.error(`[admin-login] ADMIN_CREDENTIALS[${i}] has invalid schema. Expected {username, password, role:"admin_owner"|"admin_manager"}`);
+      console.error(`[admin-login] ADMIN_CREDENTIALS[${i}] has invalid schema. Expected {username, password_hash, role:"admin_owner"|"admin_manager"}`);
       return { users: [], error: "invalid_schema" };
     }
   }
@@ -199,14 +186,19 @@ serve(async (req) => {
     return jsonResponse({ error: CONFIG_ERROR_MSG }, 500);
   }
 
-  // Find matching user
+  // Find matching user using bcrypt hash comparison
   let match: AdminUser | null = null;
   for (const user of adminUsers) {
-    const usernameMatch = await timingSafeEqual(user.username, username);
-    const passwordMatch = await timingSafeEqual(user.password, password);
-    if (usernameMatch && passwordMatch) {
-      match = user;
-      break;
+    if (user.username === username) {
+      try {
+        const passwordValid = await bcrypt.compare(password, user.password_hash);
+        if (passwordValid) {
+          match = user;
+        }
+      } catch (e) {
+        console.error("[admin-login] bcrypt compare error:", e);
+      }
+      break; // username found, no need to continue
     }
   }
 
