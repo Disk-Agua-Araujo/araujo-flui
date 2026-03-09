@@ -139,6 +139,27 @@ export type Database = {
         }
         Relationships: []
       }
+      geocode_rate_limits: {
+        Row: {
+          client_ip: string
+          id: string
+          request_count: number
+          window_start: string
+        }
+        Insert: {
+          client_ip: string
+          id?: string
+          request_count?: number
+          window_start?: string
+        }
+        Update: {
+          client_ip?: string
+          id?: string
+          request_count?: number
+          window_start?: string
+        }
+        Relationships: []
+      }
       login_attempts: {
         Row: {
           attempt_key: string
@@ -408,6 +429,7 @@ export type Database = {
         }
         Returns: number
       }
+      cleanup_old_geocode_rate_limits: { Args: never; Returns: undefined }
       cleanup_old_login_attempts: { Args: never; Returns: undefined }
       create_full_site_order: {
         Args: {
