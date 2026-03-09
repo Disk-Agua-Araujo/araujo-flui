@@ -95,9 +95,9 @@ function WaterCard({ water }: { water: WaterProduct }) {
 
   return (
     <Card className="group relative overflow-hidden border-border/60 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 h-full">
-      <CardContent className="p-6 flex flex-col gap-4 h-full">
+      <CardContent className="p-6 flex flex-col h-full">
         {/* Icon + Name */}
-        <div className="flex items-start gap-3">
+        <div className="flex items-start gap-3 min-h-[72px]">
           <div className="shrink-0 h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
             <Droplets className="h-6 w-6 text-primary" />
           </div>
@@ -110,19 +110,19 @@ function WaterCard({ water }: { water: WaterProduct }) {
         </div>
 
         {/* pH Badge */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mt-3">
           <span className="inline-flex items-center bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full">
             pH {water.ph}
           </span>
         </div>
 
         {/* Description */}
-        <p className="text-sm text-muted-foreground leading-relaxed">
+        <p className="text-sm text-muted-foreground leading-relaxed mt-3 min-h-[60px]">
           {water.description}
         </p>
 
         {/* Minerals */}
-        <div>
+        <div className="mt-3 min-h-[70px]">
           <p className="text-xs font-semibold text-foreground mb-1.5 uppercase tracking-wider">
             Principais minerais
           </p>
@@ -142,7 +142,7 @@ function WaterCard({ water }: { water: WaterProduct }) {
         </div>
 
         {/* Differentials */}
-        <div>
+        <div className="mt-3 min-h-[80px]">
           <p className="text-xs font-semibold text-foreground mb-1.5 uppercase tracking-wider">
             Diferenciais
           </p>
@@ -158,7 +158,7 @@ function WaterCard({ water }: { water: WaterProduct }) {
 
         {/* CTA */}
         <Button
-          className="w-full mt-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
+          className="w-full mt-auto pt-4 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
           asChild
           onClick={() => trackEvent("whatsapp_click", { source: "our_waters", product: water.name })}
         >
