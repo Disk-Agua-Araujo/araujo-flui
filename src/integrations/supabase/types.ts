@@ -139,6 +139,33 @@ export type Database = {
         }
         Relationships: []
       }
+      login_attempts: {
+        Row: {
+          attempt_key: string
+          created_at: string
+          failed_count: number
+          id: string
+          last_attempt_at: string
+          locked_until: string | null
+        }
+        Insert: {
+          attempt_key: string
+          created_at?: string
+          failed_count?: number
+          id?: string
+          last_attempt_at?: string
+          locked_until?: string | null
+        }
+        Update: {
+          attempt_key?: string
+          created_at?: string
+          failed_count?: number
+          id?: string
+          last_attempt_at?: string
+          locked_until?: string | null
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
           id: string
@@ -381,6 +408,7 @@ export type Database = {
         }
         Returns: number
       }
+      cleanup_old_login_attempts: { Args: never; Returns: undefined }
       create_full_site_order: {
         Args: {
           p_city?: string
