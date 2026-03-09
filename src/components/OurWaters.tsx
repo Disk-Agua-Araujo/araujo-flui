@@ -94,11 +94,11 @@ function WaterCard({ water }: { water: WaterProduct }) {
   const waLink = `https://wa.me/5511940060056?text=${encodeURIComponent(waMsg)}`;
 
   return (
-    <Card className="group relative overflow-hidden border-border/60 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 h-full">
+    <Card className="h-full border-border/60 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
       <CardContent className="p-6 flex flex-col h-full">
-        {/* Icon + Name */}
-        <div className="flex items-start gap-3 min-h-[72px]">
-          <div className="shrink-0 h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+        {/* Topo: ícone + título + subtítulo */}
+        <div className="flex items-start gap-3 min-h-[4rem]">
+          <div className="shrink-0 h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
             <Droplets className="h-6 w-6 text-primary" />
           </div>
           <div className="flex-1 min-w-0">
@@ -109,20 +109,20 @@ function WaterCard({ water }: { water: WaterProduct }) {
           </div>
         </div>
 
-        {/* pH Badge */}
+        {/* Badge pH */}
         <div className="flex items-center gap-2 mt-3">
           <span className="inline-flex items-center bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full">
             pH {water.ph}
           </span>
         </div>
 
-        {/* Description */}
-        <p className="text-sm text-muted-foreground leading-relaxed mt-3 min-h-[60px]">
+        {/* Descrição */}
+        <p className="text-sm text-muted-foreground leading-relaxed mt-3 min-h-[3.75rem]">
           {water.description}
         </p>
 
-        {/* Minerals */}
-        <div className="mt-3 min-h-[70px]">
+        {/* Minerais */}
+        <div className="mt-3 min-h-[4.5rem]">
           <p className="text-xs font-semibold text-foreground mb-1.5 uppercase tracking-wider">
             Principais minerais
           </p>
@@ -141,8 +141,8 @@ function WaterCard({ water }: { water: WaterProduct }) {
           </div>
         </div>
 
-        {/* Differentials */}
-        <div className="mt-3 min-h-[80px]">
+        {/* Diferenciais — flex-grow empurra o botão para baixo */}
+        <div className="mt-3 flex-grow">
           <p className="text-xs font-semibold text-foreground mb-1.5 uppercase tracking-wider">
             Diferenciais
           </p>
@@ -156,9 +156,9 @@ function WaterCard({ water }: { water: WaterProduct }) {
           </ul>
         </div>
 
-        {/* CTA */}
+        {/* Botão sempre na base */}
         <Button
-          className="w-full mt-auto pt-4 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
+          className="w-full mt-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
           asChild
           onClick={() => trackEvent("whatsapp_click", { source: "our_waters", product: water.name })}
         >
@@ -186,8 +186,7 @@ export function OurWaters() {
           </p>
         </div>
 
-        {/* Responsive grid: 1 col mobile, 2 tablet, 4 desktop */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6 items-stretch">
           {waters.map((w) => (
             <WaterCard key={w.name} water={w} />
           ))}
