@@ -191,14 +191,14 @@ serve(async (req) => {
   for (const user of adminUsers) {
     if (user.username === username) {
       try {
-        const passwordValid = await bcrypt.compare(password, user.password_hash);
+        const passwordValid = compareSync(password, user.password_hash);
         if (passwordValid) {
           match = user;
         }
       } catch (e) {
         console.error("[admin-login] bcrypt compare error:", e);
       }
-      break; // username found, no need to continue
+      break;
     }
   }
 
