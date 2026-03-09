@@ -58,17 +58,30 @@ export function Hero() {
 
           {/* Text column */}
           <div className="text-center md:text-left md:pr-8 py-4 md:py-16">
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-foreground leading-tight animate-fade-in-up">
+            <h1 className="text-4xl sm:text-5xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-foreground leading-[1.1] animate-fade-in-up">
               {business.tagline}
             </h1>
-            <p className="mt-4 text-base sm:text-lg text-muted-foreground max-w-xl animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
+            <p className="mt-4 text-base sm:text-lg text-muted-foreground max-w-xl leading-relaxed animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
               {business.subtitle}
             </p>
+
+            {/* Google badge */}
+            <div className="mt-5 animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
+              <a
+                href={business.googleReviewsLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-primary text-primary-foreground text-sm font-semibold px-4 py-2 rounded-full shadow-md hover:shadow-lg hover:scale-[1.02] transition-all"
+              >
+                <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
+                ⭐ {business.rating} no Google · +4.347 avaliações
+              </a>
+            </div>
 
             <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center md:justify-start animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
               <Button
                 size="lg"
-                className="bg-whatsapp hover:bg-whatsapp-dark text-white font-semibold text-base"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-base px-8 py-6 shadow-md hover:shadow-lg hover:scale-[1.02] transition-all"
                 asChild
                 onClick={() => trackEvent("whatsapp_click", { source: "hero" })}
               >
@@ -77,7 +90,12 @@ export function Hero() {
                   Pedir no WhatsApp
                 </a>
               </Button>
-              <Button size="lg" variant="outline" className="font-semibold text-base border-primary text-primary hover:bg-primary hover:text-primary-foreground" asChild>
+              <Button
+                size="lg"
+                variant="outline"
+                className="font-bold text-base border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground px-8 py-6 transition-all"
+                asChild
+              >
                 <Link to="/pedido">
                   <ShoppingCart className="h-5 w-5 mr-2" />
                   Fazer pedido pelo site
@@ -88,12 +106,8 @@ export function Hero() {
             {/* Trust row */}
             <div className="mt-8 flex flex-wrap justify-center md:justify-start gap-3 text-sm text-muted-foreground animate-fade-in-up" style={{ animationDelay: "0.3s" }}>
               <div className="flex items-center gap-1.5 bg-card px-3 py-1.5 rounded-full shadow-sm border border-primary/10">
-                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                <span className="font-medium">{business.rating} • {business.reviewCount} avaliações</span>
-              </div>
-              <div className="flex items-center gap-1.5 bg-card px-3 py-1.5 rounded-full shadow-sm border border-primary/10">
                 <Truck className="h-4 w-4 text-primary" />
-                <span>Entrega rápida</span>
+                <span className="font-medium">Entrega rápida</span>
               </div>
               <div className="flex items-center gap-1.5 bg-card px-3 py-1.5 rounded-full shadow-sm border border-primary/10">
                 <Heart className="h-4 w-4 text-accent" />

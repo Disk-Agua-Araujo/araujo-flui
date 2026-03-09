@@ -32,7 +32,7 @@ export function Header() {
   const renderNavItem = (l: NavItem, mobile = false) => {
     const className = mobile
       ? "block px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-      : "text-sm font-medium text-muted-foreground hover:text-foreground transition-colors";
+      : "text-sm font-semibold text-muted-foreground hover:text-primary transition-colors";
 
     if (l.isRoute && l.href) {
       return (
@@ -62,7 +62,7 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+    <header className="sticky top-0 z-50 bg-white shadow-md border-b border-primary/20 backdrop-blur supports-[backdrop-filter]:bg-white/95">
       <div className="container flex h-16 md:h-[72px] items-center justify-between">
         <Link to="/" className="flex items-center gap-2" onClick={handleLogoClick}>
           <img
@@ -80,6 +80,7 @@ export function Header() {
           <Button
             variant="outline"
             size="sm"
+            className="border-primary text-primary hover:bg-primary hover:text-primary-foreground font-semibold"
             asChild
             onClick={() => trackEvent("call_click")}
           >
@@ -90,7 +91,7 @@ export function Header() {
           </Button>
           <Button
             size="sm"
-            className="bg-whatsapp hover:bg-whatsapp-dark text-white"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm hover:shadow-md hover:scale-[1.02] transition-all"
             asChild
             onClick={() => trackEvent("whatsapp_click", { source: "header" })}
           >
@@ -111,17 +112,17 @@ export function Header() {
       </div>
 
       {open && (
-        <nav className="md:hidden border-t bg-card pb-4">
+        <nav className="md:hidden border-t bg-white pb-4">
           {navLinks.map((l) => renderNavItem(l, true))}
           <div className="flex gap-2 px-4 pt-2">
-            <Button variant="outline" size="sm" className="flex-1" asChild onClick={() => trackEvent("call_click")}>
+            <Button variant="outline" size="sm" className="flex-1 border-primary text-primary font-semibold" asChild onClick={() => trackEvent("call_click")}>
               <a href={business.telLink}>
                 <Phone className="h-4 w-4 mr-1" /> Ligar
               </a>
             </Button>
             <Button
               size="sm"
-              className="flex-1 bg-whatsapp hover:bg-whatsapp-dark text-white"
+              className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
               asChild
               onClick={() => trackEvent("whatsapp_click", { source: "header_mobile" })}
             >
