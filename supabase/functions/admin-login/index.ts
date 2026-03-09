@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
+import { compareSync } from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -191,14 +191,14 @@ serve(async (req) => {
   for (const user of adminUsers) {
     if (user.username === username) {
       try {
-        const passwordValid = await bcrypt.compare(password, user.password_hash);
+        const passwordValid = compareSync(password, user.password_hash);
         if (passwordValid) {
           match = user;
         }
       } catch (e) {
         console.error("[admin-login] bcrypt compare error:", e);
       }
-      break; // username found, no need to continue
+      break;
     }
   }
 
