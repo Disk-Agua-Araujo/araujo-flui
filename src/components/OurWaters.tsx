@@ -94,8 +94,8 @@ function WaterCard({ water }: { water: WaterProduct }) {
   const waLink = `https://wa.me/5511940060056?text=${encodeURIComponent(waMsg)}`;
 
   return (
-    <Card className="group relative overflow-hidden border-border/60 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
-      <CardContent className="p-6 flex flex-col gap-4">
+    <Card className="group relative overflow-hidden border-border/60 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 h-full">
+      <CardContent className="p-6 flex flex-col gap-4 h-full">
         {/* Icon + Name */}
         <div className="flex items-start gap-3">
           <div className="shrink-0 h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
