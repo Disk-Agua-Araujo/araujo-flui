@@ -417,7 +417,18 @@ serve(async (req) => {
     return json({ error: "Ação inválida" }, 400);
   } catch (error) {
     console.error("admin-panel error", error);
-    const message = error instanceof Error ? error.message : "Erro interno";
+
+    // Only surface messages we explicitly threw; hide raw DB errors
+    const isAppError =
+      error instanceof Error &&
+      !(error as any).code && // Postgres errors have a .code property
+      !error.message.includes("violates") &&
+      !error.message.includes("constraint");
+
+    const message = isAppError
+      ? error.message
+      : "Erro interno ao processar a requisição.";
+
     return json({ error: message }, 400);
   }
 });
