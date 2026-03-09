@@ -50,23 +50,23 @@ export function Hero() {
       <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-accent to-primary z-10" />
 
       <div className="container py-12 md:py-0">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-0 items-center min-h-[auto] md:min-h-[520px]">
-          {/* Mobile: video first */}
-          <div className="md:hidden">
+        <div className="flex flex-col md:grid md:grid-cols-2 gap-8 md:gap-0 items-center min-h-[auto] md:min-h-[520px]">
+          {/* Mobile: video (order-7 on mobile, hidden on desktop) */}
+          <div className="md:hidden order-7">
             {videoBlock("aspect-[9/16] max-w-[280px] mx-auto")}
           </div>
 
-          {/* Text column */}
-          <div className="text-center md:text-left md:pr-8 py-4 md:py-16">
-            <h1 className="text-4xl sm:text-5xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-foreground leading-[1.1] animate-fade-in-up">
+          {/* Text column — flex-col on mobile with order classes */}
+          <div className="text-center md:text-left md:pr-8 py-4 md:py-16 flex flex-col order-1 md:order-none">
+            <h1 className="text-4xl sm:text-5xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-foreground leading-[1.1] animate-fade-in-up order-1 md:order-none">
               {business.tagline}
             </h1>
-            <p className="mt-4 text-base sm:text-lg text-muted-foreground max-w-xl leading-relaxed animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
+            <p className="mt-4 text-base sm:text-lg text-muted-foreground max-w-xl leading-relaxed animate-fade-in-up order-2 md:order-none" style={{ animationDelay: "0.1s" }}>
               {business.subtitle}
             </p>
 
             {/* Google badge */}
-            <div className="mt-5 animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
+            <div className="mt-5 animate-fade-in-up order-3 md:order-none" style={{ animationDelay: "0.15s" }}>
               <a
                 href={business.googleReviewsLink}
                 target="_blank"
@@ -74,11 +74,24 @@ export function Hero() {
                 className="inline-flex items-center gap-2 bg-primary text-primary-foreground text-sm font-semibold px-4 py-2 rounded-full shadow-md hover:shadow-lg hover:scale-[1.02] transition-all"
               >
                 <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
-                {business.rating} no Google · +4.347 avaliações
+                {business.rating} no Google · {business.reviewCount} avaliações
               </a>
             </div>
 
-            <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center md:justify-start animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
+            {/* Trust row — order-4 on mobile (before buttons) */}
+            <div className="mt-8 flex flex-wrap justify-center md:justify-start gap-3 text-sm text-muted-foreground animate-fade-in-up order-4 md:order-none" style={{ animationDelay: "0.3s" }}>
+              <div className="flex items-center gap-1.5 bg-card px-3 py-1.5 rounded-full shadow-sm border border-primary/10">
+                <Truck className="h-4 w-4 text-primary" />
+                <span className="font-medium">Entrega rápida</span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-card px-3 py-1.5 rounded-full shadow-sm border border-primary/10">
+                <Heart className="h-4 w-4 text-accent" />
+                <span>Atendimento humanizado</span>
+              </div>
+            </div>
+
+            {/* Buttons — order-5 on mobile (after trust pills) */}
+            <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center md:justify-start animate-fade-in-up order-5 md:order-none" style={{ animationDelay: "0.2s" }}>
               <Button
                 size="lg"
                 className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-base px-8 py-6 shadow-md hover:shadow-lg hover:scale-[1.02] transition-all"
@@ -101,18 +114,6 @@ export function Hero() {
                   Fazer pedido pelo site
                 </Link>
               </Button>
-            </div>
-
-            {/* Trust row */}
-            <div className="mt-8 flex flex-wrap justify-center md:justify-start gap-3 text-sm text-muted-foreground animate-fade-in-up" style={{ animationDelay: "0.3s" }}>
-              <div className="flex items-center gap-1.5 bg-card px-3 py-1.5 rounded-full shadow-sm border border-primary/10">
-                <Truck className="h-4 w-4 text-primary" />
-                <span className="font-medium">Entrega rápida</span>
-              </div>
-              <div className="flex items-center gap-1.5 bg-card px-3 py-1.5 rounded-full shadow-sm border border-primary/10">
-                <Heart className="h-4 w-4 text-accent" />
-                <span>Atendimento humanizado</span>
-              </div>
             </div>
           </div>
 
