@@ -16,7 +16,7 @@ const waters: WaterProduct[] = [
   {
     name: "Água Mineral Fontana de Trevi",
     description:
-      "Água mineral natural reconhecida por sua pureza e equilíbrio mineral. Proveniente de fonte natural protegida, com características alcalinas para hidratação leve e agradável.",
+      "Proveniente de fonte natural protegida, com características alcalinas para hidratação leve e agradável.",
     ph: "8,1",
     extra: "Fonte: ~27°C · Origem mineral natural",
     minerals: [
