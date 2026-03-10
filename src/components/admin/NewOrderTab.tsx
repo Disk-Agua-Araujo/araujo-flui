@@ -32,6 +32,8 @@ const canais = [
 
 const PREFILL_KEY = "admin-new-order-customer";
 
+type CustomerAddress = NonNullable<AdminCustomerRow["addresses"]>[number];
+
 export function NewOrderTab() {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
@@ -47,6 +49,8 @@ export function NewOrderTab() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [customerAddresses, setCustomerAddresses] = useState<CustomerAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const debouncedQuery = useDebounce(searchQuery, 300);
 
