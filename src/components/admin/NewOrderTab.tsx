@@ -89,12 +89,33 @@ export function NewOrderTab() {
     const fromShortcut = localStorage.getItem(PREFILL_KEY);
     if (fromShortcut) {
       try {
-        const customer = JSON.parse(fromShortcut) as { name?: string; phone?: string; type?: "PF" | "PJ"; cnpj?: string; email?: string };
-        if (customer.name) setNome(customer.name);
-        if (customer.phone) setTelefone(customer.phone);
-        if (customer.type) setTipo(customer.type);
-        if (customer.cnpj) setCnpj(customer.cnpj);
-        if (customer.email) setEmail(customer.email);
+        const data = JSON.parse(fromShortcut) as AdminCustomerRow;
+        if (data.id) {
+          // Full customer object with addresses — prefill everything
+          setSelectedCustomerId(data.id);
+          setNome(data.name || "");
+          setTelefone(data.phone ?? "");
+          setTipo(data.type || "PF");
+          setCnpj(data.cnpj ?? "");
+          setEmail(data.email ?? "");
+
+          const addrs = data.addresses ?? [];
+          setCustomerAddresses(addrs);
+
+          const primary = addrs.find((a) => a.is_primary) ?? addrs[0];
+          if (primary) {
+            setSelectedAddressId(primary.id);
+            applyAddress(primary);
+          }
+        } else {
+          // Legacy format — just basic fields
+          const c = data as any;
+          if (c.name) setNome(c.name);
+          if (c.phone) setTelefone(c.phone);
+          if (c.type) setTipo(c.type);
+          if (c.cnpj) setCnpj(c.cnpj);
+          if (c.email) setEmail(c.email);
+        }
       } catch {
         // noop
       }
