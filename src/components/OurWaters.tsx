@@ -89,76 +89,91 @@ const waters: WaterProduct[] = [
   },
 ];
 
+/*
+ * Each card spans 8 implicit rows in the parent grid.
+ * On sm+ (2-col) and lg+ (4-col) we use CSS subgrid so every
+ * internal block aligns across cards in the same row.
+ * On mobile (1-col) subgrid still works but alignment isn't needed.
+ */
+const CARD_ROW_SPAN = 8; // header, ph, desc, minerals-label, minerals, diff-label, diff, btn
+
 function WaterCard({ water }: { water: WaterProduct }) {
   const waMsg = `Olá! Tenho interesse na ${water.name}. Poderia me informar o preço e disponibilidade?`;
   const waLink = `https://wa.me/5511940060056?text=${encodeURIComponent(waMsg)}`;
 
   return (
-    <Card className="h-full border-border/60 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
-      <CardContent className="p-6 flex flex-col h-full">
-        {/* Topo: ícone + título + subtítulo */}
-        <div className="flex items-start gap-3 min-h-[4rem]">
-          <div className="shrink-0 h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
-            <Droplets className="h-6 w-6 text-primary" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-primary leading-snug text-base">
-              {water.name}
-            </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">{water.extra}</p>
-          </div>
+    <Card
+      className="border-border/60 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300"
+      style={{
+        gridRow: `span ${CARD_ROW_SPAN}`,
+        display: "grid",
+        gridTemplateRows: "subgrid",
+      }}
+    >
+      {/* Row 1 — Header: ícone + título + subtítulo */}
+      <div className="px-6 pt-6 flex items-start gap-3">
+        <div className="shrink-0 h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
+          <Droplets className="h-6 w-6 text-primary" />
         </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-primary leading-snug text-base">
+            {water.name}
+          </h3>
+          <p className="text-xs text-muted-foreground mt-0.5">{water.extra}</p>
+        </div>
+      </div>
 
-        {/* Badge pH */}
-        <div className="flex items-center gap-2 mt-3">
-          <span className="inline-flex items-center bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full">
-            pH {water.ph}
+      {/* Row 2 — Badge pH */}
+      <div className="px-6 flex items-center gap-2 mt-3">
+        <span className="inline-flex items-center bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full">
+          pH {water.ph}
+        </span>
+      </div>
+
+      {/* Row 3 — Descrição */}
+      <p className="px-6 text-sm text-muted-foreground leading-relaxed mt-3">
+        {water.description}
+      </p>
+
+      {/* Row 4 — Título minerais */}
+      <p className="px-6 text-xs font-semibold text-foreground mt-3 uppercase tracking-wider">
+        Principais minerais
+      </p>
+
+      {/* Row 5 — Pills minerais */}
+      <div className="px-6 flex flex-wrap gap-1.5 mt-1.5 content-start">
+        {water.minerals.map((m) => (
+          <span
+            key={m.name}
+            className="inline-flex items-center text-[11px] font-medium bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full"
+          >
+            {m.name}
+            {m.value && (
+              <span className="ml-1 text-muted-foreground">{m.value}</span>
+            )}
           </span>
-        </div>
+        ))}
+      </div>
 
-        {/* Descrição */}
-        <p className="text-sm text-muted-foreground leading-relaxed mt-3 min-h-[3.75rem]">
-          {water.description}
-        </p>
+      {/* Row 6 — Título diferenciais */}
+      <p className="px-6 text-xs font-semibold text-foreground mt-3 uppercase tracking-wider">
+        Diferenciais
+      </p>
 
-        {/* Minerais */}
-        <div className="mt-3 min-h-[4.5rem]">
-          <p className="text-xs font-semibold text-foreground mb-1.5 uppercase tracking-wider">
-            Principais minerais
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {water.minerals.map((m) => (
-              <span
-                key={m.name}
-                className="inline-flex items-center text-[11px] font-medium bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full"
-              >
-                {m.name}
-                {m.value && (
-                  <span className="ml-1 text-muted-foreground">{m.value}</span>
-                )}
-              </span>
-            ))}
-          </div>
-        </div>
+      {/* Row 7 — Lista diferenciais */}
+      <ul className="px-6 space-y-1 mt-1.5">
+        {water.differentials.map((d) => (
+          <li key={d} className="flex items-start gap-1.5 text-sm text-muted-foreground">
+            <CheckCircle className="h-4 w-4 shrink-0 text-accent mt-0.5" />
+            <span>{d}</span>
+          </li>
+        ))}
+      </ul>
 
-        {/* Diferenciais — flex-grow empurra o botão para baixo */}
-        <div className="mt-3 flex-grow">
-          <p className="text-xs font-semibold text-foreground mb-1.5 uppercase tracking-wider">
-            Diferenciais
-          </p>
-          <ul className="space-y-1">
-            {water.differentials.map((d) => (
-              <li key={d} className="flex items-start gap-1.5 text-sm text-muted-foreground">
-                <CheckCircle className="h-4 w-4 shrink-0 text-accent mt-0.5" />
-                <span>{d}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Botão sempre na base */}
+      {/* Row 8 — Botão sempre na base */}
+      <div className="px-6 pb-6 mt-3 flex items-end">
         <Button
-          className="w-full mt-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
+          className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
           asChild
           onClick={() => trackEvent("whatsapp_click", { source: "our_waters", product: water.name })}
         >
@@ -167,7 +182,7 @@ function WaterCard({ water }: { water: WaterProduct }) {
             Pedir no WhatsApp
           </a>
         </Button>
-      </CardContent>
+      </div>
     </Card>
   );
 }
@@ -186,7 +201,10 @@ export function OurWaters() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6 items-stretch">
+        <div
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6"
+          style={{ gridTemplateRows: `repeat(auto-fill, auto)` }}
+        >
           {waters.map((w) => (
             <WaterCard key={w.name} water={w} />
           ))}
