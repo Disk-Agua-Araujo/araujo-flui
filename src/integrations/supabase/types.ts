@@ -225,37 +225,40 @@ export type Database = {
       }
       orders: {
         Row: {
-          address_id: string
+          address_id: string | null
           channel: Database["public"]["Enums"]["order_channel"]
           created_at: string
           created_by: string | null
-          customer_id: string
+          customer_id: string | null
           delivery_date: string | null
           delivery_time: string | null
+          fulfillment_type: string
           id: string
           notes: string | null
           status: Database["public"]["Enums"]["order_status"]
         }
         Insert: {
-          address_id: string
+          address_id?: string | null
           channel?: Database["public"]["Enums"]["order_channel"]
           created_at?: string
           created_by?: string | null
-          customer_id: string
+          customer_id?: string | null
           delivery_date?: string | null
           delivery_time?: string | null
+          fulfillment_type?: string
           id?: string
           notes?: string | null
           status?: Database["public"]["Enums"]["order_status"]
         }
         Update: {
-          address_id?: string
+          address_id?: string | null
           channel?: Database["public"]["Enums"]["order_channel"]
           created_at?: string
           created_by?: string | null
-          customer_id?: string
+          customer_id?: string | null
           delivery_date?: string | null
           delivery_time?: string | null
+          fulfillment_type?: string
           id?: string
           notes?: string | null
           status?: Database["public"]["Enums"]["order_status"]
@@ -431,26 +434,48 @@ export type Database = {
       }
       cleanup_old_geocode_rate_limits: { Args: never; Returns: undefined }
       cleanup_old_login_attempts: { Args: never; Returns: undefined }
-      create_full_site_order: {
-        Args: {
-          p_city?: string
-          p_complement?: string
-          p_customer_cnpj?: string
-          p_customer_name: string
-          p_customer_phone: string
-          p_customer_type?: Database["public"]["Enums"]["customer_type"]
-          p_delivery_date?: string
-          p_delivery_time?: string
-          p_items?: Json
-          p_neighborhood?: string
-          p_notes?: string
-          p_number?: string
-          p_state?: string
-          p_street?: string
-          p_zip?: string
-        }
-        Returns: Json
-      }
+      create_full_site_order:
+        | {
+            Args: {
+              p_city?: string
+              p_complement?: string
+              p_customer_cnpj?: string
+              p_customer_name: string
+              p_customer_phone: string
+              p_customer_type?: Database["public"]["Enums"]["customer_type"]
+              p_delivery_date?: string
+              p_delivery_time?: string
+              p_items?: Json
+              p_neighborhood?: string
+              p_notes?: string
+              p_number?: string
+              p_state?: string
+              p_street?: string
+              p_zip?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_city?: string
+              p_complement?: string
+              p_customer_cnpj?: string
+              p_customer_name: string
+              p_customer_phone: string
+              p_customer_type?: Database["public"]["Enums"]["customer_type"]
+              p_delivery_date?: string
+              p_delivery_time?: string
+              p_fulfillment_type?: string
+              p_items?: Json
+              p_neighborhood?: string
+              p_notes?: string
+              p_number?: string
+              p_state?: string
+              p_street?: string
+              p_zip?: string
+            }
+            Returns: Json
+          }
       deduct_stock_for_order: {
         Args: { p_created_by?: string; p_order_id: string }
         Returns: boolean
