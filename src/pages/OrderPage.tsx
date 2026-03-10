@@ -89,8 +89,9 @@ export default function OrderPage() {
         pedidoId,
       };
 
-      const result = await sendOrderToDiskWhatsApp(msgData);
-      setWaResult(result);
+      const message = buildOrderMessage(msgData);
+      openWhatsApp(message);
+      setWaResult({ sent: false, fallback: true, message });
 
       trackEvent("order_submit", { source: "order_page", items: selectedItems.map(i => i.name), payment });
       setSent(true);

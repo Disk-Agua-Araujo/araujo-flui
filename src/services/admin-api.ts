@@ -154,5 +154,8 @@ export const adminApi = {
     reason?: string;
   }) => callAdminApi<{ ok: boolean }>("stock.adjust", payload),
 
+  searchCustomers: (query: string) =>
+    callAdminApi<AdminCustomerRow[]>("customers.search", { query }),
+
   listReportsOrders: () => callAdminApi<AdminOrderRow[]>("reports.orders"),
 };
