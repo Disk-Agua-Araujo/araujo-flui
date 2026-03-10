@@ -212,6 +212,9 @@ export function OrdersTab() {
                       {o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM") : "—"}
                       {o.delivery_time ? ` ${o.delivery_time}` : ""}
                     </TableCell>
+                    <TableCell className="hidden md:table-cell text-xs">
+                      {format(new Date(o.created_at), "dd/MM/yyyy 'às' HH:mm")}
+                    </TableCell>
                     <TableCell className="text-xs">
                       {o.order_items.map((i) => `${i.products?.name ?? "?"} x${i.qty}`).join(", ")}
                     </TableCell>
