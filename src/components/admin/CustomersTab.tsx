@@ -248,7 +248,17 @@ export function CustomersTab() {
                 <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum cliente encontrado.</TableCell></TableRow>
               ) : filtered.map((c) => (
                 <TableRow key={c.id}>
-                  <TableCell className="font-medium">{c.name}</TableCell>
+                  <TableCell>
+                    <span className="font-medium">{c.name}</span>
+                    {(() => {
+                      const addr = getPrimaryAddress(c);
+                      return addr ? (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {addr.street}, {addr.number} — {addr.neighborhood}
+                        </p>
+                      ) : null;
+                    })()}
+                  </TableCell>
                   <TableCell className="text-sm">{c.phone ?? "—"}</TableCell>
                   <TableCell className="hidden md:table-cell"><Badge variant="outline">{c.type}</Badge></TableCell>
                   <TableCell className="hidden md:table-cell text-xs">{c.cnpj ?? "—"}</TableCell>
