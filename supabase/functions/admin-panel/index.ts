@@ -468,7 +468,7 @@ serve(async (req) => {
       }
       const { data, error } = await adminClient
         .from("orders")
-        .select("id, channel, status, delivery_date, created_at, customers(name), order_items(qty, products(name))")
+        .select("id, channel, status, delivery_date, created_at, fulfillment_type, customers(name), order_items(qty, products(name))")
         .order("created_at", { ascending: false })
         .limit(1000);
       if (error) throw error;
