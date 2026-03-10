@@ -203,16 +203,8 @@ export function CustomersTab() {
   };
 
   const handleCreateOrderShortcut = (customer: AdminCustomerRow) => {
-    localStorage.setItem(
-      PREFILL_KEY,
-      JSON.stringify({
-        name: customer.name,
-        phone: customer.phone,
-        type: customer.type,
-        cnpj: customer.cnpj,
-        email: customer.email,
-      }),
-    );
+    // Pass full customer object including addresses for prefill
+    localStorage.setItem(PREFILL_KEY, JSON.stringify(customer));
     navigate("/admin?tab=new-order");
   };
 
