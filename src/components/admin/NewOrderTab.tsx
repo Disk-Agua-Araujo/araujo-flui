@@ -32,6 +32,8 @@ const canais = [
 
 const PREFILL_KEY = "admin-new-order-customer";
 
+type CustomerAddress = NonNullable<AdminCustomerRow["addresses"]>[number];
+
 export function NewOrderTab() {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
@@ -47,6 +49,8 @@ export function NewOrderTab() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [customerAddresses, setCustomerAddresses] = useState<CustomerAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const debouncedQuery = useDebounce(searchQuery, 300);
 
@@ -85,12 +89,33 @@ export function NewOrderTab() {
     const fromShortcut = localStorage.getItem(PREFILL_KEY);
     if (fromShortcut) {
       try {
-        const customer = JSON.parse(fromShortcut) as { name?: string; phone?: string; type?: "PF" | "PJ"; cnpj?: string; email?: string };
-        if (customer.name) setNome(customer.name);
-        if (customer.phone) setTelefone(customer.phone);
-        if (customer.type) setTipo(customer.type);
-        if (customer.cnpj) setCnpj(customer.cnpj);
-        if (customer.email) setEmail(customer.email);
+        const data = JSON.parse(fromShortcut) as AdminCustomerRow;
+        if (data.id) {
+          // Full customer object with addresses — prefill everything
+          setSelectedCustomerId(data.id);
+          setNome(data.name || "");
+          setTelefone(data.phone ?? "");
+          setTipo(data.type || "PF");
+          setCnpj(data.cnpj ?? "");
+          setEmail(data.email ?? "");
+
+          const addrs = data.addresses ?? [];
+          setCustomerAddresses(addrs);
+
+          const primary = addrs.find((a) => a.is_primary) ?? addrs[0];
+          if (primary) {
+            setSelectedAddressId(primary.id);
+            applyAddress(primary);
+          }
+        } else {
+          // Legacy format — just basic fields
+          const c = data as any;
+          if (c.name) setNome(c.name);
+          if (c.phone) setTelefone(c.phone);
+          if (c.type) setTipo(c.type);
+          if (c.cnpj) setCnpj(c.cnpj);
+          if (c.email) setEmail(c.email);
+        }
       } catch {
         // noop
       }
@@ -134,6 +159,14 @@ export function NewOrderTab() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const applyAddress = (addr: CustomerAddress) => {
+    setRua(addr.street);
+    setNumero(addr.number);
+    setBairro(addr.neighborhood);
+    setCidade(addr.city || "Santo André");
+    setComplemento(addr.complement ?? "");
+  };
+
   const selectCustomer = (c: AdminCustomerRow) => {
     setSelectedCustomerId(c.id);
     setNome(c.name);
@@ -144,13 +177,15 @@ export function NewOrderTab() {
     setShowDropdown(false);
     setSearchQuery("");
 
-    const primaryAddr = c.addresses?.find((a) => a.is_primary) ?? c.addresses?.[0];
-    if (primaryAddr) {
-      setRua(primaryAddr.street);
-      setNumero(primaryAddr.number);
-      setBairro(primaryAddr.neighborhood);
-      setCidade(primaryAddr.city || "Santo André");
-      setComplemento(primaryAddr.complement ?? "");
+    const addrs = c.addresses ?? [];
+    setCustomerAddresses(addrs);
+
+    const primary = addrs.find((a) => a.is_primary) ?? addrs[0];
+    if (primary) {
+      setSelectedAddressId(primary.id);
+      applyAddress(primary);
+    } else {
+      setSelectedAddressId(null);
     }
   };
 
@@ -158,6 +193,8 @@ export function NewOrderTab() {
     setSelectedCustomerId(null);
     setSearchQuery("");
     setSearchResults([]);
+    setCustomerAddresses([]);
+    setSelectedAddressId(null);
   };
 
   const updateQty = (id: string, delta: number) => {
@@ -368,26 +405,55 @@ export function NewOrderTab() {
               {searchLoading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />}
             </div>
             {showDropdown && searchResults.length > 0 && !selectedCustomerId && (
-              <div className="absolute z-10 mt-1 w-full bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                {searchResults.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-muted text-sm border-b last:border-b-0"
-                    onClick={() => selectCustomer(c)}
-                  >
-                    <span className="font-medium">{c.name}</span>
-                    <span className="text-muted-foreground ml-2">{c.phone ?? ""}</span>
-                  </button>
-                ))}
+              <div className="absolute z-10 mt-1 w-full bg-popover border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                {searchResults.map((c) => {
+                  const addr = c.addresses?.find((a) => a.is_primary) ?? c.addresses?.[0];
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-muted text-sm border-b last:border-b-0"
+                      onClick={() => selectCustomer(c)}
+                    >
+                      <div>
+                        <span className="font-medium">{c.name}</span>
+                        <span className="text-muted-foreground ml-2">{c.phone ?? ""}</span>
+                      </div>
+                      {addr && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {addr.street}, {addr.number} — {addr.neighborhood}
+                        </p>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
             {selectedCustomerId && (
-              <div className="flex items-center gap-2 mt-1">
-                <Badge variant="secondary" className="text-xs">Cliente selecionado: {nome}</Badge>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <Badge variant="secondary" className="text-xs">Cliente: {nome}</Badge>
                 <Button type="button" variant="ghost" size="sm" className="h-6 text-xs" onClick={clearSelection}>
-                  <X className="h-3 w-3 mr-1" /> Limpar seleção
+                  <X className="h-3 w-3 mr-1" /> Desvincular
                 </Button>
+              </div>
+            )}
+            {selectedCustomerId && customerAddresses.length > 1 && fulfillmentType === "delivery" && (
+              <div className="mt-2">
+                <Label>Selecionar endereço</Label>
+                <Select value={selectedAddressId ?? ""} onValueChange={(v) => {
+                  setSelectedAddressId(v);
+                  const addr = customerAddresses.find((a) => a.id === v);
+                  if (addr) applyAddress(addr);
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Escolha um endereço" /></SelectTrigger>
+                  <SelectContent>
+                    {customerAddresses.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.street}, {a.number} — {a.neighborhood}{a.is_primary ? " (principal)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
           </div>

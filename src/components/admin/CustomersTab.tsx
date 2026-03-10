@@ -73,12 +73,15 @@ export function CustomersTab() {
   const filtered = useMemo(() => {
     if (!search) return customers;
     const s = search.toLowerCase();
-    return customers.filter((c) =>
-      c.name.toLowerCase().includes(s) ||
-      (c.phone || "").includes(s) ||
-      (c.cnpj || "").includes(s) ||
-      (c.email || "").toLowerCase().includes(s),
-    );
+    return customers.filter((c) => {
+      if (c.name.toLowerCase().includes(s)) return true;
+      if ((c.phone || "").includes(s)) return true;
+      if ((c.cnpj || "").includes(s)) return true;
+      if ((c.email || "").toLowerCase().includes(s)) return true;
+      // Search by street in addresses
+      if (c.addresses?.some((a) => a.street.toLowerCase().includes(s) || a.neighborhood.toLowerCase().includes(s))) return true;
+      return false;
+    });
   }, [customers, search]);
 
   const getPrimaryAddress = (c: AdminCustomerRow) => {
@@ -203,16 +206,8 @@ export function CustomersTab() {
   };
 
   const handleCreateOrderShortcut = (customer: AdminCustomerRow) => {
-    localStorage.setItem(
-      PREFILL_KEY,
-      JSON.stringify({
-        name: customer.name,
-        phone: customer.phone,
-        type: customer.type,
-        cnpj: customer.cnpj,
-        email: customer.email,
-      }),
-    );
+    // Pass full customer object including addresses for prefill
+    localStorage.setItem(PREFILL_KEY, JSON.stringify(customer));
     navigate("/admin?tab=new-order");
   };
 
@@ -222,7 +217,7 @@ export function CustomersTab() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nome, telefone, CNPJ ou email..."
+            placeholder="Buscar por nome, telefone, CNPJ, email ou rua..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -253,7 +248,17 @@ export function CustomersTab() {
                 <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum cliente encontrado.</TableCell></TableRow>
               ) : filtered.map((c) => (
                 <TableRow key={c.id}>
-                  <TableCell className="font-medium">{c.name}</TableCell>
+                  <TableCell>
+                    <span className="font-medium">{c.name}</span>
+                    {(() => {
+                      const addr = getPrimaryAddress(c);
+                      return addr ? (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {addr.street}, {addr.number} — {addr.neighborhood}
+                        </p>
+                      ) : null;
+                    })()}
+                  </TableCell>
                   <TableCell className="text-sm">{c.phone ?? "—"}</TableCell>
                   <TableCell className="hidden md:table-cell"><Badge variant="outline">{c.type}</Badge></TableCell>
                   <TableCell className="hidden md:table-cell text-xs">{c.cnpj ?? "—"}</TableCell>
