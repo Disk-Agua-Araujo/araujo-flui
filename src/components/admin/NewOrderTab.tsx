@@ -159,6 +159,14 @@ export function NewOrderTab() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const applyAddress = (addr: CustomerAddress) => {
+    setRua(addr.street);
+    setNumero(addr.number);
+    setBairro(addr.neighborhood);
+    setCidade(addr.city || "Santo André");
+    setComplemento(addr.complement ?? "");
+  };
+
   const selectCustomer = (c: AdminCustomerRow) => {
     setSelectedCustomerId(c.id);
     setNome(c.name);
@@ -169,13 +177,15 @@ export function NewOrderTab() {
     setShowDropdown(false);
     setSearchQuery("");
 
-    const primaryAddr = c.addresses?.find((a) => a.is_primary) ?? c.addresses?.[0];
-    if (primaryAddr) {
-      setRua(primaryAddr.street);
-      setNumero(primaryAddr.number);
-      setBairro(primaryAddr.neighborhood);
-      setCidade(primaryAddr.city || "Santo André");
-      setComplemento(primaryAddr.complement ?? "");
+    const addrs = c.addresses ?? [];
+    setCustomerAddresses(addrs);
+
+    const primary = addrs.find((a) => a.is_primary) ?? addrs[0];
+    if (primary) {
+      setSelectedAddressId(primary.id);
+      applyAddress(primary);
+    } else {
+      setSelectedAddressId(null);
     }
   };
 
@@ -183,6 +193,8 @@ export function NewOrderTab() {
     setSelectedCustomerId(null);
     setSearchQuery("");
     setSearchResults([]);
+    setCustomerAddresses([]);
+    setSelectedAddressId(null);
   };
 
   const updateQty = (id: string, delta: number) => {
