@@ -294,7 +294,7 @@ serve(async (req) => {
     if (action === "customers.list") {
       const { data, error } = await adminClient
         .from("customers")
-        .select("*")
+        .select("*, addresses(id, street, number, neighborhood, city, state, complement, zip, reference, is_primary)")
         .order("created_at", { ascending: false })
         .limit(500);
       if (error) throw error;
