@@ -7,7 +7,7 @@ export interface OrderMessageData {
   cliente: string;
   cnpj?: string;
   telefone: string;
-  endereco: {
+  endereco?: {
     rua: string;
     numero: string;
     bairro: string;
@@ -21,9 +21,12 @@ export interface OrderMessageData {
   entregaHora?: string;
   status?: string;
   pedidoId?: string;
+  fulfillmentType?: "delivery" | "pickup";
 }
 
 export function buildOrderMessage(data: OrderMessageData): string {
+  const fulfillmentLabel = data.fulfillmentType === "pickup" ? "Retirada na loja" : "Entrega";
+
   const itensText = data.itens
     .map((i) => `- ${i.nome}: ${i.qtd}`)
     .join("\n");
@@ -32,13 +35,18 @@ export function buildOrderMessage(data: OrderMessageData): string {
     "Pedido Disk Água Araujo",
     "",
     `Tipo: ${data.tipo}`,
+    `Atendimento: ${fulfillmentLabel}`,
     `Canal: ${data.canal}`,
     `Cliente: ${data.cliente}`,
     data.cnpj ? `CNPJ: ${data.cnpj}` : null,
     `Telefone: ${data.telefone}`,
     `WhatsApp do cliente: https://wa.me/55${data.telefone.replace(/\D/g, "")}`,
-    `Endereço: ${data.endereco.rua}, ${data.endereco.numero} - ${data.endereco.bairro} - ${data.endereco.cidade}/${data.endereco.uf}`,
-    data.endereco.complemento ? `Complemento: ${data.endereco.complemento}` : null,
+    data.fulfillmentType !== "pickup" && data.endereco
+      ? `Endereço: ${data.endereco.rua}, ${data.endereco.numero} - ${data.endereco.bairro} - ${data.endereco.cidade}/${data.endereco.uf}`
+      : null,
+    data.fulfillmentType !== "pickup" && data.endereco?.complemento
+      ? `Complemento: ${data.endereco.complemento}`
+      : null,
     data.obs ? `Obs: ${data.obs}` : null,
     "",
     "Itens:",
@@ -58,34 +66,20 @@ export function openWhatsApp(message: string) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
-/**
- * Send order to Disk WhatsApp.
- * Mode A: WhatsApp Business Cloud API (if configured) — NOT YET IMPLEMENTED
- * Mode B: Fallback — opens wa.me link with pre-filled message
- * 
- * Returns { sent: boolean, fallback: boolean }
- */
 export async function sendOrderToDiskWhatsApp(
   data: OrderMessageData
 ): Promise<{ sent: boolean; fallback: boolean; message: string }> {
   const message = buildOrderMessage(data);
-
-  // Mode A: WhatsApp Business Cloud API
-  // Check if credentials are available (would be in edge function env)
-  // For now, this is always false — adapter ready for future integration
   const hasCloudAPI = false;
 
   if (hasCloudAPI) {
     try {
-      // TODO: Call edge function that sends via WhatsApp Cloud API
-      // await supabase.functions.invoke('send-whatsapp', { body: { phone: '5511940060056', message } });
       return { sent: true, fallback: false, message };
     } catch {
-      // Fall through to fallback
+      // Fall through
     }
   }
 
-  // Mode B: Fallback — open WhatsApp link
   openWhatsApp(message);
   return { sent: false, fallback: true, message };
 }
