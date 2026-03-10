@@ -405,26 +405,55 @@ export function NewOrderTab() {
               {searchLoading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />}
             </div>
             {showDropdown && searchResults.length > 0 && !selectedCustomerId && (
-              <div className="absolute z-10 mt-1 w-full bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                {searchResults.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-muted text-sm border-b last:border-b-0"
-                    onClick={() => selectCustomer(c)}
-                  >
-                    <span className="font-medium">{c.name}</span>
-                    <span className="text-muted-foreground ml-2">{c.phone ?? ""}</span>
-                  </button>
-                ))}
+              <div className="absolute z-10 mt-1 w-full bg-popover border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                {searchResults.map((c) => {
+                  const addr = c.addresses?.find((a) => a.is_primary) ?? c.addresses?.[0];
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-muted text-sm border-b last:border-b-0"
+                      onClick={() => selectCustomer(c)}
+                    >
+                      <div>
+                        <span className="font-medium">{c.name}</span>
+                        <span className="text-muted-foreground ml-2">{c.phone ?? ""}</span>
+                      </div>
+                      {addr && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {addr.street}, {addr.number} — {addr.neighborhood}
+                        </p>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
             {selectedCustomerId && (
-              <div className="flex items-center gap-2 mt-1">
-                <Badge variant="secondary" className="text-xs">Cliente selecionado: {nome}</Badge>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <Badge variant="secondary" className="text-xs">Cliente: {nome}</Badge>
                 <Button type="button" variant="ghost" size="sm" className="h-6 text-xs" onClick={clearSelection}>
-                  <X className="h-3 w-3 mr-1" /> Limpar seleção
+                  <X className="h-3 w-3 mr-1" /> Desvincular
                 </Button>
+              </div>
+            )}
+            {selectedCustomerId && customerAddresses.length > 1 && fulfillmentType === "delivery" && (
+              <div className="mt-2">
+                <Label>Selecionar endereço</Label>
+                <Select value={selectedAddressId ?? ""} onValueChange={(v) => {
+                  setSelectedAddressId(v);
+                  const addr = customerAddresses.find((a) => a.id === v);
+                  if (addr) applyAddress(addr);
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Escolha um endereço" /></SelectTrigger>
+                  <SelectContent>
+                    {customerAddresses.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.street}, {a.number} — {a.neighborhood}{a.is_primary ? " (principal)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
           </div>

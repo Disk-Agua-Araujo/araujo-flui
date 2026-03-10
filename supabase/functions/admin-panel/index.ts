@@ -376,14 +376,42 @@ serve(async (req) => {
       const q = ((payload?.query as string) || "").trim();
       if (q.length < 2) return json({ data: [] });
 
-      const { data, error } = await adminClient
+      // Search customers by name, phone, OR street (via addresses join)
+      // First search by name/phone
+      const { data: byNamePhone, error: e1 } = await adminClient
         .from("customers")
-        .select("id, name, phone, type, cnpj, email, addresses(street, number, neighborhood, city, state, complement, zip, reference, is_primary)")
+        .select("id, name, phone, type, cnpj, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, reference, is_primary)")
         .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
         .order("name")
         .limit(10);
-      if (error) throw error;
-      return json({ data });
+      if (e1) throw e1;
+
+      // Then search by street
+      const { data: addrMatches, error: e2 } = await adminClient
+        .from("addresses")
+        .select("customer_id")
+        .ilike("street", `%${q}%`)
+        .limit(20);
+      if (e2) throw e2;
+
+      const streetCustomerIds = (addrMatches || [])
+        .map((a: any) => a.customer_id)
+        .filter((id: string) => !(byNamePhone || []).some((c: any) => c.id === id));
+
+      let byStreet: any[] = [];
+      if (streetCustomerIds.length > 0) {
+        const { data: streetCustomers, error: e3 } = await adminClient
+          .from("customers")
+          .select("id, name, phone, type, cnpj, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, reference, is_primary)")
+          .in("id", streetCustomerIds)
+          .order("name")
+          .limit(10);
+        if (e3) throw e3;
+        byStreet = streetCustomers || [];
+      }
+
+      const combined = [...(byNamePhone || []), ...byStreet].slice(0, 15);
+      return json({ data: combined });
     }
 
     if (action === "products.list") {
