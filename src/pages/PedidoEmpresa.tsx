@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { FulfillmentToggle } from "@/components/FulfillmentToggle";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon, MessageCircle, MapPin, Minus, Plus, Loader2, Copy, Check } from "lucide-react";
@@ -22,6 +23,7 @@ import { createSiteOrder } from "@/services/orders";
 import { useProducts } from "@/hooks/use-products";
 import { trackEvent } from "@/hooks/use-analytics";
 import { useToast } from "@/hooks/use-toast";
+import { getMinDeliveryDate, isDeliveryDateDisabled } from "@/lib/deliveryRules";
 
 const horarios = [
   "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
@@ -34,6 +36,7 @@ export default function PedidoEmpresa() {
   const [saving, setSaving] = useState(false);
   const [waMessage, setWaMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [fulfillmentType, setFulfillmentType] = useState<"delivery" | "pickup">("delivery");
   const [orderSummary, setOrderSummary] = useState<{
     pedidoId: string;
     items: { name: string; qty: number }[];
@@ -82,8 +85,12 @@ export default function PedidoEmpresa() {
       toast({ title: "CNPJ inválido", description: "Verifique o número do CNPJ.", variant: "destructive" });
       return;
     }
-    if (!empresa || !telefone || !rua || !numero || !bairro || !cidade) {
-      toast({ title: "Campos obrigatórios", description: "Preencha todos os campos obrigatórios.", variant: "destructive" });
+    if (!empresa || !telefone) {
+      toast({ title: "Campos obrigatórios", description: "Preencha nome da empresa e telefone.", variant: "destructive" });
+      return;
+    }
+    if (fulfillmentType === "delivery" && (!rua || !numero || !bairro || !cidade)) {
+      toast({ title: "Campos obrigatórios", description: "Preencha todos os campos de endereço para entrega.", variant: "destructive" });
       return;
     }
     if (selectedItems.length === 0) {
@@ -94,6 +101,10 @@ export default function PedidoEmpresa() {
       toast({ title: "Selecione a data de entrega", variant: "destructive" });
       return;
     }
+    if (isDeliveryDateDisabled(date)) {
+      toast({ title: "Data de entrega inválida", description: "Pedidos realizados após as 14h só podem ser agendados para o próximo dia útil.", variant: "destructive" });
+      return;
+    }
     if (!hora) {
       toast({ title: "Selecione o horário de entrega", variant: "destructive" });
       return;
@@ -101,12 +112,14 @@ export default function PedidoEmpresa() {
 
     setSaving(true);
 
-    const fullAddr = `${rua}, ${numero} - ${bairro}, ${cidade} - SP`;
-    const geoResult = await validateDeliveryDistance(fullAddr);
-    if (geoResult.ok === false && geoResult.reason === "too_far") {
-      toast({ title: "Fora da área de entrega", description: `Entregamos até ${MAX_DELIVERY_KM}km.`, variant: "destructive" });
-      setSaving(false);
-      return;
+    if (fulfillmentType === "delivery") {
+      const fullAddr = `${rua}, ${numero} - ${bairro}, ${cidade} - SP`;
+      const geoResult = await validateDeliveryDistance(fullAddr);
+      if (geoResult.ok === false && geoResult.reason === "too_far") {
+        toast({ title: "Fora da área de entrega", description: `Entregamos até ${MAX_DELIVERY_KM}km.`, variant: "destructive" });
+        setSaving(false);
+        return;
+      }
     }
 
     try {
@@ -118,6 +131,7 @@ export default function PedidoEmpresa() {
         notes: obs || undefined,
         delivery_date: entregaData,
         delivery_time: hora,
+        fulfillment_type: fulfillmentType,
       });
 
       const pedidoId = orderResult.order_id.slice(0, 8).toUpperCase();
@@ -129,28 +143,28 @@ export default function PedidoEmpresa() {
         cliente: empresa,
         cnpj,
         telefone,
-        endereco: { rua, numero, bairro, cidade, uf: "SP", complemento },
+        endereco: fulfillmentType === "delivery" ? { rua, numero, bairro, cidade, uf: "SP", complemento } : undefined,
         obs,
         itens: selectedItems.map((i) => ({ nome: i.nome, qtd: i.qtd })),
         entregaData: entregaDataFormatted,
         entregaHora: hora,
         status: "Novo",
         pedidoId,
+        fulfillmentType,
       });
 
-      // Auto-open WhatsApp immediately after save
       openWhatsApp(message);
       setWaMessage(message);
 
       setOrderSummary({
         pedidoId,
         items: selectedItems.map((i) => ({ name: i.nome, qty: i.qtd })),
-        address: `${rua}, ${numero} - ${bairro}, ${cidade}/SP`,
+        address: fulfillmentType === "pickup" ? "Retirada na loja" : `${rua}, ${numero} - ${bairro}, ${cidade}/SP`,
         entregaData: entregaDataFormatted,
         entregaHora: hora,
       });
 
-      trackEvent("order_created", { tipo: "empresa", canal: "site", pedidoId });
+      trackEvent("order_created", { tipo: "empresa", canal: "site", pedidoId, fulfillmentType });
       setSubmitted(true);
       toast({ title: "Pedido registrado com sucesso!" });
     } catch (err: any) {
@@ -173,7 +187,6 @@ export default function PedidoEmpresa() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Order summary */}
               <div className="bg-muted rounded-lg p-4 space-y-2 text-sm">
                 <p className="font-mono text-xs text-muted-foreground">Pedido #{orderSummary.pedidoId}</p>
                 <ul className="space-y-1">
@@ -212,9 +225,16 @@ export default function PedidoEmpresa() {
       <Header />
       <main className="flex-1 container py-8 max-w-2xl">
         <h1 className="text-3xl font-bold mb-2">Pedido para Empresas</h1>
-        <p className="text-muted-foreground mb-6">Preencha os dados abaixo para agendar seu pedido. Entregamos até {MAX_DELIVERY_KM}km da loja.</p>
+        <p className="text-muted-foreground mb-6">Preencha os dados abaixo para agendar seu pedido.</p>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          <Card>
+            <CardHeader><CardTitle className="text-lg">Tipo de atendimento</CardTitle></CardHeader>
+            <CardContent>
+              <FulfillmentToggle value={fulfillmentType} onChange={setFulfillmentType} />
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader><CardTitle className="text-lg">Dados da Empresa</CardTitle></CardHeader>
             <CardContent className="space-y-4">
@@ -226,22 +246,24 @@ export default function PedidoEmpresa() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader><CardTitle className="text-lg flex items-center gap-2"><MapPin className="h-5 w-5" /> Endereço de entrega</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-2"><Label htmlFor="rua">Rua *</Label><Input id="rua" value={rua} onChange={(e) => setRua(e.target.value)} required /></div>
-                <div><Label htmlFor="numero">Número *</Label><Input id="numero" value={numero} onChange={(e) => setNumero(e.target.value)} required /></div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div><Label htmlFor="bairro">Bairro *</Label><Input id="bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} required /></div>
-                <div><Label htmlFor="cidade">Cidade *</Label><Input id="cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} required /></div>
-                <div><Label htmlFor="cep">CEP</Label><Input id="cep" value={cep} onChange={(e) => setCep(e.target.value)} /></div>
-              </div>
-              <div><Label htmlFor="complemento">Complemento</Label><Input id="complemento" value={complemento} onChange={(e) => setComplemento(e.target.value)} /></div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground"><MapPin className="h-4 w-4 text-primary" /> Entregamos até {MAX_DELIVERY_KM}km (Santo André e região)</div>
-            </CardContent>
-          </Card>
+          {fulfillmentType === "delivery" && (
+            <Card>
+              <CardHeader><CardTitle className="text-lg flex items-center gap-2"><MapPin className="h-5 w-5" /> Endereço de entrega</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-2"><Label htmlFor="rua">Rua *</Label><Input id="rua" value={rua} onChange={(e) => setRua(e.target.value)} required /></div>
+                  <div><Label htmlFor="numero">Número *</Label><Input id="numero" value={numero} onChange={(e) => setNumero(e.target.value)} required /></div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div><Label htmlFor="bairro">Bairro *</Label><Input id="bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} required /></div>
+                  <div><Label htmlFor="cidade">Cidade *</Label><Input id="cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} required /></div>
+                  <div><Label htmlFor="cep">CEP</Label><Input id="cep" value={cep} onChange={(e) => setCep(e.target.value)} /></div>
+                </div>
+                <div><Label htmlFor="complemento">Complemento</Label><Input id="complemento" value={complemento} onChange={(e) => setComplemento(e.target.value)} /></div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground"><MapPin className="h-4 w-4 text-primary" /> Entregamos até {MAX_DELIVERY_KM}km (Santo André e região)</div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle className="text-lg">Produtos</CardTitle></CardHeader>
@@ -276,9 +298,12 @@ export default function PedidoEmpresa() {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={date} onSelect={setDate} disabled={(d) => d < new Date()} locale={ptBR} className="p-3 pointer-events-auto" />
+                      <Calendar mode="single" selected={date} onSelect={setDate} disabled={(d) => isDeliveryDateDisabled(d)} locale={ptBR} className="p-3 pointer-events-auto" />
                     </PopoverContent>
                   </Popover>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Após 14h, só dias úteis a partir de amanhã.
+                  </p>
                 </div>
                 <div>
                   <Label>Horário de entrega *</Label>

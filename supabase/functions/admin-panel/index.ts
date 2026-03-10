@@ -181,7 +181,7 @@ serve(async (req) => {
       const { data, error } = await adminClient
         .from("orders")
         .select(`
-          id, channel, delivery_date, delivery_time, status, notes, created_at,
+          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type,
           customers(id, name, phone, cnpj),
           addresses(street, number, neighborhood, city, complement),
           order_items(qty, products(name))
@@ -227,51 +227,60 @@ serve(async (req) => {
       const customer = payload?.customer;
       const address = payload?.address;
       const items = payload?.items as { product_id: string; qty: number }[];
-
-      if (!customer?.name || !customer?.phone || !address?.street || !address?.number || !address?.neighborhood) {
-        throw new Error("Preencha os campos obrigatórios do cliente e endereço.");
-      }
+      const fulfillmentType = payload?.fulfillment_type || "delivery";
 
       if (!Array.isArray(items) || items.length === 0) {
         throw new Error("Selecione ao menos um produto.");
       }
 
-      const customerRow = await upsertCustomerByPhone({
-        name: customer.name,
-        phone: customer.phone,
-        type: customer.type,
-        cnpj: customer.cnpj,
-        email: customer.email,
-      });
+      let customerId: string | null = null;
+      let addressId: string | null = null;
 
-      const { data: addressRow, error: addressError } = await adminClient
-        .from("addresses")
-        .insert({
-          customer_id: customerRow.id,
-          street: address.street,
-          number: address.number,
-          neighborhood: address.neighborhood,
-          city: address.city || "Santo André",
-          state: address.state || "SP",
-          complement: address.complement || null,
-          zip: address.zip || null,
-          is_primary: true,
-        })
-        .select("id")
-        .single();
+      // Customer is optional for pickup / walk-in orders
+      if (customer?.name && customer?.phone) {
+        const customerRow = await upsertCustomerByPhone({
+          name: customer.name,
+          phone: customer.phone,
+          type: customer.type || "PF",
+          cnpj: customer.cnpj,
+          email: customer.email,
+        });
+        customerId = customerRow.id;
 
-      if (addressError) throw addressError;
+        // Address only needed for delivery with customer
+        if (address?.street && address?.number && address?.neighborhood && fulfillmentType === "delivery") {
+          const { data: addressRow, error: addressError } = await adminClient
+            .from("addresses")
+            .insert({
+              customer_id: customerRow.id,
+              street: address.street,
+              number: address.number,
+              neighborhood: address.neighborhood,
+              city: address.city || "Santo André",
+              state: address.state || "SP",
+              complement: address.complement || null,
+              zip: address.zip || null,
+              is_primary: true,
+            })
+            .select("id")
+            .single();
+
+          if (addressError) throw addressError;
+          addressId = addressRow.id;
+        }
+      }
 
       const { data: order, error: orderError } = await adminClient
         .from("orders")
         .insert({
           channel,
-          customer_id: customerRow.id,
-          address_id: addressRow.id,
+          customer_id: customerId,
+          address_id: addressId,
           notes: payload?.notes || null,
           delivery_date: payload?.delivery_date || null,
           delivery_time: payload?.delivery_time || null,
           status: "novo",
+          fulfillment_type: fulfillmentType,
         })
         .select("id")
         .single();
@@ -288,7 +297,7 @@ serve(async (req) => {
 
       if (itemsError) throw itemsError;
 
-      return json({ data: { order_id: order.id, customer_id: customerRow.id } });
+      return json({ data: { order_id: order.id, customer_id: customerId } });
     }
 
     if (action === "customers.list") {
@@ -459,7 +468,7 @@ serve(async (req) => {
       }
       const { data, error } = await adminClient
         .from("orders")
-        .select("id, channel, status, delivery_date, created_at, customers(name), order_items(qty, products(name))")
+        .select("id, channel, status, delivery_date, created_at, fulfillment_type, customers(name), order_items(qty, products(name))")
         .order("created_at", { ascending: false })
         .limit(1000);
       if (error) throw error;

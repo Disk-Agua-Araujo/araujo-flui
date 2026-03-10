@@ -18,8 +18,9 @@ export interface SiteOrderData {
   };
   items: { product_id: string; qty: number }[];
   notes?: string;
-  delivery_date?: string; // yyyy-MM-dd
+  delivery_date?: string;
   delivery_time?: string;
+  fulfillment_type?: "delivery" | "pickup";
 }
 
 export interface SiteOrderResult {
@@ -27,11 +28,6 @@ export interface SiteOrderResult {
   customer_id: string;
 }
 
-/**
- * Creates a full order in the database (customer + address + order + items).
- * Uses a SECURITY DEFINER function to handle customer deduplication
- * and bypass RLS for anonymous site visitors.
- */
 export async function createSiteOrder(data: SiteOrderData): Promise<SiteOrderResult> {
   const { data: result, error } = await (supabase.rpc as any)("create_full_site_order", {
     p_customer_name: data.customer.name,
@@ -49,6 +45,7 @@ export async function createSiteOrder(data: SiteOrderData): Promise<SiteOrderRes
     p_delivery_date: data.delivery_date || null,
     p_delivery_time: data.delivery_time || null,
     p_items: data.items,
+    p_fulfillment_type: data.fulfillment_type || "delivery",
   });
 
   if (error) throw new Error(`Erro ao salvar pedido: ${error.message}`);

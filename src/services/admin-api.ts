@@ -48,6 +48,7 @@ export type AdminOrderRow = {
   status: string;
   notes: string | null;
   created_at: string;
+  fulfillment_type: string;
   customers: { id: string; name: string; phone: string | null; cnpj: string | null } | null;
   addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null } | null;
   order_items: { qty: number; products: { name: string } | null }[];
@@ -111,12 +112,13 @@ export const adminApi = {
 
   createAdminOrder: (payload: {
     channel: "admin" | "ligacao" | "whatsapp";
-    customer: { name: string; phone: string; type: "PF" | "PJ"; cnpj?: string | null; email?: string | null };
-    address: { street: string; number: string; neighborhood: string; city?: string; state?: string; complement?: string; zip?: string };
+    customer?: { name: string; phone: string; type: "PF" | "PJ"; cnpj?: string | null; email?: string | null };
+    address?: { street: string; number: string; neighborhood: string; city?: string; state?: string; complement?: string; zip?: string };
     items: { product_id: string; qty: number }[];
     notes?: string;
     delivery_date?: string;
     delivery_time?: string;
+    fulfillment_type?: "delivery" | "pickup";
   }) => callAdminApi<{ order_id: string; customer_id: string }>("orders.createAdmin", payload),
 
   listCustomers: () => callAdminApi<AdminCustomerRow[]>("customers.list"),

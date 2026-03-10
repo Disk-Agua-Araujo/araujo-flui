@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { openWhatsApp, buildOrderMessage } from "@/services/whatsapp";
-import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
@@ -31,6 +31,21 @@ const statusLabels: Record<string, string> = {
 };
 
 const PAGE_SIZE = 20;
+
+function FulfillmentBadge({ type }: { type?: string }) {
+  if (type === "pickup") {
+    return (
+      <Badge variant="secondary" className="text-xs gap-1">
+        <Store className="h-3 w-3" /> Retirada
+      </Badge>
+    );
+  }
+  return (
+    <Badge className="text-xs gap-1 bg-[#033D7B] hover:bg-[#033D7B]/90 text-white">
+      <Truck className="h-3 w-3" /> Entrega
+    </Badge>
+  );
+}
 
 export function OrdersTab() {
   const { toast } = useToast();
@@ -108,10 +123,10 @@ export function OrdersTab() {
   const handleLabel = (o: AdminOrderRow) => {
     setLabelData({
       pedidoId: o.id.slice(0, 8).toUpperCase(),
-      cliente: o.customers?.name ?? "—",
+      cliente: o.customers?.name ?? "Retirada / Sem cadastro",
       endereco: o.addresses
         ? `${o.addresses.street}, ${o.addresses.number} - ${o.addresses.neighborhood}, ${o.addresses.city}`
-        : "—",
+        : ((o as any).fulfillment_type === "pickup" ? "Retirada na loja" : "—"),
       complemento: o.addresses?.complement ?? undefined,
       itens: o.order_items.map((i) => ({ nome: i.products?.name ?? "—", qtd: i.qty })),
       entregaData: o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM/yyyy") : undefined,
@@ -123,23 +138,24 @@ export function OrdersTab() {
     const msg = buildOrderMessage({
       tipo: o.customers?.cnpj ? "EMPRESA" : "VAREJO",
       canal: o.channel as any,
-      cliente: o.customers?.name ?? "—",
+      cliente: o.customers?.name ?? "Retirada / Sem cadastro",
       cnpj: o.customers?.cnpj ?? undefined,
       telefone: o.customers?.phone ?? "",
-      endereco: {
-        rua: o.addresses?.street ?? "",
-        numero: o.addresses?.number ?? "",
-        bairro: o.addresses?.neighborhood ?? "",
-        cidade: o.addresses?.city ?? "",
+      endereco: o.addresses ? {
+        rua: o.addresses.street ?? "",
+        numero: o.addresses.number ?? "",
+        bairro: o.addresses.neighborhood ?? "",
+        cidade: o.addresses.city ?? "",
         uf: "SP",
-        complemento: o.addresses?.complement ?? undefined,
-      },
+        complemento: o.addresses.complement ?? undefined,
+      } : undefined,
       obs: o.notes ?? undefined,
       itens: o.order_items.map((i) => ({ nome: i.products?.name ?? "—", qtd: i.qty })),
       entregaData: o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM/yyyy") : undefined,
       entregaHora: o.delivery_time ?? undefined,
       status: statusLabels[o.status] ?? o.status,
       pedidoId: o.id.slice(0, 8).toUpperCase(),
+      fulfillmentType: (o as any).fulfillment_type ?? "delivery",
     });
     openWhatsApp(msg);
   };
@@ -189,6 +205,7 @@ export function OrdersTab() {
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Cliente</TableHead>
+                <TableHead className="hidden md:table-cell">Tipo</TableHead>
                 <TableHead className="hidden md:table-cell">Canal</TableHead>
                 <TableHead className="hidden md:table-cell">Entrega</TableHead>
                 <TableHead className="hidden md:table-cell">Criado</TableHead>
@@ -199,14 +216,17 @@ export function OrdersTab() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
               ) : paginatedOrders.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
               ) : (
                 paginatedOrders.map((o) => (
                   <TableRow key={o.id}>
                     <TableCell className="font-mono text-xs">{o.id.slice(0, 8)}</TableCell>
-                    <TableCell className="font-medium">{o.customers?.name ?? "—"}</TableCell>
+                    <TableCell className="font-medium">{o.customers?.name ?? "Retirada / Sem cadastro"}</TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <FulfillmentBadge type={(o as any).fulfillment_type} />
+                    </TableCell>
                     <TableCell className="hidden md:table-cell text-xs">{o.channel}</TableCell>
                     <TableCell className="hidden md:table-cell text-xs">
                       {o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM") : "—"}
@@ -249,20 +269,10 @@ export function OrdersTab() {
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">Página {currentPage} de {totalPages}</p>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-            >
+            <Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}>
               <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-            >
+            <Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>
               Próxima <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           </div>
@@ -274,10 +284,13 @@ export function OrdersTab() {
           <DialogHeader><DialogTitle>Pedido {selectedOrder?.id.slice(0, 8).toUpperCase()}</DialogTitle></DialogHeader>
           {selectedOrder && (
             <div className="space-y-3 text-sm">
-              <p><strong>Cliente:</strong> {selectedOrder.customers?.name}</p>
+              <p><strong>Cliente:</strong> {selectedOrder.customers?.name ?? "Retirada / Sem cadastro"}</p>
               <p><strong>Telefone:</strong> {selectedOrder.customers?.phone ?? "—"}</p>
               {selectedOrder.customers?.cnpj && <p><strong>CNPJ:</strong> {selectedOrder.customers.cnpj}</p>}
-              <p><strong>Endereço:</strong> {selectedOrder.addresses ? `${selectedOrder.addresses.street}, ${selectedOrder.addresses.number} - ${selectedOrder.addresses.neighborhood}` : "—"}</p>
+              <p><strong>Atendimento:</strong> <FulfillmentBadge type={(selectedOrder as any).fulfillment_type} /></p>
+              {(selectedOrder as any).fulfillment_type !== "pickup" && (
+                <p><strong>Endereço:</strong> {selectedOrder.addresses ? `${selectedOrder.addresses.street}, ${selectedOrder.addresses.number} - ${selectedOrder.addresses.neighborhood}` : "—"}</p>
+              )}
               {selectedOrder.addresses?.complement && <p><strong>Complemento:</strong> {selectedOrder.addresses.complement}</p>}
               <p><strong>Canal:</strong> {selectedOrder.channel}</p>
               <p><strong>Entrega:</strong> {selectedOrder.delivery_date ?? "—"} {selectedOrder.delivery_time ?? ""}</p>
