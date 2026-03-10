@@ -73,12 +73,15 @@ export function CustomersTab() {
   const filtered = useMemo(() => {
     if (!search) return customers;
     const s = search.toLowerCase();
-    return customers.filter((c) =>
-      c.name.toLowerCase().includes(s) ||
-      (c.phone || "").includes(s) ||
-      (c.cnpj || "").includes(s) ||
-      (c.email || "").toLowerCase().includes(s),
-    );
+    return customers.filter((c) => {
+      if (c.name.toLowerCase().includes(s)) return true;
+      if ((c.phone || "").includes(s)) return true;
+      if ((c.cnpj || "").includes(s)) return true;
+      if ((c.email || "").toLowerCase().includes(s)) return true;
+      // Search by street in addresses
+      if (c.addresses?.some((a) => a.street.toLowerCase().includes(s) || a.neighborhood.toLowerCase().includes(s))) return true;
+      return false;
+    });
   }, [customers, search]);
 
   const getPrimaryAddress = (c: AdminCustomerRow) => {
