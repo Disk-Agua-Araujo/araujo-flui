@@ -129,6 +129,16 @@ export const adminApi = {
     type: "PF" | "PJ";
     cnpj?: string | null;
     email?: string | null;
+    address?: {
+      street: string;
+      number: string;
+      neighborhood: string;
+      city?: string;
+      state?: string;
+      complement?: string | null;
+      zip?: string | null;
+      reference?: string | null;
+    };
   }) => callAdminApi<AdminCustomerRow>("customers.save", payload),
 
   listProducts: () => callAdminApi<{ products: AdminProductRow[]; tiers: AdminTierRow[] }>("products.list"),
