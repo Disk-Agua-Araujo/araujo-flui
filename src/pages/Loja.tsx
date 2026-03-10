@@ -10,6 +10,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FulfillmentToggle } from "@/components/FulfillmentToggle";
 import {
   ShoppingCart, Plus, Minus, Trash2, MessageCircle, Droplets, Sparkles, Archive, Zap, MapPin, Check, Copy, Loader2,
 } from "lucide-react";
@@ -44,6 +45,7 @@ export default function Loja() {
   const [complemento, setComplemento] = useState("");
   const [pagamento, setPagamento] = useState("");
   const [obs, setObs] = useState("");
+  const [fulfillmentType, setFulfillmentType] = useState<"delivery" | "pickup">("delivery");
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [waMessage, setWaMessage] = useState("");
@@ -56,8 +58,12 @@ export default function Loja() {
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nome || !whatsapp || !rua || !numero || !bairro) {
-      toast({ title: "Preencha todos os campos obrigatórios", variant: "destructive" });
+    if (!nome || !whatsapp) {
+      toast({ title: "Preencha nome e WhatsApp", variant: "destructive" });
+      return;
+    }
+    if (fulfillmentType === "delivery" && (!rua || !numero || !bairro)) {
+      toast({ title: "Preencha o endereço completo para entrega", variant: "destructive" });
       return;
     }
     if (!pagamento) {
@@ -67,12 +73,14 @@ export default function Loja() {
 
     setSaving(true);
 
-    const fullAddr = `${rua}, ${numero} - ${bairro}, Santo André - SP`;
-    const geoResult = await validateDeliveryDistance(fullAddr);
-    if (geoResult.ok === false && geoResult.reason === "too_far") {
-      toast({ title: "Fora da área de entrega", description: `Entregamos até ${MAX_DELIVERY_KM}km.`, variant: "destructive" });
-      setSaving(false);
-      return;
+    if (fulfillmentType === "delivery") {
+      const fullAddr = `${rua}, ${numero} - ${bairro}, Santo André - SP`;
+      const geoResult = await validateDeliveryDistance(fullAddr);
+      if (geoResult.ok === false && geoResult.reason === "too_far") {
+        toast({ title: "Fora da área de entrega", description: `Entregamos até ${MAX_DELIVERY_KM}km.`, variant: "destructive" });
+        setSaving(false);
+        return;
+      }
     }
 
     try {
@@ -81,6 +89,7 @@ export default function Loja() {
         address: { street: rua, number: numero, neighborhood: bairro, city: "Santo André", state: "SP", complement: complemento },
         items: items.map((i) => ({ product_id: i.product.id, qty: i.qty })),
         notes: `Pagamento: ${pagamento}. ${obs}`.trim(),
+        fulfillment_type: fulfillmentType,
       });
 
       const pedidoId = orderResult.order_id.slice(0, 8).toUpperCase();
@@ -91,24 +100,24 @@ export default function Loja() {
         canal: "site",
         cliente: nome,
         telefone: whatsapp,
-        endereco: { rua, numero, bairro, cidade: "Santo André", uf: "SP", complemento },
+        endereco: fulfillmentType === "delivery" ? { rua, numero, bairro, cidade: "Santo André", uf: "SP", complemento } : undefined,
         obs: `Pagamento: ${pagamento}. ${obs}`,
         itens,
         status: "Novo",
         pedidoId,
+        fulfillmentType,
       });
 
-      // Auto-open WhatsApp immediately after save
       openWhatsApp(message);
       setWaMessage(message);
 
       setOrderSummary({
         pedidoId,
         items: items.map((i) => ({ name: i.product.name, qty: i.qty })),
-        address: fullAddr,
+        address: fulfillmentType === "pickup" ? "Retirada na loja" : `${rua}, ${numero} - ${bairro}, Santo André - SP`,
       });
 
-      trackEvent("order_created", { tipo: "varejo", canal: "site", pedidoId });
+      trackEvent("order_created", { tipo: "varejo", canal: "site", pedidoId, fulfillmentType });
       setSubmitted(true);
       clearCart();
       toast({ title: "Pedido registrado com sucesso!" });
@@ -140,7 +149,6 @@ export default function Loja() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Order summary */}
               <div className="bg-muted rounded-lg p-4 space-y-2 text-sm">
                 <p className="font-mono text-xs text-muted-foreground">Pedido #{orderSummary.pedidoId}</p>
                 <ul className="space-y-1">
@@ -212,14 +220,22 @@ export default function Loja() {
                     </div>
                   ))}
                   <form onSubmit={handleCheckout} className="space-y-3 pt-4 border-t">
+                    <div>
+                      <Label className="text-xs font-medium mb-1 block">Tipo de atendimento</Label>
+                      <FulfillmentToggle value={fulfillmentType} onChange={setFulfillmentType} />
+                    </div>
                     <div><Label htmlFor="c-nome">Nome *</Label><Input id="c-nome" value={nome} onChange={(e) => setNome(e.target.value)} required /></div>
                     <div><Label htmlFor="c-wa">WhatsApp *</Label><Input id="c-wa" type="tel" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} required /></div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="col-span-2"><Label htmlFor="c-rua">Rua *</Label><Input id="c-rua" value={rua} onChange={(e) => setRua(e.target.value)} required /></div>
-                      <div><Label htmlFor="c-num">Nº *</Label><Input id="c-num" value={numero} onChange={(e) => setNumero(e.target.value)} required /></div>
-                    </div>
-                    <div><Label htmlFor="c-bairro">Bairro *</Label><Input id="c-bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} required /></div>
-                    <div><Label htmlFor="c-comp">Complemento</Label><Input id="c-comp" value={complemento} onChange={(e) => setComplemento(e.target.value)} /></div>
+                    {fulfillmentType === "delivery" && (
+                      <>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-2"><Label htmlFor="c-rua">Rua *</Label><Input id="c-rua" value={rua} onChange={(e) => setRua(e.target.value)} required /></div>
+                          <div><Label htmlFor="c-num">Nº *</Label><Input id="c-num" value={numero} onChange={(e) => setNumero(e.target.value)} required /></div>
+                        </div>
+                        <div><Label htmlFor="c-bairro">Bairro *</Label><Input id="c-bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} required /></div>
+                        <div><Label htmlFor="c-comp">Complemento</Label><Input id="c-comp" value={complemento} onChange={(e) => setComplemento(e.target.value)} /></div>
+                      </>
+                    )}
                     <div>
                       <Label>Pagamento *</Label>
                       <Select value={pagamento} onValueChange={setPagamento}>
@@ -228,7 +244,9 @@ export default function Loja() {
                       </Select>
                     </div>
                     <div><Label htmlFor="c-obs">Observações</Label><Textarea id="c-obs" value={obs} onChange={(e) => setObs(e.target.value)} rows={2} /></div>
-                    <div className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> Entregamos até {MAX_DELIVERY_KM}km</div>
+                    {fulfillmentType === "delivery" && (
+                      <div className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> Entregamos até {MAX_DELIVERY_KM}km</div>
+                    )}
                     <Button type="submit" className="w-full bg-whatsapp hover:bg-whatsapp-dark text-white" disabled={saving}>
                       {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <MessageCircle className="h-4 w-4 mr-1" />}
                       {saving ? "Salvando..." : "Finalizar pedido"}

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
+import { FulfillmentToggle } from "@/components/FulfillmentToggle";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon, Minus, Plus, Save, Search, X, Loader2 } from "lucide-react";
@@ -20,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { trackEvent } from "@/hooks/use-analytics";
 import { adminApi, type AdminProductRow, type AdminCustomerRow } from "@/services/admin-api";
 import { useDebounce } from "@/hooks/use-debounce";
+import { getMinDeliveryDate, isDeliveryDateDisabled } from "@/lib/deliveryRules";
 
 const horarios = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
 const canais = [
@@ -50,6 +52,7 @@ export function NewOrderTab() {
 
   const [canal, setCanal] = useState<(typeof canais)[number]["value"]>("ligacao");
   const [tipo, setTipo] = useState<"PF" | "PJ">("PF");
+  const [fulfillmentType, setFulfillmentType] = useState<"delivery" | "pickup">("delivery");
   const [nome, setNome] = useState("");
   const [cnpj, setCnpj] = useState("");
   const [telefone, setTelefone] = useState("");
@@ -63,6 +66,8 @@ export function NewOrderTab() {
   const [date, setDate] = useState<Date>();
   const [hora, setHora] = useState("");
   const [qtys, setQtys] = useState<Record<string, number>>({});
+
+  const isEnterprise = tipo === "PJ";
 
   const fetchProducts = async () => {
     try {
@@ -139,7 +144,6 @@ export function NewOrderTab() {
     setShowDropdown(false);
     setSearchQuery("");
 
-    // Fill address from primary address
     const primaryAddr = c.addresses?.find((a) => a.is_primary) ?? c.addresses?.[0];
     if (primaryAddr) {
       setRua(primaryAddr.street);
@@ -173,6 +177,7 @@ export function NewOrderTab() {
     setLabelData(null);
     setCanal("ligacao");
     setTipo("PF");
+    setFulfillmentType("delivery");
     setNome("");
     setTelefone("");
     setEmail("");
@@ -194,14 +199,15 @@ export function NewOrderTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!nome.trim() || !telefone.trim() || !rua.trim() || !numero.trim() || !bairro.trim()) {
-      toast({ title: "Campos obrigatórios", description: "Preencha nome, telefone e endereço completo.", variant: "destructive" });
-      return;
-    }
-
-    if (tipo === "PJ" && !cnpj.trim()) {
-      toast({ title: "CNPJ obrigatório", description: "Para Pessoa Jurídica, informe o CNPJ.", variant: "destructive" });
-      return;
+    // For pickup orders, customer fields are optional
+    if (fulfillmentType === "delivery") {
+      if (nome.trim() && telefone.trim()) {
+        // Has customer - validate address
+        if (!rua.trim() || !numero.trim() || !bairro.trim()) {
+          toast({ title: "Campos obrigatórios", description: "Preencha o endereço completo para entrega.", variant: "destructive" });
+          return;
+        }
+      }
     }
 
     if (tipo === "PJ" && cnpj && !isValidCnpj(cnpj)) {
@@ -214,30 +220,42 @@ export function NewOrderTab() {
       return;
     }
 
+    // Enterprise delivery date validation
+    if (isEnterprise && date) {
+      if (isDeliveryDateDisabled(date)) {
+        toast({ title: "Data de entrega inválida", description: "Pedidos realizados após as 14h só podem ser agendados para o próximo dia útil.", variant: "destructive" });
+        return;
+      }
+    }
+
     setSaving(true);
 
     try {
+      const hasCustomer = nome.trim() && telefone.trim();
+      const hasAddress = rua.trim() && numero.trim() && bairro.trim();
+
       const result = await adminApi.createAdminOrder({
         channel: canal,
-        customer: {
+        customer: hasCustomer ? {
           name: nome.trim(),
           phone: telefone,
           type: tipo,
           cnpj: tipo === "PJ" ? cnpj : null,
           email: email.trim() || null,
-        },
-        address: {
+        } : undefined,
+        address: (hasAddress && fulfillmentType === "delivery") ? {
           street: rua.trim(),
           number: numero.trim(),
           neighborhood: bairro.trim(),
           city: cidade.trim(),
           state: "SP",
           complement: complemento.trim() || undefined,
-        },
+        } : undefined,
         items: selectedItems.map((i) => ({ product_id: i.productId, qty: i.qtd })),
         notes: obs.trim() || undefined,
         delivery_date: date ? format(date, "yyyy-MM-dd") : undefined,
         delivery_time: hora || undefined,
+        fulfillment_type: fulfillmentType,
       });
 
       const pedidoId = result.order_id.slice(0, 8).toUpperCase();
@@ -245,31 +263,34 @@ export function NewOrderTab() {
 
       setLabelData({
         pedidoId,
-        cliente: nome,
-        endereco: `${rua}, ${numero} - ${bairro}, ${cidade}/SP`,
-        complemento,
+        cliente: nome || "Retirada / Sem cadastro",
+        endereco: fulfillmentType === "pickup" ? "Retirada na loja" : (hasAddress ? `${rua}, ${numero} - ${bairro}, ${cidade}/SP` : "—"),
+        complemento: fulfillmentType === "delivery" ? complemento : undefined,
         itens: selectedItems.map((i) => ({ nome: i.nome, qtd: i.qtd })),
         entregaData,
         entregaHora: hora || undefined,
       });
 
-      const message = buildOrderMessage({
-        tipo: tipo === "PJ" ? "EMPRESA" : "VAREJO",
-        canal,
-        cliente: nome,
-        cnpj: tipo === "PJ" ? cnpj : undefined,
-        telefone,
-        endereco: { rua, numero, bairro, cidade, uf: "SP", complemento },
-        obs,
-        itens: selectedItems.map((i) => ({ nome: i.nome, qtd: i.qtd })),
-        entregaData,
-        entregaHora: hora || undefined,
-        status: "Novo",
-        pedidoId,
-      });
+      if (hasCustomer) {
+        const message = buildOrderMessage({
+          tipo: tipo === "PJ" ? "EMPRESA" : "VAREJO",
+          canal,
+          cliente: nome,
+          cnpj: tipo === "PJ" ? cnpj : undefined,
+          telefone,
+          endereco: (hasAddress && fulfillmentType === "delivery") ? { rua, numero, bairro, cidade, uf: "SP", complemento } : undefined,
+          obs,
+          itens: selectedItems.map((i) => ({ nome: i.nome, qtd: i.qtd })),
+          entregaData,
+          entregaHora: hora || undefined,
+          status: "Novo",
+          pedidoId,
+          fulfillmentType,
+        });
+        openWhatsApp(message);
+      }
 
-      openWhatsApp(message);
-      trackEvent("order_created", { tipo: tipo === "PJ" ? "empresa" : "varejo", canal, pedidoId });
+      trackEvent("order_created", { tipo: tipo === "PJ" ? "empresa" : "varejo", canal, pedidoId, fulfillmentType });
       setSubmitted(true);
       toast({ title: "Pedido salvo com sucesso!" });
     } catch (err) {
@@ -301,24 +322,30 @@ export function NewOrderTab() {
   return (
     <form onSubmit={handleSubmit} className="max-w-2xl mx-auto space-y-6">
       <Card>
-        <CardHeader><CardTitle className="text-lg">Canal e tipo</CardTitle></CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4">
-          <div>
-            <Label>Canal *</Label>
-            <Select value={canal} onValueChange={(v) => setCanal(v as (typeof canais)[number]["value"])}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>{canais.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
-            </Select>
+        <CardHeader><CardTitle className="text-lg">Canal, tipo e atendimento</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Canal *</Label>
+              <Select value={canal} onValueChange={(v) => setCanal(v as (typeof canais)[number]["value"])}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{canais.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Tipo *</Label>
+              <Select value={tipo} onValueChange={(v) => setTipo(v as "PF" | "PJ")}> 
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PF">Pessoa Física</SelectItem>
+                  <SelectItem value="PJ">Pessoa Jurídica</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div>
-            <Label>Tipo *</Label>
-            <Select value={tipo} onValueChange={(v) => setTipo(v as "PF" | "PJ")}> 
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="PF">Pessoa Física</SelectItem>
-                <SelectItem value="PJ">Pessoa Jurídica</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label>Tipo de atendimento</Label>
+            <FulfillmentToggle value={fulfillmentType} onChange={setFulfillmentType} className="mt-1" />
           </div>
         </CardContent>
       </Card>
@@ -365,34 +392,37 @@ export function NewOrderTab() {
             )}
           </div>
 
+          <p className="text-xs text-muted-foreground">Campos opcionais — deixe vazio para retirada sem cadastro.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div><Label>Nome *</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} required /></div>
-            <div><Label>Telefone *</Label><Input type="tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} required /></div>
+            <div><Label>Nome</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} /></div>
+            <div><Label>Telefone</Label><Input type="tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} /></div>
           </div>
           <div><Label>Email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
           {tipo === "PJ" && (
             <div>
-              <Label>CNPJ *</Label>
+              <Label>CNPJ {nome.trim() ? "*" : ""}</Label>
               <Input value={cnpj} onChange={(e) => setCnpj(maskCnpj(e.target.value))} maxLength={18} />
             </div>
           )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader><CardTitle className="text-lg">Endereço</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div className="col-span-2"><Label>Rua *</Label><Input value={rua} onChange={(e) => setRua(e.target.value)} required /></div>
-            <div><Label>Nº *</Label><Input value={numero} onChange={(e) => setNumero(e.target.value)} required /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div><Label>Bairro *</Label><Input value={bairro} onChange={(e) => setBairro(e.target.value)} required /></div>
-            <div><Label>Cidade</Label><Input value={cidade} onChange={(e) => setCidade(e.target.value)} /></div>
-          </div>
-          <div><Label>Complemento</Label><Input value={complemento} onChange={(e) => setComplemento(e.target.value)} /></div>
-        </CardContent>
-      </Card>
+      {fulfillmentType === "delivery" && (
+        <Card>
+          <CardHeader><CardTitle className="text-lg">Endereço</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="col-span-2"><Label>Rua</Label><Input value={rua} onChange={(e) => setRua(e.target.value)} /></div>
+              <div><Label>Nº</Label><Input value={numero} onChange={(e) => setNumero(e.target.value)} /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>Bairro</Label><Input value={bairro} onChange={(e) => setBairro(e.target.value)} /></div>
+              <div><Label>Cidade</Label><Input value={cidade} onChange={(e) => setCidade(e.target.value)} /></div>
+            </div>
+            <div><Label>Complemento</Label><Input value={complemento} onChange={(e) => setComplemento(e.target.value)} /></div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader><CardTitle className="text-lg">Produtos</CardTitle></CardHeader>
@@ -434,9 +464,21 @@ export function NewOrderTab() {
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
-                <Calendar mode="single" selected={date} onSelect={setDate} locale={ptBR} className="p-3 pointer-events-auto" />
+                <Calendar
+                  mode="single"
+                  selected={date}
+                  onSelect={setDate}
+                  disabled={(d) => isEnterprise ? isDeliveryDateDisabled(d) : d < new Date(new Date().setHours(0, 0, 0, 0))}
+                  locale={ptBR}
+                  className="p-3 pointer-events-auto"
+                />
               </PopoverContent>
             </Popover>
+            {isEnterprise && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Após 14h, só dias úteis a partir de amanhã.
+              </p>
+            )}
           </div>
           <div>
             <Label>Horário</Label>
