@@ -61,6 +61,18 @@ export type AdminCustomerRow = {
   email: string | null;
   type: "PF" | "PJ";
   created_at: string;
+  addresses?: {
+    id: string;
+    street: string;
+    number: string;
+    neighborhood: string;
+    city: string;
+    state: string;
+    complement: string | null;
+    zip: string | null;
+    reference: string | null;
+    is_primary: boolean | null;
+  }[];
 };
 
 export type AdminProductRow = {
