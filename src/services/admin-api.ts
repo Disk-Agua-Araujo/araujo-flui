@@ -48,6 +48,7 @@ export type AdminOrderRow = {
   status: string;
   notes: string | null;
   created_at: string;
+  fulfillment_type: string;
   customers: { id: string; name: string; phone: string | null; cnpj: string | null } | null;
   addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null } | null;
   order_items: { qty: number; products: { name: string } | null }[];
