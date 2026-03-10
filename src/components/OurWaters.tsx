@@ -95,7 +95,7 @@ function WaterCard({ water }: { water: WaterProduct }) {
 
   return (
     <Card className="h-full border-border/60 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
-      <CardContent className="p-5 flex flex-col h-full gap-2">
+      <CardContent className="p-5 flex flex-col h-full gap-3">
         {/* Header: ícone + título + subtítulo */}
         <div className="flex items-start gap-3 min-h-[4.5rem]">
           <div className="shrink-0 h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
