@@ -191,6 +191,7 @@ export function OrdersTab() {
                 <TableHead>Cliente</TableHead>
                 <TableHead className="hidden md:table-cell">Canal</TableHead>
                 <TableHead className="hidden md:table-cell">Entrega</TableHead>
+                <TableHead className="hidden md:table-cell">Criado</TableHead>
                 <TableHead>Itens</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
@@ -198,9 +199,9 @@ export function OrdersTab() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
               ) : paginatedOrders.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
               ) : (
                 paginatedOrders.map((o) => (
                   <TableRow key={o.id}>
@@ -210,6 +211,9 @@ export function OrdersTab() {
                     <TableCell className="hidden md:table-cell text-xs">
                       {o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM") : "—"}
                       {o.delivery_time ? ` ${o.delivery_time}` : ""}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-xs">
+                      {format(new Date(o.created_at), "dd/MM/yyyy 'às' HH:mm")}
                     </TableCell>
                     <TableCell className="text-xs">
                       {o.order_items.map((i) => `${i.products?.name ?? "?"} x${i.qty}`).join(", ")}
@@ -277,6 +281,7 @@ export function OrdersTab() {
               {selectedOrder.addresses?.complement && <p><strong>Complemento:</strong> {selectedOrder.addresses.complement}</p>}
               <p><strong>Canal:</strong> {selectedOrder.channel}</p>
               <p><strong>Entrega:</strong> {selectedOrder.delivery_date ?? "—"} {selectedOrder.delivery_time ?? ""}</p>
+              <p><strong>Criado em:</strong> {format(new Date(selectedOrder.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
               <p><strong>Itens:</strong></p>
               <ul className="list-disc list-inside">
                 {selectedOrder.order_items.map((i, idx) => (<li key={idx}>{i.products?.name}: {i.qty}</li>))}

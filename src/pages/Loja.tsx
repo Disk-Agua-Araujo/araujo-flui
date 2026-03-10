@@ -10,13 +10,12 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import {
-  ShoppingCart, Plus, Minus, Trash2, MessageCircle, Droplets, Sparkles, Archive, Zap, MapPin, AlertTriangle, Check, Copy, Loader2,
+  ShoppingCart, Plus, Minus, Trash2, MessageCircle, Droplets, Sparkles, Archive, Zap, MapPin, Check, Copy, Loader2,
 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useRetailProducts } from "@/hooks/use-products";
-import { buildOrderMessage, sendOrderToDiskWhatsApp } from "@/services/whatsapp";
+import { buildOrderMessage, openWhatsApp } from "@/services/whatsapp";
 import { createSiteOrder } from "@/services/orders";
 import { validateDeliveryDistance, MAX_DELIVERY_KM } from "@/lib/geo";
 import { trackEvent } from "@/hooks/use-analytics";
@@ -46,11 +45,14 @@ export default function Loja() {
   const [pagamento, setPagamento] = useState("");
   const [obs, setObs] = useState("");
   const [submitted, setSubmitted] = useState(false);
-  const [labelData, setLabelData] = useState<LabelData | null>(null);
-  const [geoWarning, setGeoWarning] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [waResult, setWaResult] = useState<{ sent: boolean; fallback: boolean; message: string } | null>(null);
+  const [waMessage, setWaMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [orderSummary, setOrderSummary] = useState<{
+    pedidoId: string;
+    items: { name: string; qty: number }[];
+    address: string;
+  } | null>(null);
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,19 +69,13 @@ export default function Loja() {
 
     const fullAddr = `${rua}, ${numero} - ${bairro}, Santo André - SP`;
     const geoResult = await validateDeliveryDistance(fullAddr);
-    if (geoResult.ok === false) {
-      if (geoResult.reason === "too_far") {
-        toast({ title: "Fora da área de entrega", description: `Entregamos até ${MAX_DELIVERY_KM}km.`, variant: "destructive" });
-        setSaving(false);
-        return;
-      }
-      if (geoResult.reason === "no_geocoding") {
-        setGeoWarning(true);
-      }
+    if (geoResult.ok === false && geoResult.reason === "too_far") {
+      toast({ title: "Fora da área de entrega", description: `Entregamos até ${MAX_DELIVERY_KM}km.`, variant: "destructive" });
+      setSaving(false);
+      return;
     }
 
     try {
-      // 1. Save to database
       const orderResult = await createSiteOrder({
         customer: { name: nome, phone: whatsapp, type: "PF" },
         address: { street: rua, number: numero, neighborhood: bairro, city: "Santo André", state: "SP", complement: complemento },
@@ -90,10 +86,9 @@ export default function Loja() {
       const pedidoId = orderResult.order_id.slice(0, 8).toUpperCase();
       const itens = items.map((i) => ({ nome: i.product.name, qtd: i.qty }));
 
-      // 2. Send to WhatsApp
-      const msgData = {
-        tipo: "VAREJO" as const,
-        canal: "site" as const,
+      const message = buildOrderMessage({
+        tipo: "VAREJO",
+        canal: "site",
         cliente: nome,
         telefone: whatsapp,
         endereco: { rua, numero, bairro, cidade: "Santo André", uf: "SP", complemento },
@@ -101,12 +96,17 @@ export default function Loja() {
         itens,
         status: "Novo",
         pedidoId,
-      };
+      });
 
-      const result = await sendOrderToDiskWhatsApp(msgData);
-      setWaResult(result);
+      // Auto-open WhatsApp immediately after save
+      openWhatsApp(message);
+      setWaMessage(message);
 
-      setLabelData({ pedidoId, cliente: nome, endereco: fullAddr, complemento, itens });
+      setOrderSummary({
+        pedidoId,
+        items: items.map((i) => ({ name: i.product.name, qty: i.qty })),
+        address: fullAddr,
+      });
 
       trackEvent("order_created", { tipo: "varejo", canal: "site", pedidoId });
       setSubmitted(true);
@@ -120,14 +120,14 @@ export default function Loja() {
   };
 
   const handleCopy = () => {
-    if (waResult?.message) {
-      navigator.clipboard.writeText(waResult.message);
+    if (waMessage) {
+      navigator.clipboard.writeText(waMessage);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
   };
 
-  if (submitted && labelData) {
+  if (submitted && orderSummary) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
@@ -135,36 +135,33 @@ export default function Loja() {
           <Card>
             <CardHeader>
               <CardTitle className="text-center">
-                <Badge className="bg-whatsapp text-white mb-2">
-                  {waResult?.fallback ? "Pedido registrado!" : "Pedido enviado!"}
-                </Badge>
-                <br />
-                {waResult?.fallback
-                  ? "Pedido registrado. Envie no WhatsApp com 1 clique."
-                  : "Pedido registrado e enviado ao WhatsApp"}
+                <Badge className="bg-whatsapp text-white mb-2">Pedido registrado!</Badge>
+                <br />Pedido registrado e enviado ao WhatsApp
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {geoWarning && (
-                <div className="flex items-start gap-2 bg-accent/10 rounded-md p-3 text-sm">
-                  <AlertTriangle className="h-5 w-5 text-accent shrink-0 mt-0.5" />
-                  <p>Não foi possível validar a distância. Confirme com a equipe.</p>
-                </div>
-              )}
-              <OrderLabel data={labelData} />
-              {waResult?.fallback && (
-                <div className="space-y-2">
-                  <Button variant="outline" className="w-full" onClick={handleCopy}>
-                    {copied ? <Check className="h-4 w-4 mr-1" /> : <Copy className="h-4 w-4 mr-1" />}
-                    {copied ? "Copiado!" : "Copiar mensagem"}
-                  </Button>
-                  <Button className="w-full bg-whatsapp hover:bg-whatsapp-dark text-white" asChild>
-                    <a href={`https://wa.me/5511940060056?text=${encodeURIComponent(waResult.message)}`} target="_blank" rel="noopener noreferrer">
-                      <MessageCircle className="h-4 w-4 mr-1" /> Abrir WhatsApp novamente
-                    </a>
-                  </Button>
-                </div>
-              )}
+              {/* Order summary */}
+              <div className="bg-muted rounded-lg p-4 space-y-2 text-sm">
+                <p className="font-mono text-xs text-muted-foreground">Pedido #{orderSummary.pedidoId}</p>
+                <ul className="space-y-1">
+                  {orderSummary.items.map((i, idx) => (
+                    <li key={idx}>{i.qty}x {i.name}</li>
+                  ))}
+                </ul>
+                <p className="text-muted-foreground">{orderSummary.address}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Button variant="outline" className="w-full" onClick={handleCopy}>
+                  {copied ? <Check className="h-4 w-4 mr-1" /> : <Copy className="h-4 w-4 mr-1" />}
+                  {copied ? "Copiado!" : "Copiar mensagem"}
+                </Button>
+                <Button className="w-full bg-whatsapp hover:bg-whatsapp-dark text-white" asChild>
+                  <a href={`https://wa.me/5511940060056?text=${encodeURIComponent(waMessage)}`} target="_blank" rel="noopener noreferrer">
+                    <MessageCircle className="h-4 w-4 mr-1" /> Abrir WhatsApp novamente
+                  </a>
+                </Button>
+              </div>
               <Button className="w-full" variant="ghost" onClick={() => setSubmitted(false)}>Fazer outro pedido</Button>
             </CardContent>
           </Card>

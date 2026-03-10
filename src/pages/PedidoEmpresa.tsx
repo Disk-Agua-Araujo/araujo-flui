@@ -8,17 +8,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, MessageCircle, MapPin, Minus, Plus, AlertTriangle, Loader2, Copy, Check } from "lucide-react";
+import { CalendarIcon, MessageCircle, MapPin, Minus, Plus, Loader2, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
 import { validateDeliveryDistance, MAX_DELIVERY_KM } from "@/lib/geo";
-import { sendOrderToDiskWhatsApp } from "@/services/whatsapp";
+import { buildOrderMessage, openWhatsApp } from "@/services/whatsapp";
 import { createSiteOrder } from "@/services/orders";
 import { useProducts } from "@/hooks/use-products";
 import { trackEvent } from "@/hooks/use-analytics";
@@ -32,10 +31,16 @@ export default function PedidoEmpresa() {
   const { toast } = useToast();
   const { data: availableProducts = [] } = useProducts();
   const [submitted, setSubmitted] = useState(false);
-  const [labelData, setLabelData] = useState<LabelData | null>(null);
   const [saving, setSaving] = useState(false);
-  const [waResult, setWaResult] = useState<{ sent: boolean; fallback: boolean; message: string } | null>(null);
+  const [waMessage, setWaMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [orderSummary, setOrderSummary] = useState<{
+    pedidoId: string;
+    items: { name: string; qty: number }[];
+    address: string;
+    entregaData?: string;
+    entregaHora?: string;
+  } | null>(null);
 
   const [cnpj, setCnpj] = useState("");
   const [empresa, setEmpresa] = useState("");
@@ -49,7 +54,6 @@ export default function PedidoEmpresa() {
   const [obs, setObs] = useState("");
   const [date, setDate] = useState<Date>();
   const [hora, setHora] = useState("");
-  const [geoWarning, setGeoWarning] = useState(false);
   const [qtys, setQtys] = useState<Record<string, number>>({});
 
   const updateQty = (id: string, delta: number) => {
@@ -65,8 +69,8 @@ export default function PedidoEmpresa() {
     }));
 
   const handleCopy = () => {
-    if (waResult?.message) {
-      navigator.clipboard.writeText(waResult.message);
+    if (waMessage) {
+      navigator.clipboard.writeText(waMessage);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -99,19 +103,13 @@ export default function PedidoEmpresa() {
 
     const fullAddr = `${rua}, ${numero} - ${bairro}, ${cidade} - SP`;
     const geoResult = await validateDeliveryDistance(fullAddr);
-    if (geoResult.ok === false) {
-      if (geoResult.reason === "too_far") {
-        toast({ title: "Fora da área de entrega", description: `Entregamos até ${MAX_DELIVERY_KM}km.`, variant: "destructive" });
-        setSaving(false);
-        return;
-      }
-      if (geoResult.reason === "no_geocoding") {
-        setGeoWarning(true);
-      }
+    if (geoResult.ok === false && geoResult.reason === "too_far") {
+      toast({ title: "Fora da área de entrega", description: `Entregamos até ${MAX_DELIVERY_KM}km.`, variant: "destructive" });
+      setSaving(false);
+      return;
     }
 
     try {
-      // 1. Save to database
       const entregaData = format(date, "yyyy-MM-dd");
       const orderResult = await createSiteOrder({
         customer: { name: empresa, phone: telefone, type: "PJ", cnpj },
@@ -125,10 +123,9 @@ export default function PedidoEmpresa() {
       const pedidoId = orderResult.order_id.slice(0, 8).toUpperCase();
       const entregaDataFormatted = format(date, "dd/MM/yyyy");
 
-      // 2. Send to WhatsApp
-      const msgData = {
-        tipo: "EMPRESA" as const,
-        canal: "site" as const,
+      const message = buildOrderMessage({
+        tipo: "EMPRESA",
+        canal: "site",
         cliente: empresa,
         cnpj,
         telefone,
@@ -139,17 +136,16 @@ export default function PedidoEmpresa() {
         entregaHora: hora,
         status: "Novo",
         pedidoId,
-      };
+      });
 
-      const result = await sendOrderToDiskWhatsApp(msgData);
-      setWaResult(result);
+      // Auto-open WhatsApp immediately after save
+      openWhatsApp(message);
+      setWaMessage(message);
 
-      setLabelData({
+      setOrderSummary({
         pedidoId,
-        cliente: empresa,
-        endereco: `${rua}, ${numero} - ${bairro}, ${cidade}/SP`,
-        complemento,
-        itens: selectedItems.map((i) => ({ nome: i.nome, qtd: i.qtd })),
+        items: selectedItems.map((i) => ({ name: i.nome, qty: i.qtd })),
+        address: `${rua}, ${numero} - ${bairro}, ${cidade}/SP`,
         entregaData: entregaDataFormatted,
         entregaHora: hora,
       });
@@ -164,7 +160,7 @@ export default function PedidoEmpresa() {
     }
   };
 
-  if (submitted && labelData) {
+  if (submitted && orderSummary) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
@@ -172,36 +168,36 @@ export default function PedidoEmpresa() {
           <Card>
             <CardHeader>
               <CardTitle className="text-center">
-                <Badge className="bg-whatsapp text-white mb-2">
-                  {waResult?.fallback ? "Pedido registrado!" : "Pedido enviado!"}
-                </Badge>
-                <br />
-                {waResult?.fallback
-                  ? "Pedido registrado. Envie no WhatsApp com 1 clique."
-                  : "Pedido registrado e enviado ao WhatsApp"}
+                <Badge className="bg-whatsapp text-white mb-2">Pedido registrado!</Badge>
+                <br />Pedido registrado e enviado ao WhatsApp
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {geoWarning && (
-                <div className="flex items-start gap-2 bg-accent/10 text-accent-foreground rounded-md p-3 text-sm">
-                  <AlertTriangle className="h-5 w-5 text-accent shrink-0 mt-0.5" />
-                  <p>Não foi possível validar a distância do endereço. Confirme com a equipe se está dentro da área de entrega (até {MAX_DELIVERY_KM}km).</p>
-                </div>
-              )}
-              <OrderLabel data={labelData} />
-              {waResult?.fallback && (
-                <div className="space-y-2">
-                  <Button variant="outline" className="w-full" onClick={handleCopy}>
-                    {copied ? <Check className="h-4 w-4 mr-1" /> : <Copy className="h-4 w-4 mr-1" />}
-                    {copied ? "Copiado!" : "Copiar mensagem"}
-                  </Button>
-                  <Button className="w-full bg-whatsapp hover:bg-whatsapp-dark text-white" asChild>
-                    <a href={`https://wa.me/5511940060056?text=${encodeURIComponent(waResult.message)}`} target="_blank" rel="noopener noreferrer">
-                      <MessageCircle className="h-4 w-4 mr-1" /> Abrir WhatsApp novamente
-                    </a>
-                  </Button>
-                </div>
-              )}
+              {/* Order summary */}
+              <div className="bg-muted rounded-lg p-4 space-y-2 text-sm">
+                <p className="font-mono text-xs text-muted-foreground">Pedido #{orderSummary.pedidoId}</p>
+                <ul className="space-y-1">
+                  {orderSummary.items.map((i, idx) => (
+                    <li key={idx}>{i.qty}x {i.name}</li>
+                  ))}
+                </ul>
+                <p className="text-muted-foreground">{orderSummary.address}</p>
+                {orderSummary.entregaData && (
+                  <p className="text-muted-foreground">Entrega: {orderSummary.entregaData}{orderSummary.entregaHora ? ` às ${orderSummary.entregaHora}` : ""}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Button variant="outline" className="w-full" onClick={handleCopy}>
+                  {copied ? <Check className="h-4 w-4 mr-1" /> : <Copy className="h-4 w-4 mr-1" />}
+                  {copied ? "Copiado!" : "Copiar mensagem"}
+                </Button>
+                <Button className="w-full bg-whatsapp hover:bg-whatsapp-dark text-white" asChild>
+                  <a href={`https://wa.me/5511940060056?text=${encodeURIComponent(waMessage)}`} target="_blank" rel="noopener noreferrer">
+                    <MessageCircle className="h-4 w-4 mr-1" /> Abrir WhatsApp novamente
+                  </a>
+                </Button>
+              </div>
               <Button className="w-full" variant="ghost" onClick={() => { setSubmitted(false); setQtys({}); }}>Novo pedido</Button>
             </CardContent>
           </Card>

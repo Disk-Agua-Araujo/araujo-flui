@@ -294,7 +294,7 @@ serve(async (req) => {
     if (action === "customers.list") {
       const { data, error } = await adminClient
         .from("customers")
-        .select("*")
+        .select("*, addresses(id, street, number, neighborhood, city, state, complement, zip, reference, is_primary)")
         .order("created_at", { ascending: false })
         .limit(500);
       if (error) throw error;
@@ -322,6 +322,58 @@ serve(async (req) => {
         cnpj: payload?.cnpj,
         email: payload?.email,
       });
+
+      // Handle address if provided
+      const addr = payload?.address;
+      if (addr && addr.street && addr.number && addr.neighborhood) {
+        const { data: existingAddr } = await adminClient
+          .from("addresses")
+          .select("id")
+          .eq("customer_id", data.id)
+          .eq("is_primary", true)
+          .maybeSingle();
+
+        if (existingAddr) {
+          await adminClient.from("addresses").update({
+            street: addr.street,
+            number: addr.number,
+            neighborhood: addr.neighborhood,
+            city: addr.city || "Santo André",
+            state: addr.state || "SP",
+            complement: addr.complement || null,
+            zip: addr.zip || null,
+            reference: addr.reference || null,
+          }).eq("id", existingAddr.id);
+        } else {
+          await adminClient.from("addresses").insert({
+            customer_id: data.id,
+            street: addr.street,
+            number: addr.number,
+            neighborhood: addr.neighborhood,
+            city: addr.city || "Santo André",
+            state: addr.state || "SP",
+            complement: addr.complement || null,
+            zip: addr.zip || null,
+            reference: addr.reference || null,
+            is_primary: true,
+          });
+        }
+      }
+
+      return json({ data });
+    }
+
+    if (action === "customers.search") {
+      const q = ((payload?.query as string) || "").trim();
+      if (q.length < 2) return json({ data: [] });
+
+      const { data, error } = await adminClient
+        .from("customers")
+        .select("id, name, phone, type, cnpj, email, addresses(street, number, neighborhood, city, state, complement, zip, reference, is_primary)")
+        .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
+        .order("name")
+        .limit(10);
+      if (error) throw error;
       return json({ data });
     }
 

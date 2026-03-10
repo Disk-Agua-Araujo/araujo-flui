@@ -61,6 +61,18 @@ export type AdminCustomerRow = {
   email: string | null;
   type: "PF" | "PJ";
   created_at: string;
+  addresses?: {
+    id: string;
+    street: string;
+    number: string;
+    neighborhood: string;
+    city: string;
+    state: string;
+    complement: string | null;
+    zip: string | null;
+    reference: string | null;
+    is_primary: boolean | null;
+  }[];
 };
 
 export type AdminProductRow = {
@@ -117,6 +129,16 @@ export const adminApi = {
     type: "PF" | "PJ";
     cnpj?: string | null;
     email?: string | null;
+    address?: {
+      street: string;
+      number: string;
+      neighborhood: string;
+      city?: string;
+      state?: string;
+      complement?: string | null;
+      zip?: string | null;
+      reference?: string | null;
+    };
   }) => callAdminApi<AdminCustomerRow>("customers.save", payload),
 
   listProducts: () => callAdminApi<{ products: AdminProductRow[]; tiers: AdminTierRow[] }>("products.list"),
@@ -131,6 +153,9 @@ export const adminApi = {
     type: "in" | "out" | "adjust";
     reason?: string;
   }) => callAdminApi<{ ok: boolean }>("stock.adjust", payload),
+
+  searchCustomers: (query: string) =>
+    callAdminApi<AdminCustomerRow[]>("customers.search", { query }),
 
   listReportsOrders: () => callAdminApi<AdminOrderRow[]>("reports.orders"),
 };

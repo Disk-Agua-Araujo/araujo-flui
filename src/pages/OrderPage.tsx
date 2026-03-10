@@ -7,7 +7,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { MobileBottomBar } from "@/components/MobileBottomBar";
 import { business, buildWhatsAppOrderMessage } from "@/config/business";
-import { sendOrderToDiskWhatsApp, type OrderMessageData } from "@/services/whatsapp";
+import { buildOrderMessage, openWhatsApp, type OrderMessageData } from "@/services/whatsapp";
 import { createSiteOrder } from "@/services/orders";
 import { useProducts } from "@/hooks/use-products";
 import { trackEvent } from "@/hooks/use-analytics";
@@ -89,8 +89,9 @@ export default function OrderPage() {
         pedidoId,
       };
 
-      const result = await sendOrderToDiskWhatsApp(msgData);
-      setWaResult(result);
+      const message = buildOrderMessage(msgData);
+      openWhatsApp(message);
+      setWaResult({ sent: false, fallback: true, message });
 
       trackEvent("order_submit", { source: "order_page", items: selectedItems.map(i => i.name), payment });
       setSent(true);

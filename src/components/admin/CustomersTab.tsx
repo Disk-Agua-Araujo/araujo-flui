@@ -17,6 +17,12 @@ const PREFILL_KEY = "admin-new-order-customer";
 
 const normalizePhone = (value: string) => value.replace(/\D/g, "");
 
+const maskCep = (value: string) => {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 5) return digits;
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+};
+
 export function CustomersTab() {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -35,6 +41,16 @@ export function CustomersTab() {
   const [formCnpj, setFormCnpj] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formSaving, setFormSaving] = useState(false);
+
+  // Address fields
+  const [formStreet, setFormStreet] = useState("");
+  const [formNumber, setFormNumber] = useState("");
+  const [formNeighborhood, setFormNeighborhood] = useState("");
+  const [formCity, setFormCity] = useState("Santo André");
+  const [formState, setFormState] = useState("SP");
+  const [formZip, setFormZip] = useState("");
+  const [formComplement, setFormComplement] = useState("");
+  const [formReference, setFormReference] = useState("");
 
   const fetchCustomers = async () => {
     setLoading(true);
@@ -65,6 +81,10 @@ export function CustomersTab() {
     );
   }, [customers, search]);
 
+  const getPrimaryAddress = (c: AdminCustomerRow) => {
+    return c.addresses?.find((a) => a.is_primary) ?? c.addresses?.[0] ?? null;
+  };
+
   const openDetail = async (c: AdminCustomerRow) => {
     setSelected(c);
     setOrdersLoading(true);
@@ -80,6 +100,17 @@ export function CustomersTab() {
     }
   };
 
+  const clearAddressFields = () => {
+    setFormStreet("");
+    setFormNumber("");
+    setFormNeighborhood("");
+    setFormCity("Santo André");
+    setFormState("SP");
+    setFormZip("");
+    setFormComplement("");
+    setFormReference("");
+  };
+
   const openCreate = () => {
     setEditing(null);
     setFormName("");
@@ -87,6 +118,7 @@ export function CustomersTab() {
     setFormType("PF");
     setFormCnpj("");
     setFormEmail("");
+    clearAddressFields();
     setFormOpen(true);
   };
 
@@ -97,6 +129,21 @@ export function CustomersTab() {
     setFormType(c.type);
     setFormCnpj(c.cnpj ?? "");
     setFormEmail(c.email ?? "");
+
+    const addr = getPrimaryAddress(c);
+    if (addr) {
+      setFormStreet(addr.street);
+      setFormNumber(addr.number);
+      setFormNeighborhood(addr.neighborhood);
+      setFormCity(addr.city || "Santo André");
+      setFormState(addr.state || "SP");
+      setFormZip(addr.zip ?? "");
+      setFormComplement(addr.complement ?? "");
+      setFormReference(addr.reference ?? "");
+    } else {
+      clearAddressFields();
+    }
+
     setFormOpen(true);
     setSelected(null);
   };
@@ -120,6 +167,19 @@ export function CustomersTab() {
 
     setFormSaving(true);
     try {
+      const addressPayload = formStreet.trim() && formNumber.trim() && formNeighborhood.trim()
+        ? {
+            street: formStreet.trim(),
+            number: formNumber.trim(),
+            neighborhood: formNeighborhood.trim(),
+            city: formCity.trim() || "Santo André",
+            state: formState.trim() || "SP",
+            complement: formComplement.trim() || null,
+            zip: formZip.replace(/\D/g, "").trim() || null,
+            reference: formReference.trim() || null,
+          }
+        : undefined;
+
       await adminApi.saveCustomer({
         id: editing?.id,
         name: formName.trim(),
@@ -127,6 +187,7 @@ export function CustomersTab() {
         type: formType,
         cnpj: formType === "PJ" ? formCnpj : null,
         email: formEmail.trim() || null,
+        address: addressPayload,
       });
 
       toast({ title: editing ? "Cliente atualizado!" : "Cliente cadastrado!" });
@@ -208,6 +269,7 @@ export function CustomersTab() {
         </CardContent>
       </Card>
 
+      {/* Detail dialog */}
       <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{selected?.name}</DialogTitle></DialogHeader>
@@ -220,6 +282,21 @@ export function CustomersTab() {
                 {selected.email && <p><strong>Email:</strong> {selected.email}</p>}
                 <p><strong>Cadastro:</strong> {format(new Date(selected.created_at), "dd/MM/yyyy HH:mm")}</p>
               </div>
+
+              {/* Address display */}
+              {(() => {
+                const addr = getPrimaryAddress(selected);
+                if (!addr) return null;
+                return (
+                  <div className="border-t pt-3">
+                    <h4 className="font-semibold mb-1">Endereço principal</h4>
+                    <p>{addr.street}, {addr.number} - {addr.neighborhood}</p>
+                    <p>{addr.city}/{addr.state}{addr.zip ? ` - CEP: ${addr.zip}` : ""}</p>
+                    {addr.complement && <p>Complemento: {addr.complement}</p>}
+                    {addr.reference && <p>Referência: {addr.reference}</p>}
+                  </div>
+                );
+              })()}
 
               <div className="flex gap-2 flex-wrap">
                 <Button size="sm" variant="outline" onClick={() => openEdit(selected)}>Editar cliente</Button>
@@ -256,8 +333,9 @@ export function CustomersTab() {
         </DialogContent>
       </Dialog>
 
+      {/* Create/Edit dialog */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing ? "Editar cliente" : "Novo cliente"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
@@ -288,6 +366,50 @@ export function CustomersTab() {
               <label className="text-sm font-medium">Email</label>
               <Input value={formEmail} onChange={(e) => setFormEmail(e.target.value)} type="email" maxLength={100} />
             </div>
+
+            {/* Address fields */}
+            <div className="border-t pt-3 mt-3">
+              <p className="text-sm font-semibold mb-2">Endereço (opcional)</p>
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="text-sm font-medium">Rua</label>
+                    <Input value={formStreet} onChange={(e) => setFormStreet(e.target.value)} maxLength={200} />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Nº</label>
+                    <Input value={formNumber} onChange={(e) => setFormNumber(e.target.value)} maxLength={20} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Bairro</label>
+                  <Input value={formNeighborhood} onChange={(e) => setFormNeighborhood(e.target.value)} maxLength={100} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-sm font-medium">Cidade</label>
+                    <Input value={formCity} onChange={(e) => setFormCity(e.target.value)} maxLength={100} />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Estado</label>
+                    <Input value={formState} onChange={(e) => setFormState(e.target.value)} maxLength={2} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">CEP</label>
+                  <Input value={formZip} onChange={(e) => setFormZip(maskCep(e.target.value))} maxLength={9} placeholder="00000-000" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Complemento</label>
+                  <Input value={formComplement} onChange={(e) => setFormComplement(e.target.value)} maxLength={200} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Ponto de referência</label>
+                  <Input value={formReference} onChange={(e) => setFormReference(e.target.value)} maxLength={200} />
+                </div>
+              </div>
+            </div>
+
             <Button className="w-full" onClick={handleSave} disabled={formSaving}>
               {formSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
               {editing ? "Salvar alterações" : "Cadastrar cliente"}

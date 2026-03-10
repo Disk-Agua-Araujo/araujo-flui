@@ -1,24 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
-import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, Minus, Plus, Save } from "lucide-react";
+import { CalendarIcon, Minus, Plus, Save, Search, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
 import { buildOrderMessage, openWhatsApp } from "@/services/whatsapp";
 import { useToast } from "@/hooks/use-toast";
 import { trackEvent } from "@/hooks/use-analytics";
-import { adminApi, type AdminProductRow } from "@/services/admin-api";
+import { adminApi, type AdminProductRow, type AdminCustomerRow } from "@/services/admin-api";
+import { useDebounce } from "@/hooks/use-debounce";
 
 const horarios = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
 const canais = [
@@ -37,6 +38,15 @@ export function NewOrderTab() {
   const [submitted, setSubmitted] = useState(false);
   const [labelData, setLabelData] = useState<LabelData | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Customer search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<AdminCustomerRow[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const debouncedQuery = useDebounce(searchQuery, 300);
 
   const [canal, setCanal] = useState<(typeof canais)[number]["value"]>("ligacao");
   const [tipo, setTipo] = useState<"PF" | "PJ">("PF");
@@ -87,6 +97,65 @@ export function NewOrderTab() {
     }
   }, []);
 
+  // Customer search effect
+  useEffect(() => {
+    if (!debouncedQuery || debouncedQuery.length < 2 || selectedCustomerId) {
+      setSearchResults([]);
+      return;
+    }
+    let cancelled = false;
+    setSearchLoading(true);
+    adminApi.searchCustomers(debouncedQuery).then((data) => {
+      if (!cancelled) {
+        setSearchResults(data ?? []);
+        setShowDropdown(true);
+      }
+    }).catch(() => {
+      if (!cancelled) setSearchResults([]);
+    }).finally(() => {
+      if (!cancelled) setSearchLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [debouncedQuery, selectedCustomerId]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const selectCustomer = (c: AdminCustomerRow) => {
+    setSelectedCustomerId(c.id);
+    setNome(c.name);
+    setTelefone(c.phone ?? "");
+    setTipo(c.type);
+    setCnpj(c.cnpj ?? "");
+    setEmail(c.email ?? "");
+    setShowDropdown(false);
+    setSearchQuery("");
+
+    // Fill address from primary address
+    const primaryAddr = c.addresses?.find((a) => a.is_primary) ?? c.addresses?.[0];
+    if (primaryAddr) {
+      setRua(primaryAddr.street);
+      setNumero(primaryAddr.number);
+      setBairro(primaryAddr.neighborhood);
+      setCidade(primaryAddr.city || "Santo André");
+      setComplemento(primaryAddr.complement ?? "");
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedCustomerId(null);
+    setSearchQuery("");
+    setSearchResults([]);
+  };
+
   const updateQty = (id: string, delta: number) => {
     setQtys((prev) => ({ ...prev, [id]: Math.max(0, (prev[id] || 0) + delta) }));
   };
@@ -117,6 +186,9 @@ export function NewOrderTab() {
     setDate(undefined);
     setHora("");
     setQtys({});
+    setSelectedCustomerId(null);
+    setSearchQuery("");
+    setSearchResults([]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -254,6 +326,45 @@ export function NewOrderTab() {
       <Card>
         <CardHeader><CardTitle className="text-lg">Dados do cliente</CardTitle></CardHeader>
         <CardContent className="space-y-4">
+          {/* Customer search */}
+          <div className="relative" ref={dropdownRef}>
+            <Label>Buscar cliente existente</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Nome ou telefone..."
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setShowDropdown(true); }}
+                className="pl-9"
+                disabled={!!selectedCustomerId}
+              />
+              {searchLoading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
+            {showDropdown && searchResults.length > 0 && !selectedCustomerId && (
+              <div className="absolute z-10 mt-1 w-full bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                {searchResults.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className="w-full text-left px-3 py-2 hover:bg-muted text-sm border-b last:border-b-0"
+                    onClick={() => selectCustomer(c)}
+                  >
+                    <span className="font-medium">{c.name}</span>
+                    <span className="text-muted-foreground ml-2">{c.phone ?? ""}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {selectedCustomerId && (
+              <div className="flex items-center gap-2 mt-1">
+                <Badge variant="secondary" className="text-xs">Cliente selecionado: {nome}</Badge>
+                <Button type="button" variant="ghost" size="sm" className="h-6 text-xs" onClick={clearSelection}>
+                  <X className="h-3 w-3 mr-1" /> Limpar seleção
+                </Button>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><Label>Nome *</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} required /></div>
             <div><Label>Telefone *</Label><Input type="tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} required /></div>
