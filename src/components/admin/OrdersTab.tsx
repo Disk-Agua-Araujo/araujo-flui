@@ -191,6 +191,7 @@ export function OrdersTab() {
                 <TableHead>Cliente</TableHead>
                 <TableHead className="hidden md:table-cell">Canal</TableHead>
                 <TableHead className="hidden md:table-cell">Entrega</TableHead>
+                <TableHead className="hidden md:table-cell">Criado</TableHead>
                 <TableHead>Itens</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
