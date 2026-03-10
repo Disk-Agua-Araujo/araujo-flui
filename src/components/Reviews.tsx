@@ -34,11 +34,11 @@ export function Reviews() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl mx-auto">
           {business.reviews.map((r, i) => (
-            <Card key={i} className="shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
-              <CardContent className="p-5 space-y-3">
+            <Card key={i} className="shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 h-full">
+              <CardContent className="p-5 flex flex-col h-full">
                 <Stars count={r.stars} />
-                <p className="text-sm text-muted-foreground italic">"{r.text}"</p>
-                <p className="text-sm font-bold">— {r.author}</p>
+                <p className="text-sm text-muted-foreground italic mt-3 flex-grow">"{r.text}"</p>
+                <p className="text-sm font-bold mt-3">— {r.author}</p>
               </CardContent>
             </Card>
           ))}
