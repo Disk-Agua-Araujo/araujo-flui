@@ -152,8 +152,8 @@ export function CustomersTab() {
   };
 
   const handleSave = async () => {
-    if (!formName.trim() || !normalizePhone(formPhone)) {
-      toast({ title: "Dados obrigatórios", description: "Preencha nome e telefone.", variant: "destructive" });
+    if (!formStreet.trim() || !formNumber.trim() || !formNeighborhood.trim()) {
+      toast({ title: "Dados obrigatórios", description: "Preencha o endereço completo (rua, número e bairro).", variant: "destructive" });
       return;
     }
 
