@@ -100,4 +100,24 @@
   html {
     scroll-behavior: smooth;
   }
+
+  /* Scrollbar vermelha Disk Água Araujo */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--brand-red));
+    border-radius: 5px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--brand-red-dark));
+  }
+  * {
+    scrollbar-color: hsl(var(--brand-red)) hsl(var(--muted));
+    scrollbar-width: thin;
+  }
 }
