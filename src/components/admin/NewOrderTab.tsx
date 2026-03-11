@@ -16,7 +16,7 @@ import { ptBR } from "date-fns/locale";
 import { CalendarIcon, Minus, Plus, Save, Search, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
-import { buildOrderMessage, openWhatsApp } from "@/services/whatsapp";
+// WhatsApp not used in admin — orders are saved directly
 import { useToast } from "@/hooks/use-toast";
 import { trackEvent } from "@/hooks/use-analytics";
 import { adminApi, type AdminProductRow, type AdminCustomerRow } from "@/services/admin-api";
