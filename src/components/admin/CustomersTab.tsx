@@ -170,23 +170,21 @@ export function CustomersTab() {
 
     setFormSaving(true);
     try {
-      const addressPayload = formStreet.trim() && formNumber.trim() && formNeighborhood.trim()
-        ? {
-            street: formStreet.trim(),
-            number: formNumber.trim(),
-            neighborhood: formNeighborhood.trim(),
-            city: formCity.trim() || "Santo André",
-            state: formState.trim() || "SP",
-            complement: formComplement.trim() || null,
-            zip: formZip.replace(/\D/g, "").trim() || null,
-            reference: formReference.trim() || null,
-          }
-        : undefined;
+      const addressPayload = {
+        street: formStreet.trim(),
+        number: formNumber.trim(),
+        neighborhood: formNeighborhood.trim(),
+        city: formCity.trim() || "Santo André",
+        state: formState.trim() || "SP",
+        complement: formComplement.trim() || null,
+        zip: formZip.replace(/\D/g, "").trim() || null,
+        reference: formReference.trim() || null,
+      };
 
       await adminApi.saveCustomer({
         id: editing?.id,
-        name: formName.trim(),
-        phone: normalizePhone(formPhone),
+        name: formName.trim() || "Sem nome",
+        phone: normalizePhone(formPhone) || "",
         type: formType,
         cnpj: formType === "PJ" ? formCnpj : null,
         email: formEmail.trim() || null,
