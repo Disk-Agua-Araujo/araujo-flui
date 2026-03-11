@@ -495,10 +495,26 @@ export function NewOrderTab() {
       <Card>
         <CardHeader><CardTitle className="text-lg">Produtos</CardTitle></CardHeader>
         <CardContent className="space-y-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar produto por nome..."
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              className="pl-9 pr-8"
+            />
+            {productSearch && (
+              <button type="button" onClick={() => setProductSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
           {products.length === 0 ? (
             <p className="text-muted-foreground text-sm">Nenhum produto cadastrado.</p>
+          ) : filteredProducts.length === 0 ? (
+            <p className="text-muted-foreground text-sm">Nenhum produto encontrado.</p>
           ) : (
-            products.map((p) => (
+            filteredProducts.map((p) => (
               <div key={p.id} className="flex items-center justify-between border rounded-md p-3">
                 <div>
                   <p className="font-medium text-sm">{p.name}</p>
