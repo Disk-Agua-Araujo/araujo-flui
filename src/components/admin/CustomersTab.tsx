@@ -374,20 +374,20 @@ export function CustomersTab() {
 
             {/* Address fields */}
             <div className="border-t pt-3 mt-3">
-              <p className="text-sm font-semibold mb-2">Endereço (opcional)</p>
+              <p className="text-sm font-semibold mb-2">Endereço *</p>
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-2">
                   <div className="col-span-2">
-                    <label className="text-sm font-medium">Rua</label>
+                    <label className="text-sm font-medium">Rua *</label>
                     <Input value={formStreet} onChange={(e) => setFormStreet(e.target.value)} maxLength={200} />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Nº</label>
+                    <label className="text-sm font-medium">Nº *</label>
                     <Input value={formNumber} onChange={(e) => setFormNumber(e.target.value)} maxLength={20} />
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Bairro</label>
+                  <label className="text-sm font-medium">Bairro *</label>
                   <Input value={formNeighborhood} onChange={(e) => setFormNeighborhood(e.target.value)} maxLength={100} />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
