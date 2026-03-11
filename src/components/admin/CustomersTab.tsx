@@ -152,8 +152,8 @@ export function CustomersTab() {
   };
 
   const handleSave = async () => {
-    if (!formName.trim() || !normalizePhone(formPhone)) {
-      toast({ title: "Dados obrigatórios", description: "Preencha nome e telefone.", variant: "destructive" });
+    if (!formStreet.trim() || !formNumber.trim() || !formNeighborhood.trim()) {
+      toast({ title: "Dados obrigatórios", description: "Preencha o endereço completo (rua, número e bairro).", variant: "destructive" });
       return;
     }
 
@@ -170,23 +170,21 @@ export function CustomersTab() {
 
     setFormSaving(true);
     try {
-      const addressPayload = formStreet.trim() && formNumber.trim() && formNeighborhood.trim()
-        ? {
-            street: formStreet.trim(),
-            number: formNumber.trim(),
-            neighborhood: formNeighborhood.trim(),
-            city: formCity.trim() || "Santo André",
-            state: formState.trim() || "SP",
-            complement: formComplement.trim() || null,
-            zip: formZip.replace(/\D/g, "").trim() || null,
-            reference: formReference.trim() || null,
-          }
-        : undefined;
+      const addressPayload = {
+        street: formStreet.trim(),
+        number: formNumber.trim(),
+        neighborhood: formNeighborhood.trim(),
+        city: formCity.trim() || "Santo André",
+        state: formState.trim() || "SP",
+        complement: formComplement.trim() || null,
+        zip: formZip.replace(/\D/g, "").trim() || null,
+        reference: formReference.trim() || null,
+      };
 
       await adminApi.saveCustomer({
         id: editing?.id,
-        name: formName.trim(),
-        phone: normalizePhone(formPhone),
+        name: formName.trim() || "Sem nome",
+        phone: normalizePhone(formPhone) || "",
         type: formType,
         cnpj: formType === "PJ" ? formCnpj : null,
         email: formEmail.trim() || null,
@@ -344,11 +342,11 @@ export function CustomersTab() {
           <DialogHeader><DialogTitle>{editing ? "Editar cliente" : "Novo cliente"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
-              <label className="text-sm font-medium">Nome *</label>
+              <label className="text-sm font-medium">Nome</label>
               <Input value={formName} onChange={(e) => setFormName(e.target.value)} maxLength={100} />
             </div>
             <div>
-              <label className="text-sm font-medium">Telefone *</label>
+              <label className="text-sm font-medium">Telefone</label>
               <Input value={formPhone} onChange={(e) => setFormPhone(e.target.value)} type="tel" maxLength={20} />
             </div>
             <div>
@@ -374,20 +372,20 @@ export function CustomersTab() {
 
             {/* Address fields */}
             <div className="border-t pt-3 mt-3">
-              <p className="text-sm font-semibold mb-2">Endereço (opcional)</p>
+              <p className="text-sm font-semibold mb-2">Endereço *</p>
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-2">
                   <div className="col-span-2">
-                    <label className="text-sm font-medium">Rua</label>
+                    <label className="text-sm font-medium">Rua *</label>
                     <Input value={formStreet} onChange={(e) => setFormStreet(e.target.value)} maxLength={200} />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Nº</label>
+                    <label className="text-sm font-medium">Nº *</label>
                     <Input value={formNumber} onChange={(e) => setFormNumber(e.target.value)} maxLength={20} />
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Bairro</label>
+                  <label className="text-sm font-medium">Bairro *</label>
                   <Input value={formNeighborhood} onChange={(e) => setFormNeighborhood(e.target.value)} maxLength={100} />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
