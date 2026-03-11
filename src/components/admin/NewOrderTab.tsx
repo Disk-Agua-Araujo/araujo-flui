@@ -564,7 +564,7 @@ export function NewOrderTab() {
       </div>
 
       <Button type="submit" size="lg" className="w-full" disabled={saving}>
-        <Save className="h-5 w-5 mr-2" /> {saving ? "Salvando..." : "Salvar pedido + WhatsApp"}
+        <Save className="h-5 w-5 mr-2" /> {saving ? "Salvando..." : "Salvar pedido"}
       </Button>
     </form>
   );
