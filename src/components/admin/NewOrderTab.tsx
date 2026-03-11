@@ -324,14 +324,35 @@ export function NewOrderTab() {
     return (
       <Card className="max-w-lg mx-auto">
         <CardHeader>
-          <CardTitle className="text-center">
-            <Badge className="bg-whatsapp text-white mb-2">Pedido salvo!</Badge>
-            <br />Pedido registrado no sistema
+          <CardTitle className="text-center space-y-2">
+            <div className="flex justify-center">
+              <Badge className="bg-green-600 text-white text-sm px-3 py-1">✅ Pedido salvo com sucesso!</Badge>
+            </div>
+            <p className="text-base font-medium text-muted-foreground">Pedido #{labelData.pedidoId}</p>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="border rounded-lg p-4 bg-muted/30 text-sm space-y-1">
+            <p className="font-semibold">{labelData.cliente}</p>
+            <p className="text-muted-foreground">{labelData.endereco}</p>
+            {labelData.complemento && <p className="text-muted-foreground text-xs">Compl.: {labelData.complemento}</p>}
+            <ul className="list-disc list-inside mt-2">
+              {labelData.itens.map((i) => (
+                <li key={i.nome}>{i.nome}: {i.qtd}</li>
+              ))}
+            </ul>
+            {labelData.entregaData && (
+              <p className="mt-1">Entrega: {labelData.entregaData}{labelData.entregaHora ? ` às ${labelData.entregaHora}` : ""}</p>
+            )}
+          </div>
           <OrderLabel data={labelData} />
-          <Button className="w-full" onClick={resetForm}>Novo pedido</Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button className="w-full" onClick={resetForm}>Novo pedido</Button>
+            <Button variant="outline" className="w-full" onClick={() => {
+              const params = new URLSearchParams({ tab: "orders" });
+              window.location.search = params.toString();
+            }}>Ver pedidos</Button>
+          </div>
         </CardContent>
       </Card>
     );
