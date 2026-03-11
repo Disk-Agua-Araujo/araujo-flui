@@ -344,11 +344,11 @@ export function CustomersTab() {
           <DialogHeader><DialogTitle>{editing ? "Editar cliente" : "Novo cliente"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
-              <label className="text-sm font-medium">Nome *</label>
+              <label className="text-sm font-medium">Nome</label>
               <Input value={formName} onChange={(e) => setFormName(e.target.value)} maxLength={100} />
             </div>
             <div>
-              <label className="text-sm font-medium">Telefone *</label>
+              <label className="text-sm font-medium">Telefone</label>
               <Input value={formPhone} onChange={(e) => setFormPhone(e.target.value)} type="tel" maxLength={20} />
             </div>
             <div>
