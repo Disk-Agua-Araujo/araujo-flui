@@ -93,6 +93,8 @@ export function OrdersTab() {
       result = result.filter(
         (o) =>
           o.customers?.name?.toLowerCase().includes(s) ||
+          o.customers?.phone?.toLowerCase().includes(s) ||
+          o.addresses?.street?.toLowerCase().includes(s) ||
           o.order_items.some((i) => i.products?.name?.toLowerCase().includes(s)) ||
           o.id.toLowerCase().includes(s),
       );

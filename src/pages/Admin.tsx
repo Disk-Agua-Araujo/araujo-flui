@@ -22,6 +22,7 @@ function isValidTab(value: string | null): value is TabValue {
 
 export default function Admin() {
   const { username, isAdmin, isOwner, loading, signOut } = useAuth();
+  useSessionTimeout();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabValue>("orders");

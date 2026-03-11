@@ -70,6 +70,14 @@ export function NewOrderTab() {
   const [date, setDate] = useState<Date>();
   const [hora, setHora] = useState("");
   const [qtys, setQtys] = useState<Record<string, number>>({});
+  const [productSearch, setProductSearch] = useState("");
+  const debouncedProductSearch = useDebounce(productSearch, 250);
+
+  const filteredProducts = useMemo(() => {
+    if (!debouncedProductSearch) return products;
+    const q = debouncedProductSearch.toLowerCase();
+    return products.filter((p) => p.name.toLowerCase().includes(q));
+  }, [products, debouncedProductSearch]);
 
   const isEnterprise = tipo === "PJ";
 
