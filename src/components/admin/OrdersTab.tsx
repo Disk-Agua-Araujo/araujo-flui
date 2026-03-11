@@ -93,6 +93,8 @@ export function OrdersTab() {
       result = result.filter(
         (o) =>
           o.customers?.name?.toLowerCase().includes(s) ||
+          o.customers?.phone?.toLowerCase().includes(s) ||
+          o.addresses?.street?.toLowerCase().includes(s) ||
           o.order_items.some((i) => i.products?.name?.toLowerCase().includes(s)) ||
           o.id.toLowerCase().includes(s),
       );
@@ -204,7 +206,7 @@ export function OrdersTab() {
             <TableHeader>
               <TableRow>
                 <TableHead>ID</TableHead>
-                <TableHead>Cliente</TableHead>
+                <TableHead>Endereço</TableHead>
                 <TableHead className="hidden md:table-cell">Tipo</TableHead>
                 <TableHead className="hidden md:table-cell">Canal</TableHead>
                 <TableHead className="hidden md:table-cell">Entrega</TableHead>
@@ -223,7 +225,11 @@ export function OrdersTab() {
                 paginatedOrders.map((o) => (
                   <TableRow key={o.id}>
                     <TableCell className="font-mono text-xs">{o.id.slice(0, 8)}</TableCell>
-                    <TableCell className="font-medium">{o.customers?.name ?? "Retirada / Sem cadastro"}</TableCell>
+                    <TableCell className="text-sm">
+                      {o.addresses
+                        ? `${o.addresses.street}, ${o.addresses.number} — ${o.addresses.neighborhood}`
+                        : "Retirada na loja"}
+                    </TableCell>
                     <TableCell className="hidden md:table-cell">
                       <FulfillmentBadge type={(o as any).fulfillment_type} />
                     </TableCell>

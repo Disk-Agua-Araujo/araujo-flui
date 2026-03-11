@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ import { ptBR } from "date-fns/locale";
 import { CalendarIcon, Minus, Plus, Save, Search, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
-import { buildOrderMessage, openWhatsApp } from "@/services/whatsapp";
+// WhatsApp not used in admin — orders are saved directly
 import { useToast } from "@/hooks/use-toast";
 import { trackEvent } from "@/hooks/use-analytics";
 import { adminApi, type AdminProductRow, type AdminCustomerRow } from "@/services/admin-api";
@@ -70,6 +70,14 @@ export function NewOrderTab() {
   const [date, setDate] = useState<Date>();
   const [hora, setHora] = useState("");
   const [qtys, setQtys] = useState<Record<string, number>>({});
+  const [productSearch, setProductSearch] = useState("");
+  const debouncedProductSearch = useDebounce(productSearch, 250);
+
+  const filteredProducts = useMemo(() => {
+    if (!debouncedProductSearch) return products;
+    const q = debouncedProductSearch.toLowerCase();
+    return products.filter((p) => p.name.toLowerCase().includes(q));
+  }, [products, debouncedProductSearch]);
 
   const isEnterprise = tipo === "PJ";
 
@@ -308,25 +316,6 @@ export function NewOrderTab() {
         entregaHora: hora || undefined,
       });
 
-      if (hasCustomer) {
-        const message = buildOrderMessage({
-          tipo: tipo === "PJ" ? "EMPRESA" : "VAREJO",
-          canal,
-          cliente: nome,
-          cnpj: tipo === "PJ" ? cnpj : undefined,
-          telefone,
-          endereco: (hasAddress && fulfillmentType === "delivery") ? { rua, numero, bairro, cidade, uf: "SP", complemento } : undefined,
-          obs,
-          itens: selectedItems.map((i) => ({ nome: i.nome, qtd: i.qtd })),
-          entregaData,
-          entregaHora: hora || undefined,
-          status: "Novo",
-          pedidoId,
-          fulfillmentType,
-        });
-        openWhatsApp(message);
-      }
-
       trackEvent("order_created", { tipo: tipo === "PJ" ? "empresa" : "varejo", canal, pedidoId, fulfillmentType });
       setSubmitted(true);
       toast({ title: "Pedido salvo com sucesso!" });
@@ -343,14 +332,35 @@ export function NewOrderTab() {
     return (
       <Card className="max-w-lg mx-auto">
         <CardHeader>
-          <CardTitle className="text-center">
-            <Badge className="bg-whatsapp text-white mb-2">Pedido salvo!</Badge>
-            <br />Pedido registrado no sistema
+          <CardTitle className="text-center space-y-2">
+            <div className="flex justify-center">
+              <Badge className="bg-green-600 text-white text-sm px-3 py-1">✅ Pedido salvo com sucesso!</Badge>
+            </div>
+            <p className="text-base font-medium text-muted-foreground">Pedido #{labelData.pedidoId}</p>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="border rounded-lg p-4 bg-muted/30 text-sm space-y-1">
+            <p className="font-semibold">{labelData.cliente}</p>
+            <p className="text-muted-foreground">{labelData.endereco}</p>
+            {labelData.complemento && <p className="text-muted-foreground text-xs">Compl.: {labelData.complemento}</p>}
+            <ul className="list-disc list-inside mt-2">
+              {labelData.itens.map((i) => (
+                <li key={i.nome}>{i.nome}: {i.qtd}</li>
+              ))}
+            </ul>
+            {labelData.entregaData && (
+              <p className="mt-1">Entrega: {labelData.entregaData}{labelData.entregaHora ? ` às ${labelData.entregaHora}` : ""}</p>
+            )}
+          </div>
           <OrderLabel data={labelData} />
-          <Button className="w-full" onClick={resetForm}>Novo pedido</Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button className="w-full" onClick={resetForm}>Novo pedido</Button>
+            <Button variant="outline" className="w-full" onClick={() => {
+              const params = new URLSearchParams({ tab: "orders" });
+              window.location.search = params.toString();
+            }}>Ver pedidos</Button>
+          </div>
         </CardContent>
       </Card>
     );
@@ -493,10 +503,26 @@ export function NewOrderTab() {
       <Card>
         <CardHeader><CardTitle className="text-lg">Produtos</CardTitle></CardHeader>
         <CardContent className="space-y-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar produto por nome..."
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              className="pl-9 pr-8"
+            />
+            {productSearch && (
+              <button type="button" onClick={() => setProductSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
           {products.length === 0 ? (
             <p className="text-muted-foreground text-sm">Nenhum produto cadastrado.</p>
+          ) : filteredProducts.length === 0 ? (
+            <p className="text-muted-foreground text-sm">Nenhum produto encontrado.</p>
           ) : (
-            products.map((p) => (
+            filteredProducts.map((p) => (
               <div key={p.id} className="flex items-center justify-between border rounded-md p-3">
                 <div>
                   <p className="font-medium text-sm">{p.name}</p>
@@ -562,7 +588,7 @@ export function NewOrderTab() {
       </div>
 
       <Button type="submit" size="lg" className="w-full" disabled={saving}>
-        <Save className="h-5 w-5 mr-2" /> {saving ? "Salvando..." : "Salvar pedido + WhatsApp"}
+        <Save className="h-5 w-5 mr-2" /> {saving ? "Salvando..." : "Salvar pedido"}
       </Button>
     </form>
   );
