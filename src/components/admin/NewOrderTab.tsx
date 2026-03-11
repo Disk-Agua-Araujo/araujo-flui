@@ -308,25 +308,6 @@ export function NewOrderTab() {
         entregaHora: hora || undefined,
       });
 
-      if (hasCustomer) {
-        const message = buildOrderMessage({
-          tipo: tipo === "PJ" ? "EMPRESA" : "VAREJO",
-          canal,
-          cliente: nome,
-          cnpj: tipo === "PJ" ? cnpj : undefined,
-          telefone,
-          endereco: (hasAddress && fulfillmentType === "delivery") ? { rua, numero, bairro, cidade, uf: "SP", complemento } : undefined,
-          obs,
-          itens: selectedItems.map((i) => ({ nome: i.nome, qtd: i.qtd })),
-          entregaData,
-          entregaHora: hora || undefined,
-          status: "Novo",
-          pedidoId,
-          fulfillmentType,
-        });
-        openWhatsApp(message);
-      }
-
       trackEvent("order_created", { tipo: tipo === "PJ" ? "empresa" : "varejo", canal, pedidoId, fulfillmentType });
       setSubmitted(true);
       toast({ title: "Pedido salvo com sucesso!" });
