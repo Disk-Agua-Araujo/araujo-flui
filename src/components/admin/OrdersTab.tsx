@@ -223,7 +223,11 @@ export function OrdersTab() {
                 paginatedOrders.map((o) => (
                   <TableRow key={o.id}>
                     <TableCell className="font-mono text-xs">{o.id.slice(0, 8)}</TableCell>
-                    <TableCell className="font-medium">{o.customers?.name ?? "Retirada / Sem cadastro"}</TableCell>
+                    <TableCell className="text-sm">
+                      {o.addresses
+                        ? `${o.addresses.street}, ${o.addresses.number} — ${o.addresses.neighborhood}`
+                        : "Retirada na loja"}
+                    </TableCell>
                     <TableCell className="hidden md:table-cell">
                       <FulfillmentBadge type={(o as any).fulfillment_type} />
                     </TableCell>
