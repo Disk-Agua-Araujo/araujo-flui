@@ -204,7 +204,7 @@ export function OrdersTab() {
             <TableHeader>
               <TableRow>
                 <TableHead>ID</TableHead>
-                <TableHead>Cliente</TableHead>
+                <TableHead>Endereço</TableHead>
                 <TableHead className="hidden md:table-cell">Tipo</TableHead>
                 <TableHead className="hidden md:table-cell">Canal</TableHead>
                 <TableHead className="hidden md:table-cell">Entrega</TableHead>
