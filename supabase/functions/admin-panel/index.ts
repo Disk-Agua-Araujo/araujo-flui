@@ -323,14 +323,52 @@ serve(async (req) => {
     }
 
     if (action === "customers.save") {
-      const data = await upsertCustomerByPhone({
-        id: payload?.id,
-        name: payload?.name,
-        phone: payload?.phone,
-        type: payload?.type,
-        cnpj: payload?.cnpj,
-        email: payload?.email,
-      });
+      const name = ((payload?.name as string) || "").trim() || "Sem nome";
+      const phone = normalizePhone(payload?.phone || "");
+      const pType = (payload?.type || "PF") as "PF" | "PJ";
+
+      let data: any;
+      if (payload?.id) {
+        // Update existing customer
+        const { data: updated, error } = await adminClient
+          .from("customers")
+          .update({
+            name,
+            phone: phone || null,
+            type: pType,
+            cnpj: pType === "PJ" ? payload.cnpj || null : null,
+            email: payload.email || null,
+          })
+          .eq("id", payload.id)
+          .select("*")
+          .single();
+        if (error) throw error;
+        data = updated;
+      } else if (phone) {
+        // Has phone — use upsert logic
+        data = await upsertCustomerByPhone({
+          name,
+          phone,
+          type: pType,
+          cnpj: payload?.cnpj,
+          email: payload?.email,
+        });
+      } else {
+        // No phone — just insert new customer
+        const { data: inserted, error } = await adminClient
+          .from("customers")
+          .insert({
+            name,
+            phone: null,
+            type: pType,
+            cnpj: pType === "PJ" ? payload?.cnpj || null : null,
+            email: payload?.email || null,
+          })
+          .select("*")
+          .single();
+        if (error) throw error;
+        data = inserted;
+      }
 
       // Handle address if provided
       const addr = payload?.address;
