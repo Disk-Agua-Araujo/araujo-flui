@@ -61,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     } catch (err) {
       console.error("[auth] Token verification failed:", err);
-      sessionStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(TOKEN_KEY);
     } finally {
       setLoading(false);
     }
