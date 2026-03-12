@@ -16,6 +16,17 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 const TOKEN_KEY = "admin_token";
 
+// Migrate legacy sessionStorage token to localStorage
+(() => {
+  try {
+    const legacy = sessionStorage.getItem(TOKEN_KEY);
+    if (legacy && !localStorage.getItem(TOKEN_KEY)) {
+      localStorage.setItem(TOKEN_KEY, legacy);
+    }
+    sessionStorage.removeItem(TOKEN_KEY);
+  } catch { /* ignore */ }
+})();
+
 function getLoginUrl() {
   const base = import.meta.env.VITE_SUPABASE_URL;
   if (!base) {
