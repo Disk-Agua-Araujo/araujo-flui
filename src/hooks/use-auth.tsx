@@ -89,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("[auth] Login failed:", res.status, data);
       throw new Error(data.error || "Erro ao fazer login");
     }
-    sessionStorage.setItem(TOKEN_KEY, data.token);
+    localStorage.setItem(TOKEN_KEY, data.token);
     setUsername(data.username);
     setRole(data.role as AdminRole);
   };
