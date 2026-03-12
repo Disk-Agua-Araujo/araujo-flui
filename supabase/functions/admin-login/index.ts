@@ -251,13 +251,13 @@ serve(async (req) => {
 
   await clearFailures(db, rateLimitKey);
 
-  // JWT with 15 minute expiry (reduced from 30 for security)
+  // JWT with 10-year expiry — logout is explicit only
   const token = await signJWT(
     {
       sub: match.username,
       role: match.role,
       iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 60 * 15,
+      exp: Math.floor(Date.now() / 1000) + 10 * 365 * 24 * 60 * 60,
     },
     jwtSecret
   );

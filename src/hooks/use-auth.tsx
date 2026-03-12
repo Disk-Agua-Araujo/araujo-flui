@@ -95,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = () => {
-    sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
     setUsername(null);
     setRole(null);
   };
