@@ -49,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-      sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
       return;
     }
     const data = await res.json();
@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUsername(data.sub);
       setRole(data.role as AdminRole);
     } else {
-      sessionStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(TOKEN_KEY);
     }
     } catch (err) {
       console.error("[auth] Token verification failed:", err);
