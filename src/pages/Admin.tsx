@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { useSessionTimeout } from "@/hooks/useSessionTimeout";
+
 import { OrdersTab } from "@/components/admin/OrdersTab";
 import { NewOrderTab } from "@/components/admin/NewOrderTab";
 import { ProductsTab } from "@/components/admin/ProductsTab";
@@ -22,7 +22,7 @@ function isValidTab(value: string | null): value is TabValue {
 
 export default function Admin() {
   const { username, isAdmin, isOwner, loading, signOut } = useAuth();
-  useSessionTimeout();
+  
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabValue>("orders");

@@ -13,7 +13,7 @@ function mapErrorMessage(message: string) {
 }
 
 async function callAdminApi<T>(action: string, payload?: unknown): Promise<T> {
-  const token = sessionStorage.getItem(TOKEN_KEY);
+  const token = localStorage.getItem(TOKEN_KEY);
 
   if (!token) {
     throw new Error("Sem permissão para executar esta ação. Faça login no Admin novamente.");

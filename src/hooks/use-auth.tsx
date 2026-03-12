@@ -16,6 +16,17 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 const TOKEN_KEY = "admin_token";
 
+// Migrate legacy sessionStorage token to localStorage
+(() => {
+  try {
+    const legacy = sessionStorage.getItem(TOKEN_KEY);
+    if (legacy && !localStorage.getItem(TOKEN_KEY)) {
+      localStorage.setItem(TOKEN_KEY, legacy);
+    }
+    sessionStorage.removeItem(TOKEN_KEY);
+  } catch { /* ignore */ }
+})();
+
 function getLoginUrl() {
   const base = import.meta.env.VITE_SUPABASE_URL;
   if (!base) {
@@ -38,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-      sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
       return;
     }
     const data = await res.json();
@@ -46,18 +57,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUsername(data.sub);
       setRole(data.role as AdminRole);
     } else {
-      sessionStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(TOKEN_KEY);
     }
     } catch (err) {
       console.error("[auth] Token verification failed:", err);
-      sessionStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(TOKEN_KEY);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    const token = sessionStorage.getItem(TOKEN_KEY);
+    const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
       verifyToken(token);
     } else {
@@ -78,13 +89,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("[auth] Login failed:", res.status, data);
       throw new Error(data.error || "Erro ao fazer login");
     }
-    sessionStorage.setItem(TOKEN_KEY, data.token);
+    localStorage.setItem(TOKEN_KEY, data.token);
     setUsername(data.username);
     setRole(data.role as AdminRole);
   };
 
   const signOut = () => {
-    sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
     setUsername(null);
     setRole(null);
   };
