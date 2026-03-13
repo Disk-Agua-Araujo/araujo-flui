@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { isValidCnpj, maskCnpj } from "@/lib/cnpj";
 import { adminApi, type AdminCustomerRow, type CustomerOrderRow } from "@/services/admin-api";
+import { normalize } from "@/lib/normalize";
 
 const PREFILL_KEY = "admin-new-order-customer";
 
