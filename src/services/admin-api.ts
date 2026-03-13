@@ -90,6 +90,8 @@ export type AdminProductRow = {
   min_stock_qty: number;
   track_stock: boolean;
   category_id: string | null;
+  show_in_quick_order: boolean;
+  image_url: string | null;
 };
 
 export type AdminTierRow = {

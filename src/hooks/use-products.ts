@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 
-export type DbProduct = Tables<"products"> & { category_id?: string | null };
+export type DbProduct = Tables<"products">;
 export type DbTier = Tables<"wholesale_price_tiers">;
 
 export function useProducts() {

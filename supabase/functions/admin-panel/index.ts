@@ -506,6 +506,8 @@ serve(async (req) => {
         track_stock: !!product.track_stock,
         min_stock_qty: product.min_stock_qty || 0,
         category_id: product.category_id || null,
+        show_in_quick_order: !!product.show_in_quick_order,
+        image_url: product.image_url || null,
       };
 
       let productId = product.id as string | undefined;
