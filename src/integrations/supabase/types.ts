@@ -315,9 +315,11 @@ export type Database = {
           description: string | null
           icon: string | null
           id: string
+          image_url: string | null
           min_stock_qty: number
           name: string
           price_text: string | null
+          show_in_quick_order: boolean
           stock_qty: number
           track_stock: boolean
           type: Database["public"]["Enums"]["product_type"]
@@ -329,9 +331,11 @@ export type Database = {
           description?: string | null
           icon?: string | null
           id?: string
+          image_url?: string | null
           min_stock_qty?: number
           name: string
           price_text?: string | null
+          show_in_quick_order?: boolean
           stock_qty?: number
           track_stock?: boolean
           type?: Database["public"]["Enums"]["product_type"]
@@ -343,9 +347,11 @@ export type Database = {
           description?: string | null
           icon?: string | null
           id?: string
+          image_url?: string | null
           min_stock_qty?: number
           name?: string
           price_text?: string | null
+          show_in_quick_order?: boolean
           stock_qty?: number
           track_stock?: boolean
           type?: Database["public"]["Enums"]["product_type"]
