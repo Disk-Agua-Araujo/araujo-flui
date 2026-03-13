@@ -241,6 +241,7 @@ export function NewOrderTab() {
     setSelectedCustomerId(null);
     setSearchQuery("");
     setSearchResults([]);
+    setPaymentMethod("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
