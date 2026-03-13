@@ -3,6 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
 import { trackEvent } from "@/hooks/use-analytics"; // analytics
 
+const paymentLabels: Record<string, string> = {
+  cash: "Dinheiro",
+  pix: "PIX",
+  card: "Cartão",
+};
+
 export interface LabelData {
   pedidoId: string;
   cliente: string;
