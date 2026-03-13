@@ -139,6 +139,7 @@ export function OrdersTab() {
       itens: o.order_items.map((i) => ({ nome: i.products?.name ?? "—", qtd: i.qty })),
       entregaData: o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM/yyyy") : undefined,
       entregaHora: o.delivery_time ?? undefined,
+      pagamento: o.payment_method ?? undefined,
     });
   };
 
