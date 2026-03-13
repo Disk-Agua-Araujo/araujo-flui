@@ -64,3 +64,19 @@ export function useTiers(productId?: string) {
     },
   });
 }
+
+export function useQuickOrderProducts() {
+  return useQuery({
+    queryKey: ["quick-order-products"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .eq("active", true)
+        .eq("show_in_quick_order", true)
+        .order("created_at");
+      if (error) throw error;
+      return data as DbProduct[];
+    },
+  });
+}
