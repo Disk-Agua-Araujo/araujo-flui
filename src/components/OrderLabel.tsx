@@ -11,6 +11,7 @@ export interface LabelData {
   itens: { nome: string; qtd: number }[];
   entregaData?: string;
   entregaHora?: string;
+  pagamento?: string;
 }
 
 export function OrderLabel({ data }: { data: LabelData }) {
