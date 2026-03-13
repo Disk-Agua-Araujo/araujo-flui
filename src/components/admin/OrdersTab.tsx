@@ -251,6 +251,11 @@ export function OrdersTab() {
                     <TableCell className="text-xs">
                       {o.order_items.map((i) => `${i.products?.name ?? "?"} x${i.qty}`).join(", ")}
                     </TableCell>
+                    <TableCell className="text-xs">
+                      {o.payment_method ? (
+                        <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
+                      ) : "—"}
+                    </TableCell>
                     <TableCell>
                       <Select value={o.status} onValueChange={(v) => updateStatus(o.id, v)}>
                         <SelectTrigger className="h-7 text-xs w-[110px]">
