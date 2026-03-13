@@ -73,11 +73,12 @@ export function NewOrderTab() {
   const [qtys, setQtys] = useState<Record<string, number>>({});
   const [productSearch, setProductSearch] = useState("");
   const debouncedProductSearch = useDebounce(productSearch, 250);
+  const [paymentMethod, setPaymentMethod] = useState<string>("");
 
   const filteredProducts = useMemo(() => {
     if (!debouncedProductSearch) return products;
-    const q = debouncedProductSearch.toLowerCase();
-    return products.filter((p) => p.name.toLowerCase().includes(q));
+    const q = normalize(debouncedProductSearch);
+    return products.filter((p) => normalize(p.name).includes(q));
   }, [products, debouncedProductSearch]);
 
   const isEnterprise = tipo === "PJ";
