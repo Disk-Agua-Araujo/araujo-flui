@@ -73,14 +73,13 @@ export function CustomersTab() {
 
   const filtered = useMemo(() => {
     if (!search) return customers;
-    const s = search.toLowerCase();
+    const s = normalize(search);
     return customers.filter((c) => {
-      if (c.name.toLowerCase().includes(s)) return true;
-      if ((c.phone || "").includes(s)) return true;
+      if (normalize(c.name).includes(s)) return true;
+      if (normalize(c.phone || "").includes(s)) return true;
       if ((c.cnpj || "").includes(s)) return true;
-      if ((c.email || "").toLowerCase().includes(s)) return true;
-      // Search by street in addresses
-      if (c.addresses?.some((a) => a.street.toLowerCase().includes(s) || a.neighborhood.toLowerCase().includes(s))) return true;
+      if (normalize(c.email || "").includes(s)) return true;
+      if (c.addresses?.some((a) => normalize(a.street).includes(s) || normalize(a.neighborhood).includes(s))) return true;
       return false;
     });
   }, [customers, search]);
