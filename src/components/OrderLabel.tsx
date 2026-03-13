@@ -3,6 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
 import { trackEvent } from "@/hooks/use-analytics"; // analytics
 
+const paymentLabels: Record<string, string> = {
+  cash: "Dinheiro",
+  pix: "PIX",
+  card: "Cartão",
+};
+
 export interface LabelData {
   pedidoId: string;
   cliente: string;
@@ -11,6 +17,7 @@ export interface LabelData {
   itens: { nome: string; qtd: number }[];
   entregaData?: string;
   entregaHora?: string;
+  pagamento?: string;
 }
 
 export function OrderLabel({ data }: { data: LabelData }) {
@@ -40,6 +47,7 @@ export function OrderLabel({ data }: { data: LabelData }) {
         ${data.complemento ? `<p>Compl.: ${data.complemento}</p>` : ""}
         <ul>${data.itens.map((i) => `<li>${i.nome}: ${i.qtd}</li>`).join("")}</ul>
         ${data.entregaData ? `<p>Entrega: ${data.entregaData}${data.entregaHora ? ` às ${data.entregaHora}` : ""}</p>` : ""}
+        ${data.pagamento ? `<p>Pagamento: ${paymentLabels[data.pagamento] || data.pagamento}</p>` : ""}
         <p class="id">ID: ${data.pedidoId}</p>
       </div>
       </body></html>
@@ -62,6 +70,9 @@ export function OrderLabel({ data }: { data: LabelData }) {
         </ul>
         {data.entregaData && (
           <p>Entrega: {data.entregaData}{data.entregaHora ? ` às ${data.entregaHora}` : ""}</p>
+        )}
+        {data.pagamento && (
+          <p className="text-sm">Pagamento: {paymentLabels[data.pagamento] || data.pagamento}</p>
         )}
         <p className="text-xs text-muted-foreground">ID: {data.pedidoId}</p>
       </div>

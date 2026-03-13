@@ -22,6 +22,12 @@ const statusColors: Record<string, string> = {
   cancelado: "bg-red-100 text-red-800",
 };
 
+const paymentLabels: Record<string, string> = {
+  cash: "💵 Dinheiro",
+  pix: "📱 PIX",
+  card: "💳 Cartão",
+};
+
 const statusLabels: Record<string, string> = {
   novo: "Novo",
   agendado: "Agendado",
@@ -133,6 +139,7 @@ export function OrdersTab() {
       itens: o.order_items.map((i) => ({ nome: i.products?.name ?? "—", qtd: i.qty })),
       entregaData: o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM/yyyy") : undefined,
       entregaHora: o.delivery_time ?? undefined,
+      pagamento: o.payment_method ?? undefined,
     });
   };
 
@@ -212,15 +219,16 @@ export function OrdersTab() {
                 <TableHead className="hidden md:table-cell">Entrega</TableHead>
                 <TableHead className="hidden md:table-cell">Criado</TableHead>
                 <TableHead>Itens</TableHead>
+                <TableHead>Pgto</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
               ) : paginatedOrders.length === 0 ? (
-                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
               ) : (
                 paginatedOrders.map((o) => (
                   <TableRow key={o.id}>
@@ -243,6 +251,11 @@ export function OrdersTab() {
                     </TableCell>
                     <TableCell className="text-xs">
                       {o.order_items.map((i) => `${i.products?.name ?? "?"} x${i.qty}`).join(", ")}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {o.payment_method ? (
+                        <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
+                      ) : "—"}
                     </TableCell>
                     <TableCell>
                       <Select value={o.status} onValueChange={(v) => updateStatus(o.id, v)}>
@@ -300,6 +313,7 @@ export function OrdersTab() {
               {selectedOrder.addresses?.complement && <p><strong>Complemento:</strong> {selectedOrder.addresses.complement}</p>}
               <p><strong>Canal:</strong> {selectedOrder.channel}</p>
               <p><strong>Entrega:</strong> {selectedOrder.delivery_date ?? "—"} {selectedOrder.delivery_time ?? ""}</p>
+              <p><strong>Pagamento:</strong> {selectedOrder.payment_method ? (paymentLabels[selectedOrder.payment_method] || selectedOrder.payment_method) : "—"}</p>
               <p><strong>Criado em:</strong> {format(new Date(selectedOrder.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
               <p><strong>Itens:</strong></p>
               <ul className="list-disc list-inside">

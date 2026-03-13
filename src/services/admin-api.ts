@@ -49,6 +49,7 @@ export type AdminOrderRow = {
   notes: string | null;
   created_at: string;
   fulfillment_type: string;
+  payment_method: string | null;
   customers: { id: string; name: string; phone: string | null; cnpj: string | null } | null;
   addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null } | null;
   order_items: { qty: number; products: { name: string } | null }[];
@@ -88,6 +89,7 @@ export type AdminProductRow = {
   stock_qty: number;
   min_stock_qty: number;
   track_stock: boolean;
+  category_id: string | null;
 };
 
 export type AdminTierRow = {
@@ -95,6 +97,14 @@ export type AdminTierRow = {
   product_id: string;
   min_qty: number;
   price_text: string;
+};
+
+export type AdminCategoryRow = {
+  id: string;
+  name: string;
+  slug: string;
+  sort_order: number;
+  created_at: string;
 };
 
 export type CustomerOrderRow = {
@@ -119,6 +129,7 @@ export const adminApi = {
     delivery_date?: string;
     delivery_time?: string;
     fulfillment_type?: "delivery" | "pickup";
+    payment_method?: string | null;
   }) => callAdminApi<{ order_id: string; customer_id: string }>("orders.createAdmin", payload),
 
   listCustomers: () => callAdminApi<AdminCustomerRow[]>("customers.list"),
@@ -143,7 +154,7 @@ export const adminApi = {
     };
   }) => callAdminApi<AdminCustomerRow>("customers.save", payload),
 
-  listProducts: () => callAdminApi<{ products: AdminProductRow[]; tiers: AdminTierRow[] }>("products.list"),
+  listProducts: () => callAdminApi<{ products: AdminProductRow[]; tiers: AdminTierRow[]; categories: AdminCategoryRow[] }>("products.list"),
   saveProduct: (payload: {
     product: Partial<AdminProductRow>;
     tiers: { min_qty: number; price_text: string }[];
@@ -158,6 +169,8 @@ export const adminApi = {
 
   searchCustomers: (query: string) =>
     callAdminApi<AdminCustomerRow[]>("customers.search", { query }),
+
+  listCategories: () => callAdminApi<AdminCategoryRow[]>("categories.list"),
 
   listReportsOrders: () => callAdminApi<AdminOrderRow[]>("reports.orders"),
 };

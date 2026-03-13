@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2, Save, Package, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { adminApi, type AdminProductRow, type AdminTierRow } from "@/services/admin-api";
+import { adminApi, type AdminProductRow, type AdminTierRow, type AdminCategoryRow } from "@/services/admin-api";
 
 type Product = AdminProductRow;
 type Tier = AdminTierRow;
@@ -20,6 +20,7 @@ export function ProductsTab() {
   const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [tiers, setTiers] = useState<Tier[]>([]);
+  const [categories, setCategories] = useState<AdminCategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editProduct, setEditProduct] = useState<Partial<Product> | null>(null);
   const [editTiers, setEditTiers] = useState<Partial<Tier>[]>([]);
@@ -33,6 +34,7 @@ export function ProductsTab() {
       const data = await adminApi.listProducts();
       setProducts(data.products ?? []);
       setTiers(data.tiers ?? []);
+      setCategories(data.categories ?? []);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro ao carregar produtos";
       toast({ title: "Erro", description: message, variant: "destructive" });
@@ -42,6 +44,11 @@ export function ProductsTab() {
   };
 
   useEffect(() => { fetchAll(); }, []);
+
+  const getCategoryName = (id: string | null) => {
+    if (!id) return "—";
+    return categories.find((c) => c.id === id)?.name ?? "—";
+  };
 
   const openEditor = (product?: Product) => {
     if (product) {
@@ -60,6 +67,7 @@ export function ProductsTab() {
       track_stock: false,
       stock_qty: 0,
       min_stock_qty: 0,
+      category_id: null,
     });
     setEditTiers([]);
   };
@@ -84,6 +92,7 @@ export function ProductsTab() {
           track_stock: editProduct.track_stock ?? false,
           min_stock_qty: editProduct.min_stock_qty ?? 0,
           stock_qty: editProduct.stock_qty ?? 0,
+          category_id: editProduct.category_id || null,
         },
         tiers: editTiers
           .filter((t) => Number(t.min_qty) > 0)
@@ -150,6 +159,7 @@ export function ProductsTab() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
+                <TableHead>Categoria</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Preço</TableHead>
                 <TableHead>Estoque</TableHead>
@@ -159,15 +169,16 @@ export function ProductsTab() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
               ) : products.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhum produto.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum produto.</TableCell></TableRow>
               ) : (
                 products.map((p) => {
                   const lowStock = p.track_stock && p.stock_qty <= p.min_stock_qty;
                   return (
                     <TableRow key={p.id}>
                       <TableCell className="font-medium">{p.name}</TableCell>
+                      <TableCell className="text-sm">{getCategoryName(p.category_id)}</TableCell>
                       <TableCell><Badge variant="outline">{p.type}</Badge></TableCell>
                       <TableCell className="text-sm">{p.price_text}</TableCell>
                       <TableCell>
@@ -208,6 +219,18 @@ export function ProductsTab() {
             <div className="space-y-4">
               <div><Label>Nome *</Label><Input value={editProduct.name ?? ""} onChange={(e) => setEditProduct({ ...editProduct, name: e.target.value })} /></div>
               <div><Label>Descrição</Label><Textarea value={editProduct.description ?? ""} onChange={(e) => setEditProduct({ ...editProduct, description: e.target.value })} rows={2} /></div>
+              <div>
+                <Label>Categoria *</Label>
+                <Select value={editProduct.category_id ?? "none"} onValueChange={(v) => setEditProduct({ ...editProduct, category_id: v === "none" ? null : v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecione uma categoria" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem categoria</SelectItem>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Tipo</Label>

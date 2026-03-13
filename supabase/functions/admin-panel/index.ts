@@ -39,6 +39,10 @@ function normalizePhone(input: string) {
   return (input || "").replace(/\D/g, "");
 }
 
+function normalizeSearch(str: string): string {
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
 async function verifyJWT(token: string, secret: string): Promise<AdminPayload | null> {
   try {
     const [header, payload, signature] = token.split(".");
@@ -181,7 +185,7 @@ serve(async (req) => {
       const { data, error } = await adminClient
         .from("orders")
         .select(`
-          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type,
+          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method,
           customers(id, name, phone, cnpj),
           addresses(street, number, neighborhood, city, complement),
           order_items(qty, products(name))
@@ -228,6 +232,7 @@ serve(async (req) => {
       const address = payload?.address;
       const items = payload?.items as { product_id: string; qty: number }[];
       const fulfillmentType = payload?.fulfillment_type || "delivery";
+      const paymentMethod = payload?.payment_method || null;
 
       if (!Array.isArray(items) || items.length === 0) {
         throw new Error("Selecione ao menos um produto.");
@@ -281,6 +286,7 @@ serve(async (req) => {
           delivery_time: payload?.delivery_time || null,
           status: "novo",
           fulfillment_type: fulfillmentType,
+          payment_method: paymentMethod,
         })
         .select("id")
         .single();
@@ -414,14 +420,17 @@ serve(async (req) => {
       const q = ((payload?.query as string) || "").trim();
       if (q.length < 2) return json({ data: [] });
 
+      // Normalize the search term for fuzzy matching
+      const normalized = normalizeSearch(q);
+
       // Search customers by name, phone, OR street (via addresses join)
-      // First search by name/phone
+      // Use ILIKE with the original term for accent-sensitive DB matching
       const { data: byNamePhone, error: e1 } = await adminClient
         .from("customers")
         .select("id, name, phone, type, cnpj, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, reference, is_primary)")
         .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
         .order("name")
-        .limit(10);
+        .limit(15);
       if (e1) throw e1;
 
       // Then search by street
@@ -448,18 +457,38 @@ serve(async (req) => {
         byStreet = streetCustomers || [];
       }
 
-      const combined = [...(byNamePhone || []), ...byStreet].slice(0, 15);
-      return json({ data: combined });
+      // Client-side fuzzy: also filter with normalized comparison for accent-insensitive
+      const allResults = [...(byNamePhone || []), ...byStreet];
+      const fuzzyFiltered = allResults.filter((c: any) => {
+        const nName = normalizeSearch(c.name || "");
+        const nPhone = normalizeSearch(c.phone || "");
+        if (nName.includes(normalized) || nPhone.includes(normalized)) return true;
+        if (c.addresses?.some((a: any) => normalizeSearch(a.street || "").includes(normalized))) return true;
+        return true; // already matched by ILIKE
+      });
+
+      return json({ data: fuzzyFiltered.slice(0, 15) });
+    }
+
+    if (action === "categories.list") {
+      const { data, error } = await adminClient
+        .from("product_categories")
+        .select("*")
+        .order("sort_order");
+      if (error) throw error;
+      return json({ data });
     }
 
     if (action === "products.list") {
-      const [{ data: products, error: prodError }, { data: tiers, error: tierError }] = await Promise.all([
+      const [{ data: products, error: prodError }, { data: tiers, error: tierError }, { data: categories, error: catError }] = await Promise.all([
         adminClient.from("products").select("*").order("created_at"),
         adminClient.from("wholesale_price_tiers").select("*").order("min_qty"),
+        adminClient.from("product_categories").select("*").order("sort_order"),
       ]);
       if (prodError) throw prodError;
       if (tierError) throw tierError;
-      return json({ data: { products, tiers } });
+      if (catError) throw catError;
+      return json({ data: { products, tiers, categories } });
     }
 
     if (action === "products.save") {
@@ -467,7 +496,7 @@ serve(async (req) => {
       const tiers = (payload?.tiers || []) as { min_qty: number; price_text: string }[];
       if (!product?.name) throw new Error("Nome do produto é obrigatório.");
 
-      const productData = {
+      const productData: any = {
         name: product.name,
         description: product.description || null,
         type: product.type,
@@ -476,6 +505,7 @@ serve(async (req) => {
         price_text: product.price_text || null,
         track_stock: !!product.track_stock,
         min_stock_qty: product.min_stock_qty || 0,
+        category_id: product.category_id || null,
       };
 
       let productId = product.id as string | undefined;
@@ -534,7 +564,7 @@ serve(async (req) => {
       }
       const { data, error } = await adminClient
         .from("orders")
-        .select("id, channel, status, delivery_date, created_at, fulfillment_type, customers(name), order_items(qty, products(name))")
+        .select("id, channel, status, delivery_date, created_at, fulfillment_type, payment_method, customers(name), order_items(qty, products(name))")
         .order("created_at", { ascending: false })
         .limit(1000);
       if (error) throw error;

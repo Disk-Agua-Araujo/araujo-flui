@@ -235,6 +235,7 @@ export type Database = {
           fulfillment_type: string
           id: string
           notes: string | null
+          payment_method: string | null
           status: Database["public"]["Enums"]["order_status"]
         }
         Insert: {
@@ -248,6 +249,7 @@ export type Database = {
           fulfillment_type?: string
           id?: string
           notes?: string | null
+          payment_method?: string | null
           status?: Database["public"]["Enums"]["order_status"]
         }
         Update: {
@@ -261,6 +263,7 @@ export type Database = {
           fulfillment_type?: string
           id?: string
           notes?: string | null
+          payment_method?: string | null
           status?: Database["public"]["Enums"]["order_status"]
         }
         Relationships: [
@@ -280,9 +283,34 @@ export type Database = {
           },
         ]
       }
+      product_categories: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          slug: string
+          sort_order: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          slug: string
+          sort_order?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          slug?: string
+          sort_order?: number | null
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           active: boolean
+          category_id: string | null
           created_at: string
           description: string | null
           icon: string | null
@@ -296,6 +324,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          category_id?: string | null
           created_at?: string
           description?: string | null
           icon?: string | null
@@ -309,6 +338,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          category_id?: string | null
           created_at?: string
           description?: string | null
           icon?: string | null
@@ -320,7 +350,15 @@ export type Database = {
           track_stock?: boolean
           type?: Database["public"]["Enums"]["product_type"]
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "product_categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stock_movements: {
         Row: {

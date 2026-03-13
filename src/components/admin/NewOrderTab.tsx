@@ -22,6 +22,7 @@ import { trackEvent } from "@/hooks/use-analytics";
 import { adminApi, type AdminProductRow, type AdminCustomerRow } from "@/services/admin-api";
 import { useDebounce } from "@/hooks/use-debounce";
 import { getMinDeliveryDate, isDeliveryDateDisabled } from "@/lib/deliveryRules";
+import { normalize } from "@/lib/normalize";
 
 const horarios = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
 const canais = [
@@ -72,11 +73,12 @@ export function NewOrderTab() {
   const [qtys, setQtys] = useState<Record<string, number>>({});
   const [productSearch, setProductSearch] = useState("");
   const debouncedProductSearch = useDebounce(productSearch, 250);
+  const [paymentMethod, setPaymentMethod] = useState<string>("");
 
   const filteredProducts = useMemo(() => {
     if (!debouncedProductSearch) return products;
-    const q = debouncedProductSearch.toLowerCase();
-    return products.filter((p) => p.name.toLowerCase().includes(q));
+    const q = normalize(debouncedProductSearch);
+    return products.filter((p) => normalize(p.name).includes(q));
   }, [products, debouncedProductSearch]);
 
   const isEnterprise = tipo === "PJ";
@@ -239,6 +241,7 @@ export function NewOrderTab() {
     setSelectedCustomerId(null);
     setSearchQuery("");
     setSearchResults([]);
+    setPaymentMethod("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -301,6 +304,7 @@ export function NewOrderTab() {
         delivery_date: date ? format(date, "yyyy-MM-dd") : undefined,
         delivery_time: hora || undefined,
         fulfillment_type: fulfillmentType,
+        payment_method: paymentMethod || null,
       });
 
       const pedidoId = result.order_id.slice(0, 8).toUpperCase();
@@ -314,6 +318,7 @@ export function NewOrderTab() {
         itens: selectedItems.map((i) => ({ nome: i.nome, qtd: i.qtd })),
         entregaData,
         entregaHora: hora || undefined,
+        pagamento: paymentMethod || undefined,
       });
 
       trackEvent("order_created", { tipo: tipo === "PJ" ? "empresa" : "varejo", canal, pedidoId, fulfillmentType });
@@ -579,6 +584,30 @@ export function NewOrderTab() {
               <SelectContent>{horarios.map((h) => <SelectItem key={h} value={h}>{h}</SelectItem>)}</SelectContent>
             </Select>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-lg">Forma de pagamento</CardTitle></CardHeader>
+        <CardContent>
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { value: "cash", label: "💵 Dinheiro" },
+              { value: "pix", label: "📱 PIX" },
+              { value: "card", label: "💳 Cartão" },
+            ].map((opt) => (
+              <Button
+                key={opt.value}
+                type="button"
+                variant={paymentMethod === opt.value ? "default" : "outline"}
+                size="sm"
+                onClick={() => setPaymentMethod(paymentMethod === opt.value ? "" : opt.value)}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">Opcional — selecione se o cliente informou.</p>
         </CardContent>
       </Card>
 
