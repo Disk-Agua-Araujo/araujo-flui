@@ -41,6 +41,7 @@ export function OrderLabel({ data }: { data: LabelData }) {
         ${data.complemento ? `<p>Compl.: ${data.complemento}</p>` : ""}
         <ul>${data.itens.map((i) => `<li>${i.nome}: ${i.qtd}</li>`).join("")}</ul>
         ${data.entregaData ? `<p>Entrega: ${data.entregaData}${data.entregaHora ? ` às ${data.entregaHora}` : ""}</p>` : ""}
+        ${data.pagamento ? `<p>Pagamento: ${paymentLabels[data.pagamento] || data.pagamento}</p>` : ""}
         <p class="id">ID: ${data.pedidoId}</p>
       </div>
       </body></html>

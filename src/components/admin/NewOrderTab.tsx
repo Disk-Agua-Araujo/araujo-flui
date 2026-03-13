@@ -587,6 +587,30 @@ export function NewOrderTab() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader><CardTitle className="text-lg">Forma de pagamento</CardTitle></CardHeader>
+        <CardContent>
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { value: "cash", label: "💵 Dinheiro" },
+              { value: "pix", label: "📱 PIX" },
+              { value: "card", label: "💳 Cartão" },
+            ].map((opt) => (
+              <Button
+                key={opt.value}
+                type="button"
+                variant={paymentMethod === opt.value ? "default" : "outline"}
+                size="sm"
+                onClick={() => setPaymentMethod(paymentMethod === opt.value ? "" : opt.value)}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">Opcional — selecione se o cliente informou.</p>
+        </CardContent>
+      </Card>
+
       <div>
         <Label>Observações</Label>
         <Textarea value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Instruções especiais..." />
