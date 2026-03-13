@@ -318,6 +318,7 @@ export function NewOrderTab() {
         itens: selectedItems.map((i) => ({ nome: i.nome, qtd: i.qtd })),
         entregaData,
         entregaHora: hora || undefined,
+        pagamento: paymentMethod || undefined,
       });
 
       trackEvent("order_created", { tipo: tipo === "PJ" ? "empresa" : "varejo", canal, pedidoId, fulfillmentType });
