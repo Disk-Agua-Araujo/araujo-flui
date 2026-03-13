@@ -304,6 +304,7 @@ export function NewOrderTab() {
         delivery_date: date ? format(date, "yyyy-MM-dd") : undefined,
         delivery_time: hora || undefined,
         fulfillment_type: fulfillmentType,
+        payment_method: paymentMethod || null,
       });
 
       const pedidoId = result.order_id.slice(0, 8).toUpperCase();
