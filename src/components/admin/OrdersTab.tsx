@@ -22,6 +22,12 @@ const statusColors: Record<string, string> = {
   cancelado: "bg-red-100 text-red-800",
 };
 
+const paymentLabels: Record<string, string> = {
+  cash: "💵 Dinheiro",
+  pix: "📱 PIX",
+  card: "💳 Cartão",
+};
+
 const statusLabels: Record<string, string> = {
   novo: "Novo",
   agendado: "Agendado",

@@ -71,6 +71,9 @@ export function OrderLabel({ data }: { data: LabelData }) {
         {data.entregaData && (
           <p>Entrega: {data.entregaData}{data.entregaHora ? ` às ${data.entregaHora}` : ""}</p>
         )}
+        {data.pagamento && (
+          <p className="text-sm">Pagamento: {paymentLabels[data.pagamento] || data.pagamento}</p>
+        )}
         <p className="text-xs text-muted-foreground">ID: {data.pedidoId}</p>
       </div>
       <Button variant="outline" size="sm" onClick={handlePrint}>
