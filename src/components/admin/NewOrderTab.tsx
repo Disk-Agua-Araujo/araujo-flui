@@ -22,6 +22,7 @@ import { trackEvent } from "@/hooks/use-analytics";
 import { adminApi, type AdminProductRow, type AdminCustomerRow } from "@/services/admin-api";
 import { useDebounce } from "@/hooks/use-debounce";
 import { getMinDeliveryDate, isDeliveryDateDisabled } from "@/lib/deliveryRules";
+import { normalize } from "@/lib/normalize";
 
 const horarios = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
 const canais = [
