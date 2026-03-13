@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { MessageCircle, Plus, Minus, Copy, Check, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { useState, useMemo } from "react";
+import { MessageCircle, Plus, Minus, Copy, Check, Loader2, ChevronDown, ChevronUp, Droplets } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,10 +12,23 @@ import { createSiteOrder } from "@/services/orders";
 import { useProducts } from "@/hooks/use-products";
 import { trackEvent } from "@/hooks/use-analytics";
 import { useToast } from "@/hooks/use-toast";
+import { useDebounce } from "@/hooks/use-debounce";
+import { normalize } from "@/lib/normalize";
+import { ProductSearchBar } from "@/components/ProductSearchBar";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function OrderPage() {
   const { toast } = useToast();
   const { data: dbProducts = [], isLoading: productsLoading } = useProducts();
+
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 250);
+
+  const filteredProducts = useMemo(() => {
+    if (!debouncedSearch) return dbProducts;
+    const q = normalize(debouncedSearch);
+    return dbProducts.filter((p) => normalize(p.name).includes(q) || normalize(p.description ?? "").includes(q));
+  }, [dbProducts, debouncedSearch]);
 
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [name, setName] = useState("");
@@ -61,12 +74,10 @@ export default function OrderPage() {
     setSaving(true);
 
     try {
-      // Parse street and number from address field
       const addressParts = address.trim().match(/^(.+?),?\s*(\d+\S*)\s*$/);
       const street = addressParts ? addressParts[1] : address.trim();
       const numero = addressParts ? addressParts[2] : "S/N";
 
-      // 1. Save to database
       const orderResult = await createSiteOrder({
         customer: { name: name.trim(), phone: whatsapp.trim(), type: "PF" },
         address: { street, number: numero, neighborhood: bairro.trim(), city: "Santo André", state: "SP", complement: complement.trim() || undefined },
@@ -76,7 +87,6 @@ export default function OrderPage() {
 
       const pedidoId = orderResult.order_id.slice(0, 8).toUpperCase();
 
-      // 2. Send to WhatsApp
       const msgData: OrderMessageData = {
         tipo: "VAREJO",
         canal: "site",
@@ -191,17 +201,31 @@ export default function OrderPage() {
               {/* Products */}
               <Card>
                 <CardHeader><CardTitle className="text-lg">Produtos</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
+                <CardContent className="space-y-3">
+                  <ProductSearchBar value={search} onChange={setSearch} />
                   {productsLoading ? (
-                    <p className="text-sm text-muted-foreground">Carregando produtos...</p>
-                  ) : dbProducts.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Nenhum produto disponível.</p>
+                    <div className="space-y-2">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <Skeleton key={i} className="h-12 rounded-lg" />
+                      ))}
+                    </div>
+                  ) : filteredProducts.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      {debouncedSearch ? `Nenhum produto encontrado para "${debouncedSearch}".` : "Nenhum produto disponível."}
+                    </p>
                   ) : (
-                    dbProducts.map((p) => (
+                    filteredProducts.map((p) => (
                       <div key={p.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
-                        <div className="flex-1">
-                          <span className="text-sm font-medium">{p.name}</span>
-                          {p.price_text && <span className="text-xs text-muted-foreground ml-2">({p.price_text})</span>}
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {p.image_url ? (
+                            <img src={p.image_url} alt={p.name} className="h-8 w-8 rounded object-cover flex-shrink-0" loading="lazy" />
+                          ) : (
+                            <Droplets className="h-5 w-5 text-primary flex-shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <span className="text-sm font-medium block truncate">{p.name}</span>
+                            {p.price_text && <span className="text-xs text-muted-foreground">({p.price_text})</span>}
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <button onClick={() => updateQty(p.id, -1)} className="h-8 w-8 rounded-full border flex items-center justify-center hover:bg-muted transition-colors" aria-label={`Diminuir ${p.name}`}>

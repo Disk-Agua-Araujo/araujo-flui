@@ -270,9 +270,14 @@ export default function PedidoEmpresa() {
             <CardContent className="space-y-3">
               {availableProducts.map((p) => (
                 <div key={p.id} className="flex items-center justify-between border rounded-md p-3">
-                  <div>
-                    <p className="font-medium text-sm">{p.name}</p>
-                    <p className="text-xs text-muted-foreground">{p.price_text}</p>
+                  <div className="flex items-center gap-2">
+                    {p.image_url ? (
+                      <img src={p.image_url} alt={p.name} className="h-8 w-8 rounded object-cover flex-shrink-0" loading="lazy" />
+                    ) : null}
+                    <div>
+                      <p className="font-medium text-sm">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">{p.price_text}</p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => updateQty(p.id, -1)}><Minus className="h-3 w-3" /></Button>

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 
-export type DbProduct = Tables<"products"> & { category_id?: string | null };
+export type DbProduct = Tables<"products">;
 export type DbTier = Tables<"wholesale_price_tiers">;
 
 export function useProducts() {
@@ -61,6 +61,22 @@ export function useTiers(productId?: string) {
       const { data, error } = await q;
       if (error) throw error;
       return data as DbTier[];
+    },
+  });
+}
+
+export function useQuickOrderProducts() {
+  return useQuery({
+    queryKey: ["quick-order-products"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .eq("active", true)
+        .eq("show_in_quick_order", true)
+        .order("created_at");
+      if (error) throw error;
+      return data as DbProduct[];
     },
   });
 }
