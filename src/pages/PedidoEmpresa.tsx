@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { MobileBottomBar } from "@/components/MobileBottomBar";
@@ -12,6 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { FulfillmentToggle } from "@/components/FulfillmentToggle";
+import { ProductSearchBar } from "@/components/ProductSearchBar";
+import { ProductImage } from "@/components/ProductImage";
+import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon, MessageCircle, MapPin, Minus, Plus, Loader2, Copy, Check } from "lucide-react";
@@ -23,15 +26,28 @@ import { createSiteOrder } from "@/services/orders";
 import { useProducts } from "@/hooks/use-products";
 import { trackEvent } from "@/hooks/use-analytics";
 import { useToast } from "@/hooks/use-toast";
+import { useDebounce } from "@/hooks/use-debounce";
+import { normalize } from "@/lib/normalize";
 import { getMinDeliveryDate, isDeliveryDateDisabled } from "@/lib/deliveryRules";
 
 const horarios = [
   "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
 ];
 
+type PaymentMethod = "cash" | "pix" | "card";
+
+const PAYMENT_OPTIONS: { value: PaymentMethod; emoji: string; label: string }[] = [
+  { value: "cash", emoji: "💵", label: "Dinheiro" },
+  { value: "pix", emoji: "📱", label: "PIX" },
+  { value: "card", emoji: "💳", label: "Cartão" },
+];
+
+const paymentLabel = (v: PaymentMethod) =>
+  PAYMENT_OPTIONS.find((o) => o.value === v)?.label ?? v;
+
 export default function PedidoEmpresa() {
   const { toast } = useToast();
-  const { data: availableProducts = [] } = useProducts();
+  const { data: availableProducts = [], isLoading: productsLoading } = useProducts();
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [waMessage, setWaMessage] = useState("");
@@ -58,6 +74,17 @@ export default function PedidoEmpresa() {
   const [date, setDate] = useState<Date>();
   const [hora, setHora] = useState("");
   const [qtys, setQtys] = useState<Record<string, number>>({});
+  const [payment, setPayment] = useState<PaymentMethod | null>(null);
+
+  // Search
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 250);
+
+  const filteredProducts = useMemo(() => {
+    if (!debouncedSearch) return availableProducts;
+    const q = normalize(debouncedSearch);
+    return availableProducts.filter((p) => normalize(p.name).includes(q));
+  }, [availableProducts, debouncedSearch]);
 
   const updateQty = (id: string, delta: number) => {
     setQtys((prev) => ({ ...prev, [id]: Math.max(0, (prev[id] || 0) + delta) }));
@@ -109,6 +136,10 @@ export default function PedidoEmpresa() {
       toast({ title: "Selecione o horário de entrega", variant: "destructive" });
       return;
     }
+    if (!payment) {
+      toast({ title: "Selecione a forma de pagamento.", variant: "destructive" });
+      return;
+    }
 
     setSaving(true);
 
@@ -128,7 +159,7 @@ export default function PedidoEmpresa() {
         customer: { name: empresa, phone: telefone, type: "PJ", cnpj },
         address: { street: rua, number: numero, neighborhood: bairro, city: cidade, state: "SP", complement: complemento, zip: cep },
         items: selectedItems.map((i) => ({ product_id: i.productId, qty: i.qtd })),
-        notes: obs || undefined,
+        notes: obs ? `Pagamento: ${paymentLabel(payment)}. ${obs}` : `Pagamento: ${paymentLabel(payment)}`,
         delivery_date: entregaData,
         delivery_time: hora,
         fulfillment_type: fulfillmentType,
@@ -151,6 +182,7 @@ export default function PedidoEmpresa() {
         status: "Novo",
         pedidoId,
         fulfillmentType,
+        formaPagamento: paymentLabel(payment),
       });
 
       openWhatsApp(message);
@@ -211,7 +243,7 @@ export default function PedidoEmpresa() {
                   </a>
                 </Button>
               </div>
-              <Button className="w-full" variant="ghost" onClick={() => { setSubmitted(false); setQtys({}); }}>Novo pedido</Button>
+              <Button className="w-full" variant="ghost" onClick={() => { setSubmitted(false); setQtys({}); setPayment(null); }}>Novo pedido</Button>
             </CardContent>
           </Card>
         </main>
@@ -268,24 +300,35 @@ export default function PedidoEmpresa() {
           <Card>
             <CardHeader><CardTitle className="text-lg">Produtos</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              {availableProducts.map((p) => (
-                <div key={p.id} className="flex items-center justify-between border rounded-md p-3">
-                  <div className="flex items-center gap-2">
-                    {p.image_url ? (
-                      <img src={p.image_url} alt={p.name} className="h-8 w-8 rounded object-cover flex-shrink-0" loading="lazy" />
-                    ) : null}
-                    <div>
-                      <p className="font-medium text-sm">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">{p.price_text}</p>
+              <ProductSearchBar value={search} onChange={setSearch} />
+              {productsLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-14 rounded-md" />
+                  ))}
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  {debouncedSearch ? `Nenhum produto encontrado para "${debouncedSearch}".` : "Nenhum produto disponível."}
+                </p>
+              ) : (
+                filteredProducts.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between border rounded-md p-3">
+                    <div className="flex items-center gap-2">
+                      <ProductImage imageUrl={p.image_url} productName={p.name} size="sm" className="h-10 w-10" />
+                      <div>
+                        <p className="font-medium text-sm">{p.name}</p>
+                        <p className="text-xs text-muted-foreground">{p.price_text}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => updateQty(p.id, -1)}><Minus className="h-3 w-3" /></Button>
+                      <span className="w-8 text-center font-medium">{qtys[p.id] || 0}</span>
+                      <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => updateQty(p.id, 1)}><Plus className="h-3 w-3" /></Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => updateQty(p.id, -1)}><Minus className="h-3 w-3" /></Button>
-                    <span className="w-8 text-center font-medium">{qtys[p.id] || 0}</span>
-                    <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => updateQty(p.id, 1)}><Plus className="h-3 w-3" /></Button>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </CardContent>
           </Card>
 
@@ -317,6 +360,30 @@ export default function PedidoEmpresa() {
                     <SelectContent>{horarios.map((h) => <SelectItem key={h} value={h}>{h}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Payment method */}
+          <Card>
+            <CardHeader><CardTitle className="text-lg">Forma de pagamento *</CardTitle></CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-2">
+                {PAYMENT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setPayment(opt.value)}
+                    className={`flex flex-col items-center gap-1 rounded-lg border-2 px-2 py-2.5 text-sm font-medium transition-colors ${
+                      payment === opt.value
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-primary/30 bg-background text-foreground hover:border-primary/60"
+                    }`}
+                  >
+                    <span className="text-lg">{opt.emoji}</span>
+                    <span className="text-xs">{opt.label}</span>
+                  </button>
+                ))}
               </div>
             </CardContent>
           </Card>
