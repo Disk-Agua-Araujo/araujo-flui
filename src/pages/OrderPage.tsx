@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { MessageCircle, Plus, Minus, Copy, Check, Loader2, ChevronDown, ChevronUp, Droplets } from "lucide-react";
+import { MessageCircle, Plus, Minus, Copy, Check, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { ProductImage } from "@/components/ProductImage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
