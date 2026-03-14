@@ -29,7 +29,7 @@ const waters: WaterProduct[] = [
     differentials: ["Água naturalmente alcalina", "Fonte mineral protegida", "Equilíbrio de minerais essenciais"],
   },
   {
-    name: "Água Mineral Cristal de Trevi",
+    name: "Água Mineral Crystal de Trevi",
     description: "Água mineral natural leve e equilibrada, proveniente de fonte protegida com rigorosos padrões de qualidade.",
     ph: "8,0",
     extra: "Tipo: água mineral natural",
