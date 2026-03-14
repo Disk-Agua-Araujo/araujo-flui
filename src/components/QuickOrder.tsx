@@ -10,6 +10,17 @@ import { useCategories } from "@/hooks/use-categories";
 import { trackEvent } from "@/hooks/use-analytics";
 import { useToast } from "@/hooks/use-toast";
 
+type PaymentMethod = "cash" | "pix" | "card";
+
+const PAYMENT_OPTIONS: { value: PaymentMethod; emoji: string; label: string }[] = [
+  { value: "cash", emoji: "💵", label: "Dinheiro" },
+  { value: "pix", emoji: "📱", label: "PIX" },
+  { value: "card", emoji: "💳", label: "Cartão" },
+];
+
+const paymentLabel = (v: PaymentMethod) =>
+  PAYMENT_OPTIONS.find((o) => o.value === v)?.label ?? v;
+
 export function QuickOrder() {
   const { toast } = useToast();
   const { data: dbProducts = [], isLoading } = useQuickOrderProducts();
@@ -20,6 +31,7 @@ export function QuickOrder() {
   const [whatsapp, setWhatsapp] = useState("");
   const [address, setAddress] = useState("");
   const [bairro, setBairro] = useState("");
+  const [payment, setPayment] = useState<PaymentMethod | null>(null);
   const [sent, setSent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -33,18 +45,13 @@ export function QuickOrder() {
     const groups: { label: string; products: typeof dbProducts }[] = [];
 
     if (cat20) {
-      const prods = dbProducts.filter((p) => p.category_id === cat20.id);
+      const prods = dbProducts.filter((p) => p.category_id === cat20.id).slice(0, 4);
       if (prods.length > 0) groups.push({ label: cat20.name, products: prods });
     }
     if (cat10) {
-      const prods = dbProducts.filter((p) => p.category_id === cat10.id);
+      const prods = dbProducts.filter((p) => p.category_id === cat10.id).slice(0, 3);
       if (prods.length > 0) groups.push({ label: cat10.name, products: prods });
     }
-
-    // Any remaining quick order products not in those categories
-    const usedIds = new Set(groups.flatMap((g) => g.products.map((p) => p.id)));
-    const rest = dbProducts.filter((p) => !usedIds.has(p.id));
-    if (rest.length > 0) groups.push({ label: "Outros", products: rest });
 
     return groups;
   }, [dbProducts, categories]);
@@ -67,6 +74,7 @@ export function QuickOrder() {
     if (!address.trim()) e.address = "Informe seu endereço";
     if (!bairro.trim()) e.bairro = "Informe o bairro";
     if (selectedItems.length === 0) e.items = "Selecione ao menos um produto";
+    if (!payment) e.payment = "Selecione a forma de pagamento.";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -84,7 +92,7 @@ export function QuickOrder() {
         customer: { name: name.trim(), phone: whatsapp.trim(), type: "PF" },
         address: { street, number: numero, neighborhood: bairro.trim() },
         items: selectedItems.map((i) => ({ product_id: i.id, qty: i.qty })),
-        notes: "Pedido rápido",
+        notes: `Pedido rápido | Pagamento: ${paymentLabel(payment!)}`,
       });
 
       const pedidoId = orderResult.order_id.slice(0, 8).toUpperCase();
@@ -98,6 +106,7 @@ export function QuickOrder() {
         itens: selectedItems.map((i) => ({ nome: i.name, qtd: i.qty })),
         status: "Novo",
         pedidoId,
+        formaPagamento: paymentLabel(payment!),
       };
 
       const result = await sendOrderToDiskWhatsApp(msgData);
@@ -151,7 +160,7 @@ export function QuickOrder() {
                   </Button>
                 </div>
               )}
-              <Button variant="ghost" className="w-full" onClick={() => { setSent(false); setQuantities({}); }}>
+              <Button variant="ghost" className="w-full" onClick={() => { setSent(false); setQuantities({}); setPayment(null); }}>
                 Fazer novo pedido
               </Button>
             </CardContent>
@@ -174,7 +183,7 @@ export function QuickOrder() {
               {isLoading ? (
                 <p className="text-sm text-muted-foreground text-center">Carregando produtos...</p>
               ) : grouped.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center">Nenhum produto disponível.</p>
+                <p className="text-sm text-muted-foreground text-center">Produtos em breve.</p>
               ) : (
                 grouped.map((group) => (
                   <div key={group.label}>
@@ -234,6 +243,29 @@ export function QuickOrder() {
                 <Input placeholder="Bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} maxLength={100} />
                 {errors.bairro && <p className="text-xs text-destructive mt-1">{errors.bairro}</p>}
               </div>
+            </div>
+
+            {/* Payment method */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Forma de pagamento</p>
+              <div className="grid grid-cols-3 gap-2">
+                {PAYMENT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => { setPayment(opt.value); setErrors((prev) => { const { payment: _, ...rest } = prev; return rest; }); }}
+                    className={`flex flex-col items-center gap-1 rounded-lg border-2 px-2 py-2.5 text-sm font-medium transition-colors ${
+                      payment === opt.value
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-primary/30 bg-background text-foreground hover:border-primary/60"
+                    }`}
+                  >
+                    <span className="text-lg">{opt.emoji}</span>
+                    <span className="text-xs">{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+              {errors.payment && <p className="text-xs text-destructive mt-1">{errors.payment}</p>}
             </div>
 
             <Button
