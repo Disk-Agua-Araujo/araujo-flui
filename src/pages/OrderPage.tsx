@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { MessageCircle, Plus, Minus, Copy, Check, Loader2, ChevronDown, ChevronUp, Droplets } from "lucide-react";
+import { MessageCircle, Plus, Minus, Copy, Check, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { ProductImage } from "@/components/ProductImage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -217,11 +218,7 @@ export default function OrderPage() {
                     filteredProducts.map((p) => (
                       <div key={p.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                          {p.image_url ? (
-                            <img src={p.image_url} alt={p.name} className="h-8 w-8 rounded object-cover flex-shrink-0" loading="lazy" />
-                          ) : (
-                            <Droplets className="h-5 w-5 text-primary flex-shrink-0" />
-                          )}
+                          <ProductImage imageUrl={p.image_url} productName={p.name} size="sm" className="h-10 w-10" />
                           <div className="min-w-0">
                             <span className="text-sm font-medium block truncate">{p.name}</span>
                             {p.price_text && <span className="text-xs text-muted-foreground">({p.price_text})</span>}
