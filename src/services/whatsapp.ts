@@ -22,6 +22,7 @@ export interface OrderMessageData {
   status?: string;
   pedidoId?: string;
   fulfillmentType?: "delivery" | "pickup";
+  formaPagamento?: string;
 }
 
 export function buildOrderMessage(data: OrderMessageData): string {
@@ -52,6 +53,7 @@ export function buildOrderMessage(data: OrderMessageData): string {
     "Itens:",
     itensText,
     "",
+    data.formaPagamento ? `Forma de pagamento: ${data.formaPagamento}` : null,
     data.entregaData ? `Entrega: ${data.entregaData}${data.entregaHora ? ` às ${data.entregaHora}` : ""}` : null,
     data.status ? `Status: ${data.status}` : null,
     data.pedidoId ? `Etiqueta: ${data.pedidoId}` : null,
