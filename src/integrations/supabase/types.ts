@@ -19,7 +19,7 @@ export type Database = {
           city: string
           complement: string | null
           created_at: string
-          customer_id: string
+          customer_id: string | null
           id: string
           is_primary: boolean | null
           lat: number | null
@@ -35,7 +35,7 @@ export type Database = {
           city?: string
           complement?: string | null
           created_at?: string
-          customer_id: string
+          customer_id?: string | null
           id?: string
           is_primary?: boolean | null
           lat?: number | null
@@ -51,7 +51,7 @@ export type Database = {
           city?: string
           complement?: string | null
           created_at?: string
-          customer_id?: string
+          customer_id?: string | null
           id?: string
           is_primary?: boolean | null
           lat?: number | null
@@ -226,6 +226,7 @@ export type Database = {
       orders: {
         Row: {
           address_id: string | null
+          change_for: number | null
           channel: Database["public"]["Enums"]["order_channel"]
           created_at: string
           created_by: string | null
@@ -237,9 +238,11 @@ export type Database = {
           notes: string | null
           payment_method: string | null
           status: Database["public"]["Enums"]["order_status"]
+          total_amount: number | null
         }
         Insert: {
           address_id?: string | null
+          change_for?: number | null
           channel?: Database["public"]["Enums"]["order_channel"]
           created_at?: string
           created_by?: string | null
@@ -251,9 +254,11 @@ export type Database = {
           notes?: string | null
           payment_method?: string | null
           status?: Database["public"]["Enums"]["order_status"]
+          total_amount?: number | null
         }
         Update: {
           address_id?: string | null
+          change_for?: number | null
           channel?: Database["public"]["Enums"]["order_channel"]
           created_at?: string
           created_by?: string | null
@@ -265,6 +270,7 @@ export type Database = {
           notes?: string | null
           payment_method?: string | null
           status?: Database["public"]["Enums"]["order_status"]
+          total_amount?: number | null
         }
         Relationships: [
           {
