@@ -132,6 +132,8 @@ export const adminApi = {
     delivery_time?: string;
     fulfillment_type?: "delivery" | "pickup";
     payment_method?: string | null;
+    total_amount?: number | null;
+    change_for?: number | null;
   }) => callAdminApi<{ order_id: string; customer_id: string }>("orders.createAdmin", payload),
 
   listCustomers: () => callAdminApi<AdminCustomerRow[]>("customers.list"),
