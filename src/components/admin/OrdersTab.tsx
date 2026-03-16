@@ -140,6 +140,9 @@ export function OrdersTab() {
       entregaData: o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM/yyyy") : undefined,
       entregaHora: o.delivery_time ?? undefined,
       pagamento: o.payment_method ?? undefined,
+      obs: o.notes ?? undefined,
+      totalAmount: o.total_amount ?? undefined,
+      changeFor: o.change_for ?? undefined,
     });
   };
 
