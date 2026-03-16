@@ -147,6 +147,7 @@ export function OrdersTab() {
   };
 
   const handleWhatsApp = (o: AdminOrderRow) => {
+    const payLabel = o.payment_method ? (paymentLabels[o.payment_method]?.replace(/^[^\w]*/, "").trim() || o.payment_method) : undefined;
     const msg = buildOrderMessage({
       tipo: o.customers?.cnpj ? "EMPRESA" : "VAREJO",
       canal: o.channel as any,
@@ -168,6 +169,9 @@ export function OrdersTab() {
       status: statusLabels[o.status] ?? o.status,
       pedidoId: o.id.slice(0, 8).toUpperCase(),
       fulfillmentType: (o as any).fulfillment_type ?? "delivery",
+      formaPagamento: payLabel,
+      totalAmount: o.total_amount ?? undefined,
+      changeFor: o.change_for ?? undefined,
     });
     openWhatsApp(msg);
   };
