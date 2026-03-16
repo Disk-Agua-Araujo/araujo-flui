@@ -23,6 +23,8 @@ export interface OrderMessageData {
   pedidoId?: string;
   fulfillmentType?: "delivery" | "pickup";
   formaPagamento?: string;
+  totalAmount?: number;
+  changeFor?: number;
 }
 
 export function buildOrderMessage(data: OrderMessageData): string {
