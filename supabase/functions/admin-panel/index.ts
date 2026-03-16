@@ -185,7 +185,7 @@ serve(async (req) => {
       const { data, error } = await adminClient
         .from("orders")
         .select(`
-          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method,
+          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, total_amount, change_for,
           customers(id, name, phone, cnpj),
           addresses(street, number, neighborhood, city, complement),
           order_items(qty, products(name))
@@ -233,6 +233,8 @@ serve(async (req) => {
       const items = payload?.items as { product_id: string; qty: number }[];
       const fulfillmentType = payload?.fulfillment_type || "delivery";
       const paymentMethod = payload?.payment_method || null;
+      const totalAmount = payload?.total_amount ?? null;
+      const changeFor = payload?.change_for ?? null;
 
       if (!Array.isArray(items) || items.length === 0) {
         throw new Error("Selecione ao menos um produto.");
@@ -252,15 +254,15 @@ serve(async (req) => {
         });
         customerId = customerRow.id;
 
-        // Address only needed for delivery with customer
-        if (address?.street && address?.number && address?.neighborhood && fulfillmentType === "delivery") {
+        // Address with customer
+        if (address?.street && address?.number && fulfillmentType === "delivery") {
           const { data: addressRow, error: addressError } = await adminClient
             .from("addresses")
             .insert({
               customer_id: customerRow.id,
               street: address.street,
               number: address.number,
-              neighborhood: address.neighborhood,
+              neighborhood: address.neighborhood || "—",
               city: address.city || "Santo André",
               state: address.state || "SP",
               complement: address.complement || null,
@@ -273,6 +275,25 @@ serve(async (req) => {
           if (addressError) throw addressError;
           addressId = addressRow.id;
         }
+      } else if (address?.street && address?.number && fulfillmentType === "delivery") {
+        // Address WITHOUT customer (no phone) — save address with null customer_id
+        const { data: addressRow, error: addressError } = await adminClient
+          .from("addresses")
+          .insert({
+            customer_id: null,
+            street: address.street,
+            number: address.number,
+            neighborhood: address.neighborhood || "—",
+            city: address.city || "Santo André",
+            state: address.state || "SP",
+            complement: address.complement || null,
+            zip: address.zip || null,
+          })
+          .select("id")
+          .single();
+
+        if (addressError) throw addressError;
+        addressId = addressRow.id;
       }
 
       const { data: order, error: orderError } = await adminClient
@@ -287,6 +308,8 @@ serve(async (req) => {
           status: "novo",
           fulfillment_type: fulfillmentType,
           payment_method: paymentMethod,
+          total_amount: totalAmount,
+          change_for: changeFor,
         })
         .select("id")
         .single();
@@ -335,7 +358,6 @@ serve(async (req) => {
 
       let data: any;
       if (payload?.id) {
-        // Update existing customer
         const { data: updated, error } = await adminClient
           .from("customers")
           .update({
@@ -351,7 +373,6 @@ serve(async (req) => {
         if (error) throw error;
         data = updated;
       } else if (phone) {
-        // Has phone — use upsert logic
         data = await upsertCustomerByPhone({
           name,
           phone,
@@ -360,7 +381,6 @@ serve(async (req) => {
           email: payload?.email,
         });
       } else {
-        // No phone — just insert new customer
         const { data: inserted, error } = await adminClient
           .from("customers")
           .insert({
@@ -420,11 +440,8 @@ serve(async (req) => {
       const q = ((payload?.query as string) || "").trim();
       if (q.length < 2) return json({ data: [] });
 
-      // Normalize the search term for fuzzy matching
       const normalized = normalizeSearch(q);
 
-      // Search customers by name, phone, OR street (via addresses join)
-      // Use ILIKE with the original term for accent-sensitive DB matching
       const { data: byNamePhone, error: e1 } = await adminClient
         .from("customers")
         .select("id, name, phone, type, cnpj, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, reference, is_primary)")
@@ -433,7 +450,6 @@ serve(async (req) => {
         .limit(15);
       if (e1) throw e1;
 
-      // Then search by street
       const { data: addrMatches, error: e2 } = await adminClient
         .from("addresses")
         .select("customer_id")
@@ -443,7 +459,7 @@ serve(async (req) => {
 
       const streetCustomerIds = (addrMatches || [])
         .map((a: any) => a.customer_id)
-        .filter((id: string) => !(byNamePhone || []).some((c: any) => c.id === id));
+        .filter((id: string) => id && !(byNamePhone || []).some((c: any) => c.id === id));
 
       let byStreet: any[] = [];
       if (streetCustomerIds.length > 0) {
@@ -457,14 +473,13 @@ serve(async (req) => {
         byStreet = streetCustomers || [];
       }
 
-      // Client-side fuzzy: also filter with normalized comparison for accent-insensitive
       const allResults = [...(byNamePhone || []), ...byStreet];
       const fuzzyFiltered = allResults.filter((c: any) => {
         const nName = normalizeSearch(c.name || "");
         const nPhone = normalizeSearch(c.phone || "");
         if (nName.includes(normalized) || nPhone.includes(normalized)) return true;
         if (c.addresses?.some((a: any) => normalizeSearch(a.street || "").includes(normalized))) return true;
-        return true; // already matched by ILIKE
+        return true;
       });
 
       return json({ data: fuzzyFiltered.slice(0, 15) });
@@ -566,7 +581,7 @@ serve(async (req) => {
       }
       const { data, error } = await adminClient
         .from("orders")
-        .select("id, channel, status, delivery_date, created_at, fulfillment_type, payment_method, customers(name), order_items(qty, products(name))")
+        .select("id, channel, status, delivery_date, created_at, fulfillment_type, payment_method, total_amount, change_for, customers(name), order_items(qty, products(name))")
         .order("created_at", { ascending: false })
         .limit(1000);
       if (error) throw error;
@@ -577,10 +592,9 @@ serve(async (req) => {
   } catch (error) {
     console.error("admin-panel error", error);
 
-    // Only surface messages we explicitly threw; hide raw DB errors
     const isAppError =
       error instanceof Error &&
-      !(error as any).code && // Postgres errors have a .code property
+      !(error as any).code &&
       !error.message.includes("violates") &&
       !error.message.includes("constraint");
 

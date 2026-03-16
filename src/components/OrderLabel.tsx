@@ -1,13 +1,17 @@
 import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
-import { trackEvent } from "@/hooks/use-analytics"; // analytics
+import { trackEvent } from "@/hooks/use-analytics";
 
 const paymentLabels: Record<string, string> = {
   cash: "Dinheiro",
   pix: "PIX",
   card: "Cartão",
 };
+
+function formatCurrency(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
 
 export interface LabelData {
   pedidoId: string;
@@ -18,10 +22,17 @@ export interface LabelData {
   entregaData?: string;
   entregaHora?: string;
   pagamento?: string;
+  obs?: string;
+  totalAmount?: number;
+  changeFor?: number;
 }
 
 export function OrderLabel({ data }: { data: LabelData }) {
   const ref = useRef<HTMLDivElement>(null);
+
+  const changeValue = data.changeFor && data.totalAmount && data.changeFor > data.totalAmount
+    ? data.changeFor - data.totalAmount
+    : null;
 
   const handlePrint = () => {
     trackEvent("label_printed", { pedidoId: data.pedidoId });
@@ -39,6 +50,8 @@ export function OrderLabel({ data }: { data: LabelData }) {
         p { margin: 2px 0; }
         .id { font-size: 10px; color: #666; margin-top: 8px; }
         ul { padding-left: 16px; margin: 4px 0; }
+        .obs-block { border-left: 3px solid #033D7B; background: #f0f5ff; padding: 6px 8px; margin: 6px 0; border-radius: 2px; }
+        .obs-block strong { display: block; font-size: 11px; margin-bottom: 2px; }
       </style></head><body>
       <div class="label">
         <h2>Disk Água Araujo</h2>
@@ -48,6 +61,9 @@ export function OrderLabel({ data }: { data: LabelData }) {
         <ul>${data.itens.map((i) => `<li>${i.nome}: ${i.qtd}</li>`).join("")}</ul>
         ${data.entregaData ? `<p>Entrega: ${data.entregaData}${data.entregaHora ? ` às ${data.entregaHora}` : ""}</p>` : ""}
         ${data.pagamento ? `<p>Pagamento: ${paymentLabels[data.pagamento] || data.pagamento}</p>` : ""}
+        ${data.totalAmount ? `<p>Total: ${formatCurrency(data.totalAmount)}</p>` : ""}
+        ${data.pagamento === "cash" && data.changeFor && data.totalAmount ? `<p>Troco para: ${formatCurrency(data.changeFor)} (Troco: ${formatCurrency(data.changeFor - data.totalAmount)})</p>` : ""}
+        ${data.obs ? `<div class="obs-block"><strong>Observações:</strong>${data.obs}</div>` : ""}
         <p class="id">ID: ${data.pedidoId}</p>
       </div>
       </body></html>
@@ -73,6 +89,18 @@ export function OrderLabel({ data }: { data: LabelData }) {
         )}
         {data.pagamento && (
           <p className="text-sm">Pagamento: {paymentLabels[data.pagamento] || data.pagamento}</p>
+        )}
+        {data.totalAmount != null && data.totalAmount > 0 && (
+          <p className="text-sm">Total: {formatCurrency(data.totalAmount)}</p>
+        )}
+        {data.pagamento === "cash" && changeValue != null && changeValue > 0 && (
+          <p className="text-sm">Troco para: {formatCurrency(data.changeFor!)} (Troco: {formatCurrency(changeValue)})</p>
+        )}
+        {data.obs && (
+          <div className="border-l-4 border-[#033D7B] bg-[#f0f5ff] rounded-sm px-3 py-2 mt-2">
+            <p className="font-semibold text-xs text-[#033D7B]">Observações:</p>
+            <p className="text-sm">{data.obs}</p>
+          </div>
         )}
         <p className="text-xs text-muted-foreground">ID: {data.pedidoId}</p>
       </div>

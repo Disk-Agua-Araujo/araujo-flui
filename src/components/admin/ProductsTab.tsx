@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,10 +10,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Plus, Pencil, Trash2, Save, Package, AlertTriangle, Upload, X, ImageIcon } from "lucide-react";
+import { Plus, Pencil, Trash2, Save, Package, AlertTriangle, Upload, X, ImageIcon, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { adminApi, type AdminProductRow, type AdminTierRow, type AdminCategoryRow } from "@/services/admin-api";
 import { supabase } from "@/integrations/supabase/client";
+import { useDebounce } from "@/hooks/use-debounce";
+import { normalize } from "@/lib/normalize";
 
 type Product = AdminProductRow;
 type Tier = AdminTierRow;
@@ -61,6 +63,11 @@ export function ProductsTab() {
   const [removeImage, setRemoveImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Search & filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebounce(searchQuery, 250);
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+
   const fetchAll = async () => {
     setLoading(true);
     try {
@@ -88,6 +95,29 @@ export function ProductsTab() {
     const cat = categories.find((c) => c.id === categoryId);
     return cat ? QUICK_ORDER_CATEGORY_SLUGS.includes(cat.slug) : false;
   };
+
+  // Filtered products
+  const filteredProducts = useMemo(() => {
+    let result = products;
+    if (categoryFilter !== "all") {
+      result = result.filter((p) => p.category_id === categoryFilter);
+    }
+    if (debouncedSearch) {
+      const q = normalize(debouncedSearch);
+      result = result.filter((p) => normalize(p.name).includes(q));
+    }
+    return result;
+  }, [products, categoryFilter, debouncedSearch]);
+
+  // Categories with product counts (for filter tabs)
+  const categoryTabs = useMemo(() => {
+    const counts: Record<string, number> = {};
+    products.forEach((p) => {
+      const cid = p.category_id || "none";
+      counts[cid] = (counts[cid] || 0) + 1;
+    });
+    return categories.filter((c) => (counts[c.id] || 0) > 0);
+  }, [products, categories]);
 
   const openEditor = (product?: Product) => {
     setImageFile(null);
@@ -143,7 +173,6 @@ export function ProductsTab() {
 
   const uploadImage = async (productId: string): Promise<string | null> => {
     if (removeImage) {
-      // Delete existing image
       await supabase.storage.from("product-images").remove([`${productId}/cover.webp`]);
       return null;
     }
@@ -184,7 +213,6 @@ export function ProductsTab() {
 
     setSaving(true);
     try {
-      // First save product to get ID
       await adminApi.saveProduct({
         product: {
           id: editProduct.id,
@@ -206,9 +234,7 @@ export function ProductsTab() {
           .map((t) => ({ min_qty: Number(t.min_qty), price_text: t.price_text || "Consulte" })),
       });
 
-      // If we need to upload/remove image, we need the product ID
       if (imageFile || removeImage) {
-        // Refetch to get the ID if it was a new product
         const refreshed = await adminApi.listProducts();
         const savedProduct = editProduct.id
           ? refreshed.products?.find((p) => p.id === editProduct.id)
@@ -216,7 +242,6 @@ export function ProductsTab() {
 
         if (savedProduct) {
           const imageUrl = await uploadImage(savedProduct.id);
-          // Update image_url on the product
           await adminApi.saveProduct({
             product: {
               id: savedProduct.id,
@@ -292,6 +317,48 @@ export function ProductsTab() {
         <Button onClick={() => openEditor()}><Plus className="h-4 w-4 mr-1" /> Novo produto</Button>
       </div>
 
+      {/* Search bar */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Buscar produto por nome..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9 pr-8"
+        />
+        {searchQuery && (
+          <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Category filter tabs */}
+      <div className="flex gap-2 flex-wrap">
+        <Button
+          variant={categoryFilter === "all" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setCategoryFilter("all")}
+        >
+          Todas
+        </Button>
+        {categoryTabs.map((c) => (
+          <Button
+            key={c.id}
+            variant={categoryFilter === c.id ? "default" : "outline"}
+            size="sm"
+            onClick={() => setCategoryFilter(c.id)}
+          >
+            {c.name}
+          </Button>
+        ))}
+      </div>
+
+      {/* Results count */}
+      <p className="text-sm text-muted-foreground">
+        {filteredProducts.length} produto{filteredProducts.length !== 1 ? "s" : ""} encontrado{filteredProducts.length !== 1 ? "s" : ""}
+      </p>
+
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -310,10 +377,10 @@ export function ProductsTab() {
             <TableBody>
               {loading ? (
                 <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
-              ) : products.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Nenhum produto.</TableCell></TableRow>
+              ) : filteredProducts.length === 0 ? (
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Nenhum produto encontrado.</TableCell></TableRow>
               ) : (
-                products.map((p) => {
+                filteredProducts.map((p) => {
                   const lowStock = p.track_stock && p.stock_qty <= p.min_stock_qty;
                   return (
                     <TableRow key={p.id}>
@@ -437,7 +504,6 @@ export function ProductsTab() {
                 <Label>Ativo</Label>
               </div>
 
-              {/* Show in Quick Order - only for Galões categories */}
               {isQuickOrderCategory(editProduct.category_id ?? null) && (
                 <div className="flex items-center gap-2">
                   <Switch checked={editProduct.show_in_quick_order ?? false} onCheckedChange={(v) => setEditProduct({ ...editProduct, show_in_quick_order: v })} />

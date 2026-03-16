@@ -140,10 +140,14 @@ export function OrdersTab() {
       entregaData: o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM/yyyy") : undefined,
       entregaHora: o.delivery_time ?? undefined,
       pagamento: o.payment_method ?? undefined,
+      obs: o.notes ?? undefined,
+      totalAmount: o.total_amount ?? undefined,
+      changeFor: o.change_for ?? undefined,
     });
   };
 
   const handleWhatsApp = (o: AdminOrderRow) => {
+    const payLabel = o.payment_method ? (paymentLabels[o.payment_method]?.replace(/^[^\w]*/, "").trim() || o.payment_method) : undefined;
     const msg = buildOrderMessage({
       tipo: o.customers?.cnpj ? "EMPRESA" : "VAREJO",
       canal: o.channel as any,
@@ -165,6 +169,9 @@ export function OrdersTab() {
       status: statusLabels[o.status] ?? o.status,
       pedidoId: o.id.slice(0, 8).toUpperCase(),
       fulfillmentType: (o as any).fulfillment_type ?? "delivery",
+      formaPagamento: payLabel,
+      totalAmount: o.total_amount ?? undefined,
+      changeFor: o.change_for ?? undefined,
     });
     openWhatsApp(msg);
   };

@@ -16,7 +16,6 @@ import { ptBR } from "date-fns/locale";
 import { CalendarIcon, Minus, Plus, Save, Search, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
-// WhatsApp not used in admin — orders are saved directly
 import { useToast } from "@/hooks/use-toast";
 import { trackEvent } from "@/hooks/use-analytics";
 import { adminApi, type AdminProductRow, type AdminCustomerRow } from "@/services/admin-api";
@@ -34,6 +33,10 @@ const canais = [
 const PREFILL_KEY = "admin-new-order-customer";
 
 type CustomerAddress = NonNullable<AdminCustomerRow["addresses"]>[number];
+
+function formatCurrency(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
 
 export function NewOrderTab() {
   const { toast } = useToast();
@@ -74,6 +77,8 @@ export function NewOrderTab() {
   const [productSearch, setProductSearch] = useState("");
   const debouncedProductSearch = useDebounce(productSearch, 250);
   const [paymentMethod, setPaymentMethod] = useState<string>("");
+  const [totalAmount, setTotalAmount] = useState<string>("");
+  const [changeFor, setChangeFor] = useState<string>("");
 
   const filteredProducts = useMemo(() => {
     if (!debouncedProductSearch) return products;
@@ -82,6 +87,10 @@ export function NewOrderTab() {
   }, [products, debouncedProductSearch]);
 
   const isEnterprise = tipo === "PJ";
+
+  const totalAmountNum = parseFloat(totalAmount) || 0;
+  const changeForNum = parseFloat(changeFor) || 0;
+  const changeResult = changeForNum > 0 && totalAmountNum > 0 ? changeForNum - totalAmountNum : null;
 
   const fetchProducts = async () => {
     try {
@@ -101,7 +110,6 @@ export function NewOrderTab() {
       try {
         const data = JSON.parse(fromShortcut) as AdminCustomerRow;
         if (data.id) {
-          // Full customer object with addresses — prefill everything
           setSelectedCustomerId(data.id);
           setNome(data.name || "");
           setTelefone(data.phone ?? "");
@@ -118,7 +126,6 @@ export function NewOrderTab() {
             applyAddress(primary);
           }
         } else {
-          // Legacy format — just basic fields
           const c = data as any;
           if (c.name) setNome(c.name);
           if (c.phone) setTelefone(c.phone);
@@ -242,29 +249,20 @@ export function NewOrderTab() {
     setSearchQuery("");
     setSearchResults([]);
     setPaymentMethod("");
+    setTotalAmount("");
+    setChangeFor("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // For pickup orders, customer fields are optional
-    if (fulfillmentType === "delivery") {
-      if (nome.trim() && telefone.trim()) {
-        // Has customer - validate address
-        if (!rua.trim() || !numero.trim() || !bairro.trim()) {
-          toast({ title: "Campos obrigatórios", description: "Preencha o endereço completo para entrega.", variant: "destructive" });
-          return;
-        }
-      }
+    if (selectedItems.length === 0) {
+      toast({ title: "Selecione ao menos um produto", variant: "destructive" });
+      return;
     }
 
     if (tipo === "PJ" && cnpj && !isValidCnpj(cnpj)) {
       toast({ title: "CNPJ inválido", variant: "destructive" });
-      return;
-    }
-
-    if (selectedItems.length === 0) {
-      toast({ title: "Selecione ao menos um produto", variant: "destructive" });
       return;
     }
 
@@ -280,7 +278,7 @@ export function NewOrderTab() {
 
     try {
       const hasCustomer = nome.trim() && telefone.trim();
-      const hasAddress = rua.trim() && numero.trim() && bairro.trim();
+      const hasAddress = rua.trim() && numero.trim();
 
       const result = await adminApi.createAdminOrder({
         channel: canal,
@@ -294,7 +292,7 @@ export function NewOrderTab() {
         address: (hasAddress && fulfillmentType === "delivery") ? {
           street: rua.trim(),
           number: numero.trim(),
-          neighborhood: bairro.trim(),
+          neighborhood: bairro.trim() || "—",
           city: cidade.trim(),
           state: "SP",
           complement: complemento.trim() || undefined,
@@ -305,6 +303,8 @@ export function NewOrderTab() {
         delivery_time: hora || undefined,
         fulfillment_type: fulfillmentType,
         payment_method: paymentMethod || null,
+        total_amount: totalAmountNum > 0 ? totalAmountNum : null,
+        change_for: paymentMethod === "cash" && changeForNum > 0 ? changeForNum : null,
       });
 
       const pedidoId = result.order_id.slice(0, 8).toUpperCase();
@@ -313,12 +313,15 @@ export function NewOrderTab() {
       setLabelData({
         pedidoId,
         cliente: nome || "Retirada / Sem cadastro",
-        endereco: fulfillmentType === "pickup" ? "Retirada na loja" : (hasAddress ? `${rua}, ${numero} - ${bairro}, ${cidade}/SP` : "—"),
+        endereco: fulfillmentType === "pickup" ? "Retirada na loja" : (hasAddress ? `${rua}, ${numero} - ${bairro || "—"}, ${cidade}/SP` : "—"),
         complemento: fulfillmentType === "delivery" ? complemento : undefined,
         itens: selectedItems.map((i) => ({ nome: i.nome, qtd: i.qtd })),
         entregaData,
         entregaHora: hora || undefined,
         pagamento: paymentMethod || undefined,
+        obs: obs.trim() || undefined,
+        totalAmount: totalAmountNum > 0 ? totalAmountNum : undefined,
+        changeFor: paymentMethod === "cash" && changeForNum > 0 ? changeForNum : undefined,
       });
 
       trackEvent("order_created", { tipo: tipo === "PJ" ? "empresa" : "varejo", canal, pedidoId, fulfillmentType });
@@ -589,7 +592,7 @@ export function NewOrderTab() {
 
       <Card>
         <CardHeader><CardTitle className="text-lg">Forma de pagamento</CardTitle></CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="flex gap-2 flex-wrap">
             {[
               { value: "cash", label: "💵 Dinheiro" },
@@ -601,13 +604,57 @@ export function NewOrderTab() {
                 type="button"
                 variant={paymentMethod === opt.value ? "default" : "outline"}
                 size="sm"
-                onClick={() => setPaymentMethod(paymentMethod === opt.value ? "" : opt.value)}
+                onClick={() => {
+                  setPaymentMethod(paymentMethod === opt.value ? "" : opt.value);
+                  if (opt.value !== "cash") setChangeFor("");
+                }}
               >
                 {opt.label}
               </Button>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground mt-2">Opcional — selecione se o cliente informou.</p>
+
+          {paymentMethod && (
+            <div className="space-y-3 pt-2">
+              <div>
+                <Label>Valor total do pedido (R$)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0,00"
+                  value={totalAmount}
+                  onChange={(e) => setTotalAmount(e.target.value)}
+                />
+              </div>
+
+              {paymentMethod === "cash" && (
+                <div>
+                  <Label>Troco para (R$)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0,00"
+                    value={changeFor}
+                    onChange={(e) => setChangeFor(e.target.value)}
+                  />
+                  {changeResult !== null && changeResult > 0 && (
+                    <p className="text-sm font-medium text-green-700 mt-1">
+                      Troco: {formatCurrency(changeResult)}
+                    </p>
+                  )}
+                  {changeResult !== null && changeResult < 0 && (
+                    <p className="text-sm font-medium text-destructive mt-1">
+                      Valor insuficiente para cobrir o pedido.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground">Opcional — selecione se o cliente informou.</p>
         </CardContent>
       </Card>
 

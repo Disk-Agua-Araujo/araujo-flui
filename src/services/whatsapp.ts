@@ -23,6 +23,8 @@ export interface OrderMessageData {
   pedidoId?: string;
   fulfillmentType?: "delivery" | "pickup";
   formaPagamento?: string;
+  totalAmount?: number;
+  changeFor?: number;
 }
 
 export function buildOrderMessage(data: OrderMessageData): string {
@@ -54,6 +56,10 @@ export function buildOrderMessage(data: OrderMessageData): string {
     itensText,
     "",
     data.formaPagamento ? `Forma de pagamento: ${data.formaPagamento}` : null,
+    data.totalAmount ? `Total: R$ ${data.totalAmount.toFixed(2).replace(".", ",")}` : null,
+    data.formaPagamento === "Dinheiro" && data.changeFor && data.totalAmount
+      ? `Troco para: R$ ${data.changeFor.toFixed(2).replace(".", ",")} (Troco: R$ ${(data.changeFor - data.totalAmount).toFixed(2).replace(".", ",")})`
+      : null,
     data.entregaData ? `Entrega: ${data.entregaData}${data.entregaHora ? ` às ${data.entregaHora}` : ""}` : null,
     data.status ? `Status: ${data.status}` : null,
     data.pedidoId ? `Etiqueta: ${data.pedidoId}` : null,
