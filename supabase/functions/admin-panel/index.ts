@@ -588,6 +588,62 @@ serve(async (req) => {
       return json({ data });
     }
 
+    if (action === "customers.delete") {
+      const customerId = payload?.customerId as string;
+      if (!customerId) throw new Error("ID do cliente é obrigatório.");
+
+      // Check for linked orders
+      const { count, error: countErr } = await adminClient
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("customer_id", customerId);
+      if (countErr) throw countErr;
+
+      if ((count ?? 0) > 0) {
+        return json({ error: "Este cliente possui pedidos registrados e não pode ser excluído. Remova os pedidos primeiro." }, 400);
+      }
+
+      // Delete addresses first
+      const { error: addrErr } = await adminClient
+        .from("addresses")
+        .delete()
+        .eq("customer_id", customerId);
+      if (addrErr) throw addrErr;
+
+      // Delete customer
+      const { error: custErr } = await adminClient
+        .from("customers")
+        .delete()
+        .eq("id", customerId);
+      if (custErr) throw custErr;
+
+      return json({ ok: true });
+    }
+
+    if (action === "customers.checkDuplicate") {
+      const street = ((payload?.street as string) || "").trim();
+      const number = ((payload?.number as string) || "").trim();
+      const excludeCustomerId = payload?.excludeCustomerId as string | undefined;
+
+      if (!street || !number) return json({ data: null });
+
+      let query = adminClient
+        .from("addresses")
+        .select("id, customer_id, customers(name)")
+        .ilike("street", street)
+        .eq("number", number)
+        .limit(1);
+
+      if (excludeCustomerId) {
+        query = query.neq("customer_id", excludeCustomerId);
+      }
+
+      const { data, error } = await query.maybeSingle();
+      if (error) throw error;
+
+      return json({ data: data || null });
+    }
+
     return json({ error: "Ação inválida" }, 400);
   } catch (error) {
     console.error("admin-panel error", error);

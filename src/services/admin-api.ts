@@ -176,6 +176,15 @@ export const adminApi = {
   searchCustomers: (query: string) =>
     callAdminApi<AdminCustomerRow[]>("customers.search", { query }),
 
+  deleteCustomer: (customerId: string) =>
+    callAdminApi<{ ok: boolean }>("customers.delete", { customerId }),
+
+  checkDuplicateAddress: (street: string, number: string, excludeCustomerId?: string) =>
+    callAdminApi<{ id: string; customer_id: string; customers: { name: string } } | null>(
+      "customers.checkDuplicate",
+      { street, number, excludeCustomerId }
+    ),
+
   listCategories: () => callAdminApi<AdminCategoryRow[]>("categories.list"),
 
   listReportsOrders: () => callAdminApi<AdminOrderRow[]>("reports.orders"),
