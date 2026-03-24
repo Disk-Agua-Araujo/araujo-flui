@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,13 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { openWhatsApp, buildOrderMessage } from "@/services/whatsapp";
-import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store } from "lucide-react";
+import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
-import { adminApi, type AdminOrderRow } from "@/services/admin-api";
+import { adminApi, type AdminOrderRow, type DeliveryRider } from "@/services/admin-api";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const statusColors: Record<string, string> = {
   novo: "bg-blue-100 text-blue-800",
@@ -47,14 +49,312 @@ function FulfillmentBadge({ type }: { type?: string }) {
     );
   }
   return (
-    <Badge className="text-xs gap-1 bg-[#033D7B] hover:bg-[#033D7B]/90 text-white">
+    <Badge className="text-xs gap-1 bg-[hsl(var(--brand-blue))] hover:bg-[hsl(var(--brand-blue))]/90 text-white">
       <Truck className="h-3 w-3" /> Entrega
     </Badge>
   );
 }
 
+function formatCurrency(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+// ---- Rider Management Modal ----
+function RiderManagementModal({
+  open, onOpenChange, riders, onSave,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  riders: DeliveryRider[];
+  onSave: () => void;
+}) {
+  const { toast } = useToast();
+  const [localRiders, setLocalRiders] = useState<(DeliveryRider & { _new?: boolean })[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [stats, setStats] = useState<Record<string, { pedidos: number; galoes: number }>>({});
+
+  useEffect(() => {
+    setLocalRiders(riders.map((r) => ({ ...r })));
+    if (riders.length > 0) {
+      adminApi.getRiderStats(riders.map((r) => r.id)).then(setStats).catch(() => {});
+    }
+  }, [riders, open]);
+
+  const handleSaveAll = async () => {
+    setSaving(true);
+    try {
+      for (const r of localRiders) {
+        if (!r.label.trim() || !r.name.trim()) continue;
+        await adminApi.saveRider({
+          id: r._new ? undefined : r.id,
+          label: r.label.trim(),
+          name: r.name.trim(),
+          active: r.active,
+          sort_order: r.sort_order,
+        });
+      }
+      toast({ title: "Motoboys salvos com sucesso!" });
+      onSave();
+      onOpenChange(false);
+    } catch (err) {
+      toast({ title: "Erro ao salvar", description: err instanceof Error ? err.message : "Erro", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addRider = () => {
+    setLocalRiders((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), label: "", name: "", active: true, sort_order: prev.length, created_at: "", _new: true },
+    ]);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Gerenciar motoboys</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          {localRiders.map((r, i) => (
+            <div key={r.id} className="flex gap-2 items-start border rounded-lg p-3">
+              <div className="flex-1 space-y-2">
+                <div className="flex gap-2">
+                  <div className="w-16">
+                    <label className="text-xs font-medium">Inicial</label>
+                    <Input
+                      value={r.label}
+                      onChange={(e) => {
+                        const copy = [...localRiders];
+                        copy[i] = { ...copy[i], label: e.target.value.slice(0, 3) };
+                        setLocalRiders(copy);
+                      }}
+                      maxLength={3}
+                      className="text-center font-bold"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs font-medium">Nome</label>
+                    <Input
+                      value={r.name}
+                      onChange={(e) => {
+                        const copy = [...localRiders];
+                        copy[i] = { ...copy[i], name: e.target.value };
+                        setLocalRiders(copy);
+                      }}
+                      maxLength={50}
+                    />
+                  </div>
+                </div>
+                {stats[r.id] && (
+                  <p className="text-xs text-muted-foreground">
+                    {stats[r.id].pedidos} pedidos · {stats[r.id].galoes} itens entregues
+                  </p>
+                )}
+              </div>
+              <Button
+                variant={r.active ? "outline" : "destructive"}
+                size="sm"
+                className="mt-5"
+                onClick={() => {
+                  const copy = [...localRiders];
+                  copy[i] = { ...copy[i], active: !copy[i].active };
+                  setLocalRiders(copy);
+                }}
+              >
+                {r.active ? "Ativo" : "Inativo"}
+              </Button>
+            </div>
+          ))}
+          <Button variant="outline" className="w-full" onClick={addRider}>
+            <Plus className="h-4 w-4 mr-1" /> Adicionar motoboy
+          </Button>
+          <Button className="w-full" onClick={handleSaveAll} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+            Salvar
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---- Save Customer From Order Modal ----
+function SaveCustomerModal({
+  open, onOpenChange, order, onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  order: AdminOrderRow | null;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (order) {
+      setName(order.customers?.name || "");
+      setPhone(order.customers?.phone || "");
+    }
+  }, [order, open]);
+
+  const handleSave = async () => {
+    if (!order || !name.trim()) {
+      toast({ title: "Nome é obrigatório", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      // Check duplicate address
+      if (order.addresses?.street && order.addresses?.number) {
+        const dup = await adminApi.checkDuplicateAddress(order.addresses.street, order.addresses.number);
+        if (dup && dup.customers) {
+          toast({
+            title: "Endereço já cadastrado",
+            description: `Cliente existente: ${dup.customers.name} — ${order.addresses.street}, ${order.addresses.number}`,
+            variant: "destructive",
+          });
+          setSaving(false);
+          return;
+        }
+      }
+
+      await adminApi.saveCustomerFromOrder({
+        orderId: order.id,
+        customer: { name: name.trim(), phone: phone.trim() || undefined },
+        address: order.addresses ? {
+          street: order.addresses.street,
+          number: order.addresses.number,
+          neighborhood: order.addresses.neighborhood,
+          city: order.addresses.city,
+          complement: order.addresses.complement || undefined,
+        } : undefined,
+      });
+      toast({ title: "Cliente cadastrado e vinculado ao pedido." });
+      onSaved();
+      onOpenChange(false);
+    } catch (err) {
+      toast({ title: "Erro", description: err instanceof Error ? err.message : "Erro", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader><DialogTitle>Salvar como cliente</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <label className="text-sm font-medium">Nome *</label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} />
+          </div>
+          <div>
+            <label className="text-sm font-medium">Telefone</label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" maxLength={20} />
+          </div>
+          {order?.addresses && (
+            <div className="text-sm text-muted-foreground border rounded p-2">
+              <p className="font-medium text-foreground">Endereço do pedido:</p>
+              <p>{order.addresses.street}, {order.addresses.number} — {order.addresses.neighborhood}</p>
+            </div>
+          )}
+          <Button className="w-full" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <UserPlus className="h-4 w-4 mr-1" />}
+            Cadastrar cliente
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---- Mobile Order Card ----
+function OrderCard({
+  o, riders, statusLabels, statusColors, paymentLabels,
+  onView, onLabel, onWhatsApp, onStatusChange, onRiderToggle,
+}: {
+  o: AdminOrderRow;
+  riders: DeliveryRider[];
+  statusLabels: Record<string, string>;
+  statusColors: Record<string, string>;
+  paymentLabels: Record<string, string>;
+  onView: () => void;
+  onLabel: () => void;
+  onWhatsApp: () => void;
+  onStatusChange: (status: string) => void;
+  onRiderToggle: (riderId: string) => void;
+}) {
+  return (
+    <Card className="mb-3">
+      <CardContent className="p-3 space-y-2">
+        <div className="flex justify-between items-start">
+          <div>
+            <p className="font-mono text-xs text-muted-foreground">{o.id.slice(0, 8)}</p>
+            <p className="text-sm font-medium">
+              {o.addresses
+                ? `${o.addresses.street}, ${o.addresses.number}`
+                : "Retirada na loja"}
+            </p>
+            {o.customers?.name && (
+              <p className="text-xs text-muted-foreground">{o.customers.name}</p>
+            )}
+          </div>
+          <FulfillmentBadge type={o.fulfillment_type} />
+        </div>
+
+        <div className="text-xs text-muted-foreground">
+          {o.order_items.map((i) => `${i.products?.name ?? "?"} x${i.qty}`).join(", ")}
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={o.status} onValueChange={onStatusChange}>
+            <SelectTrigger className="h-7 text-xs w-[110px]">
+              <Badge className={`${statusColors[o.status]} text-xs`}>{statusLabels[o.status]}</Badge>
+            </SelectTrigger>
+            <SelectContent>
+              {Constants.public.Enums.order_status.map((s) => (
+                <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {o.payment_method && (
+            <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
+          )}
+
+          {/* Rider toggles */}
+          {riders.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              className={`h-7 w-7 rounded border text-xs font-bold flex items-center justify-center transition-colors ${
+                o.rider_id === r.id
+                  ? "border-[hsl(var(--brand-blue))] bg-[hsl(var(--brand-blue))]/10 text-[hsl(var(--brand-blue))]"
+                  : "border-dashed border-muted-foreground/40 text-transparent hover:border-muted-foreground"
+              }`}
+              onClick={() => onRiderToggle(r.id)}
+              title={r.name}
+            >
+              {o.rider_id === r.id ? "✕" : r.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-1 justify-end pt-1 border-t">
+          <Button variant="ghost" size="sm" className="h-7" onClick={onView}><Eye className="h-3.5 w-3.5 mr-1" /> Ver</Button>
+          <Button variant="ghost" size="sm" className="h-7" onClick={onLabel}><Printer className="h-3.5 w-3.5" /></Button>
+          <Button variant="ghost" size="sm" className="h-7" onClick={onWhatsApp}><MessageCircle className="h-3.5 w-3.5" /></Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function OrdersTab() {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [orders, setOrders] = useState<AdminOrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -63,6 +363,13 @@ export function OrdersTab() {
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
   const [labelData, setLabelData] = useState<LabelData | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Riders
+  const [riders, setRiders] = useState<DeliveryRider[]>([]);
+  const [riderModalOpen, setRiderModalOpen] = useState(false);
+
+  // Save customer from order
+  const [saveCustomerOrder, setSaveCustomerOrder] = useState<AdminOrderRow | null>(null);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -77,8 +384,16 @@ export function OrdersTab() {
     }
   };
 
+  const fetchRiders = useCallback(async () => {
+    try {
+      const data = await adminApi.listRiders();
+      setRiders((data ?? []).filter((r) => r.active));
+    } catch { /* silent */ }
+  }, []);
+
   useEffect(() => {
     fetchOrders();
+    fetchRiders();
   }, []);
 
   const filtered = useMemo(() => {
@@ -128,13 +443,25 @@ export function OrdersTab() {
     }
   };
 
+  const toggleRider = async (orderId: string, riderId: string, currentRiderId: string | null) => {
+    const newRiderId = currentRiderId === riderId ? null : riderId;
+    // Optimistic update
+    setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, rider_id: newRiderId } : o));
+    try {
+      await adminApi.setOrderRider(orderId, newRiderId);
+    } catch (err) {
+      toast({ title: "Erro ao atribuir motoboy", variant: "destructive" });
+      fetchOrders();
+    }
+  };
+
   const handleLabel = (o: AdminOrderRow) => {
     setLabelData({
       pedidoId: o.id.slice(0, 8).toUpperCase(),
       cliente: o.customers?.name ?? "Retirada / Sem cadastro",
       endereco: o.addresses
         ? `${o.addresses.street}, ${o.addresses.number} - ${o.addresses.neighborhood}, ${o.addresses.city}`
-        : ((o as any).fulfillment_type === "pickup" ? "Retirada na loja" : "—"),
+        : (o.fulfillment_type === "pickup" ? "Retirada na loja" : "—"),
       complemento: o.addresses?.complement ?? undefined,
       itens: o.order_items.map((i) => ({ nome: i.products?.name ?? "—", qtd: i.qty })),
       entregaData: o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM/yyyy") : undefined,
@@ -168,12 +495,17 @@ export function OrdersTab() {
       entregaHora: o.delivery_time ?? undefined,
       status: statusLabels[o.status] ?? o.status,
       pedidoId: o.id.slice(0, 8).toUpperCase(),
-      fulfillmentType: (o as any).fulfillment_type ?? "delivery",
+      fulfillmentType: o.fulfillment_type ?? "delivery",
       formaPagamento: payLabel,
       totalAmount: o.total_amount ?? undefined,
       changeFor: o.change_for ?? undefined,
     });
     openWhatsApp(msg);
+  };
+
+  const handleCustomerSaved = () => {
+    fetchOrders();
+    setSelectedOrder(null);
   };
 
   return (
@@ -209,87 +541,148 @@ export function OrdersTab() {
           </SelectContent>
         </Select>
 
-        <Button variant="outline" size="icon" onClick={fetchOrders} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="icon" onClick={fetchOrders} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+          <Button variant="outline" size="icon" onClick={() => setRiderModalOpen(true)} title="Gerenciar motoboys">
+            <Settings className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Endereço</TableHead>
-                <TableHead className="hidden md:table-cell">Tipo</TableHead>
-                <TableHead className="hidden md:table-cell">Canal</TableHead>
-                <TableHead className="hidden md:table-cell">Entrega</TableHead>
-                <TableHead className="hidden md:table-cell">Criado</TableHead>
-                <TableHead>Itens</TableHead>
-                <TableHead>Pgto</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
-              ) : paginatedOrders.length === 0 ? (
-                <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
-              ) : (
-                paginatedOrders.map((o) => (
-                  <TableRow key={o.id}>
-                    <TableCell className="font-mono text-xs">{o.id.slice(0, 8)}</TableCell>
-                    <TableCell className="text-sm">
-                      {o.addresses
-                        ? `${o.addresses.street}, ${o.addresses.number} — ${o.addresses.neighborhood}`
-                        : "Retirada na loja"}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <FulfillmentBadge type={(o as any).fulfillment_type} />
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-xs">{o.channel}</TableCell>
-                    <TableCell className="hidden md:table-cell text-xs">
-                      {o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM") : "—"}
-                      {o.delivery_time ? ` ${o.delivery_time}` : ""}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-xs">
-                      {format(new Date(o.created_at), "dd/MM/yyyy 'às' HH:mm")}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {o.order_items.map((i) => `${i.products?.name ?? "?"} x${i.qty}`).join(", ")}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {o.payment_method ? (
-                        <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
-                      ) : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Select value={o.status} onValueChange={(v) => updateStatus(o.id, v)}>
-                        <SelectTrigger className="h-7 text-xs w-[110px]">
-                          <Badge className={`${statusColors[o.status]} text-xs`}>{statusLabels[o.status]}</Badge>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Constants.public.Enums.order_status.map((s) => (
-                            <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex gap-1 justify-end">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedOrder(o)} title="Detalhes"><Eye className="h-3.5 w-3.5" /></Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleLabel(o)} title="Etiqueta"><Printer className="h-3.5 w-3.5" /></Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleWhatsApp(o)} title="WhatsApp"><MessageCircle className="h-3.5 w-3.5" /></Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {/* MOBILE: Card layout */}
+      {isMobile ? (
+        <div>
+          {loading ? (
+            <p className="text-center py-8 text-muted-foreground">Carregando...</p>
+          ) : paginatedOrders.length === 0 ? (
+            <p className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</p>
+          ) : (
+            paginatedOrders.map((o) => (
+              <OrderCard
+                key={o.id}
+                o={o}
+                riders={riders}
+                statusLabels={statusLabels}
+                statusColors={statusColors}
+                paymentLabels={paymentLabels}
+                onView={() => setSelectedOrder(o)}
+                onLabel={() => handleLabel(o)}
+                onWhatsApp={() => handleWhatsApp(o)}
+                onStatusChange={(v) => updateStatus(o.id, v)}
+                onRiderToggle={(rid) => toggleRider(o.id, rid, o.rider_id)}
+              />
+            ))
+          )}
+        </div>
+      ) : (
+        /* DESKTOP: Table layout */
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Endereço</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Canal</TableHead>
+                  <TableHead>Entrega</TableHead>
+                  <TableHead>Criado</TableHead>
+                  <TableHead>Itens</TableHead>
+                  <TableHead>Pgto</TableHead>
+                  <TooltipProvider>
+                    {riders.map((r) => (
+                      <TableHead key={r.id} className="text-center w-10 px-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="font-bold cursor-default">{r.label}</span>
+                          </TooltipTrigger>
+                          <TooltipContent>{r.name}</TooltipContent>
+                        </Tooltip>
+                      </TableHead>
+                    ))}
+                  </TooltipProvider>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow><TableCell colSpan={10 + riders.length} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                ) : paginatedOrders.length === 0 ? (
+                  <TableRow><TableCell colSpan={10 + riders.length} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
+                ) : (
+                  paginatedOrders.map((o) => (
+                    <TableRow key={o.id}>
+                      <TableCell className="font-mono text-xs">{o.id.slice(0, 8)}</TableCell>
+                      <TableCell className="text-sm">
+                        {o.addresses
+                          ? `${o.addresses.street}, ${o.addresses.number} — ${o.addresses.neighborhood}`
+                          : "Retirada na loja"}
+                      </TableCell>
+                      <TableCell>
+                        <FulfillmentBadge type={o.fulfillment_type} />
+                      </TableCell>
+                      <TableCell className="text-xs">{o.channel}</TableCell>
+                      <TableCell className="text-xs">
+                        {o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM") : "—"}
+                        {o.delivery_time ? ` ${o.delivery_time}` : ""}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {format(new Date(o.created_at), "dd/MM/yyyy 'às' HH:mm")}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {o.order_items.map((i) => `${i.products?.name ?? "?"} x${i.qty}`).join(", ")}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {o.payment_method ? (
+                          <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
+                        ) : "—"}
+                      </TableCell>
+                      {/* Rider columns */}
+                      {riders.map((r) => (
+                        <TableCell key={r.id} className="text-center px-1">
+                          <button
+                            type="button"
+                            className={`h-7 w-7 rounded border text-xs font-bold mx-auto flex items-center justify-center transition-colors ${
+                              o.rider_id === r.id
+                                ? "border-[hsl(var(--brand-blue))] text-[hsl(var(--brand-blue))] bg-[hsl(var(--brand-blue))]/10"
+                                : "border-dashed border-muted-foreground/30 text-transparent hover:border-muted-foreground/60"
+                            }`}
+                            onClick={() => toggleRider(o.id, r.id, o.rider_id)}
+                          >
+                            {o.rider_id === r.id ? "✕" : "·"}
+                          </button>
+                        </TableCell>
+                      ))}
+                      <TableCell>
+                        <Select value={o.status} onValueChange={(v) => updateStatus(o.id, v)}>
+                          <SelectTrigger className="h-7 text-xs w-[110px]">
+                            <Badge className={`${statusColors[o.status]} text-xs`}>{statusLabels[o.status]}</Badge>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Constants.public.Enums.order_status.map((s) => (
+                              <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex gap-1 justify-end">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedOrder(o)} title="Detalhes"><Eye className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleLabel(o)} title="Etiqueta"><Printer className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleWhatsApp(o)} title="WhatsApp"><MessageCircle className="h-3.5 w-3.5" /></Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {filtered.length > PAGE_SIZE && (
         <div className="flex items-center justify-between">
@@ -305,6 +698,7 @@ export function OrdersTab() {
         </div>
       )}
 
+      {/* Order Detail Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Pedido {selectedOrder?.id.slice(0, 8).toUpperCase()}</DialogTitle></DialogHeader>
@@ -313,27 +707,46 @@ export function OrdersTab() {
               <p><strong>Cliente:</strong> {selectedOrder.customers?.name ?? "Retirada / Sem cadastro"}</p>
               <p><strong>Telefone:</strong> {selectedOrder.customers?.phone ?? "—"}</p>
               {selectedOrder.customers?.cnpj && <p><strong>CNPJ:</strong> {selectedOrder.customers.cnpj}</p>}
-              <p><strong>Atendimento:</strong> <FulfillmentBadge type={(selectedOrder as any).fulfillment_type} /></p>
-              {(selectedOrder as any).fulfillment_type !== "pickup" && (
+              <p><strong>Atendimento:</strong> <FulfillmentBadge type={selectedOrder.fulfillment_type} /></p>
+              {selectedOrder.fulfillment_type !== "pickup" && (
                 <p><strong>Endereço:</strong> {selectedOrder.addresses ? `${selectedOrder.addresses.street}, ${selectedOrder.addresses.number} - ${selectedOrder.addresses.neighborhood}` : "—"}</p>
               )}
               {selectedOrder.addresses?.complement && <p><strong>Complemento:</strong> {selectedOrder.addresses.complement}</p>}
               <p><strong>Canal:</strong> {selectedOrder.channel}</p>
               <p><strong>Entrega:</strong> {selectedOrder.delivery_date ?? "—"} {selectedOrder.delivery_time ?? ""}</p>
               <p><strong>Pagamento:</strong> {selectedOrder.payment_method ? (paymentLabels[selectedOrder.payment_method] || selectedOrder.payment_method) : "—"}</p>
+              {selectedOrder.total_amount != null && (
+                <p><strong>Total:</strong> {formatCurrency(selectedOrder.total_amount)}</p>
+              )}
+              {selectedOrder.payment_method === "cash" && selectedOrder.change_for != null && (
+                <p><strong>Troco para:</strong> {formatCurrency(selectedOrder.change_for)}
+                  {selectedOrder.total_amount != null && (
+                    <span className="text-muted-foreground"> (Troco: {formatCurrency(selectedOrder.change_for - selectedOrder.total_amount)})</span>
+                  )}
+                </p>
+              )}
+              <p><strong>Motoboy:</strong> {(() => {
+                const r = riders.find((r) => r.id === selectedOrder.rider_id);
+                return r ? `${r.label} — ${r.name}` : "Não atribuído";
+              })()}</p>
               <p><strong>Criado em:</strong> {format(new Date(selectedOrder.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
               <p><strong>Itens:</strong></p>
               <ul className="list-disc list-inside">
                 {selectedOrder.order_items.map((i, idx) => (<li key={idx}>{i.products?.name}: {i.qty}</li>))}
               </ul>
               {selectedOrder.notes && <p><strong>Obs:</strong> {selectedOrder.notes}</p>}
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-2 pt-2 flex-wrap">
                 <Button size="sm" variant="outline" onClick={() => { handleLabel(selectedOrder); setSelectedOrder(null); }}>
                   <Printer className="h-4 w-4 mr-1" /> Etiqueta
                 </Button>
-                <Button size="sm" className="bg-whatsapp hover:bg-whatsapp-dark text-white" onClick={() => handleWhatsApp(selectedOrder)}>
+                <Button size="sm" className="bg-[hsl(var(--whatsapp))] hover:bg-[hsl(var(--whatsapp))]/90 text-white" onClick={() => handleWhatsApp(selectedOrder)}>
                   <MessageCircle className="h-4 w-4 mr-1" /> WhatsApp
                 </Button>
+                {!selectedOrder.customers?.id && (
+                  <Button size="sm" variant="outline" onClick={() => setSaveCustomerOrder(selectedOrder)}>
+                    <UserPlus className="h-4 w-4 mr-1" /> Salvar como cliente
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -346,6 +759,20 @@ export function OrdersTab() {
           {labelData && <OrderLabel data={labelData} />}
         </DialogContent>
       </Dialog>
+
+      <RiderManagementModal
+        open={riderModalOpen}
+        onOpenChange={setRiderModalOpen}
+        riders={riders}
+        onSave={fetchRiders}
+      />
+
+      <SaveCustomerModal
+        open={!!saveCustomerOrder}
+        onOpenChange={(o) => !o && setSaveCustomerOrder(null)}
+        order={saveCustomerOrder}
+        onSaved={handleCustomerSaved}
+      />
     </div>
   );
 }
