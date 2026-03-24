@@ -52,6 +52,7 @@ export type AdminOrderRow = {
   payment_method: string | null;
   total_amount: number | null;
   change_for: number | null;
+  rider_id: string | null;
   customers: { id: string; name: string; phone: string | null; cnpj: string | null } | null;
   addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null } | null;
   order_items: { qty: number; products: { name: string } | null }[];
