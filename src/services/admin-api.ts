@@ -206,6 +206,8 @@ export const adminApi = {
     callAdminApi<{ ok: boolean }>("orders.setRider", { orderId, riderId }),
   getRiderStats: (riderIds: string[]) =>
     callAdminApi<Record<string, { pedidos: number; galoes: number }>>("riders.stats", { riderIds }),
+  getRiderDailyStats: (riderIds: string[], dateFrom: string) =>
+    callAdminApi<Record<string, { dia: string; total_galoes: number; total_pedidos: number }[]>>("riders.dailyStats", { riderIds, dateFrom }),
   saveCustomerFromOrder: (payload: {
     orderId: string;
     customer: { name: string; phone?: string; type?: "PF" | "PJ" };
