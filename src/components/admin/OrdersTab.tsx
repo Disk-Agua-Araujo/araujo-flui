@@ -309,7 +309,6 @@ function OrderCard({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <Select value={o.status} onValueChange={onStatusChange}>
             <SelectTrigger className="h-7 text-xs w-[110px]">
               <Badge className={`${statusColors[o.status]} text-xs`}>{statusLabels[o.status]}</Badge>
             </SelectTrigger>
