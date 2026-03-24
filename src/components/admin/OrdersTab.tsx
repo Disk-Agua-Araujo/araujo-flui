@@ -324,22 +324,29 @@ function OrderCard({
             <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
           )}
 
-          {/* Rider toggles */}
-          {riders.map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              className={`h-7 w-7 rounded border text-xs font-bold flex items-center justify-center transition-colors ${
-                o.rider_id === r.id
-                  ? "border-[hsl(var(--brand-blue))] bg-[hsl(var(--brand-blue))]/10 text-[hsl(var(--brand-blue))]"
-                  : "border-dashed border-muted-foreground/40 text-transparent hover:border-muted-foreground"
-              }`}
-              onClick={() => onRiderToggle(r.id)}
-              title={r.name}
-            >
-              {o.rider_id === r.id ? "✕" : r.label}
-            </button>
-          ))}
+        </div>
+
+        {/* Rider toggles - mobile */}
+        {riders.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground font-medium">Motoboy:</span>
+            {riders.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                className={`min-h-[44px] min-w-[44px] rounded-lg border-2 text-sm font-bold flex items-center justify-center transition-colors ${
+                  o.rider_id === r.id
+                    ? "border-[hsl(var(--brand-blue))] bg-[hsl(var(--brand-blue))] text-white"
+                    : "border-muted-foreground/30 text-muted-foreground bg-background"
+                }`}
+                onClick={() => onRiderToggle(r.id)}
+                title={r.name}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        )}
         </div>
 
         <div className="flex gap-1 justify-end pt-1 border-t">
