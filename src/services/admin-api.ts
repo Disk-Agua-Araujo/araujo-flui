@@ -120,6 +120,15 @@ export type CustomerOrderRow = {
   order_items: { qty: number; products: { name: string } | null }[];
 };
 
+export type DeliveryRider = {
+  id: string;
+  label: string;
+  name: string;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+};
+
 export const adminApi = {
   listOrders: () => callAdminApi<AdminOrderRow[]>("orders.list"),
   updateOrderStatus: (orderId: string, status: string) =>
