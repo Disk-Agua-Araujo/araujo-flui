@@ -139,6 +139,33 @@ export type Database = {
         }
         Relationships: []
       }
+      delivery_riders: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          label: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          label: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          label?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
       geocode_rate_limits: {
         Row: {
           client_ip: string
@@ -237,6 +264,7 @@ export type Database = {
           id: string
           notes: string | null
           payment_method: string | null
+          rider_id: string | null
           status: Database["public"]["Enums"]["order_status"]
           total_amount: number | null
         }
@@ -253,6 +281,7 @@ export type Database = {
           id?: string
           notes?: string | null
           payment_method?: string | null
+          rider_id?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           total_amount?: number | null
         }
@@ -269,6 +298,7 @@ export type Database = {
           id?: string
           notes?: string | null
           payment_method?: string | null
+          rider_id?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           total_amount?: number | null
         }
@@ -285,6 +315,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_rider_id_fkey"
+            columns: ["rider_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_riders"
             referencedColumns: ["id"]
           },
         ]

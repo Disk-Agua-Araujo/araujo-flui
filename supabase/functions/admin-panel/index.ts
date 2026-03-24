@@ -185,7 +185,7 @@ serve(async (req) => {
       const { data, error } = await adminClient
         .from("orders")
         .select(`
-          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, total_amount, change_for,
+          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id,
           customers(id, name, phone, cnpj),
           addresses(street, number, neighborhood, city, complement),
           order_items(qty, products(name))
@@ -642,6 +642,110 @@ serve(async (req) => {
       if (error) throw error;
 
       return json({ data: data || null });
+    }
+
+    // ---- Riders ----
+    if (action === "riders.list") {
+      const { data, error } = await adminClient
+        .from("delivery_riders")
+        .select("*")
+        .order("sort_order");
+      if (error) throw error;
+      return json({ data });
+    }
+
+    if (action === "riders.save") {
+      const rider = payload as { id?: string; label: string; name: string; active?: boolean; sort_order?: number };
+      if (!rider.label || !rider.name) throw new Error("Label e nome são obrigatórios.");
+      if (rider.id) {
+        const { error } = await adminClient.from("delivery_riders").update({
+          label: rider.label, name: rider.name, active: rider.active ?? true, sort_order: rider.sort_order ?? 0,
+        }).eq("id", rider.id);
+        if (error) throw error;
+      } else {
+        const { error } = await adminClient.from("delivery_riders").insert({
+          label: rider.label, name: rider.name, sort_order: rider.sort_order ?? 0,
+        });
+        if (error) throw error;
+      }
+      return json({ ok: true });
+    }
+
+    if (action === "orders.setRider") {
+      const orderId = payload?.orderId as string;
+      const riderId = payload?.riderId as string | null;
+      if (!orderId) throw new Error("Pedido inválido.");
+      const { error } = await adminClient.from("orders").update({ rider_id: riderId || null }).eq("id", orderId);
+      if (error) throw error;
+      return json({ ok: true });
+    }
+
+    if (action === "orders.saveCustomerFromOrder") {
+      const orderId = payload?.orderId as string;
+      const customer = payload?.customer as { name: string; phone?: string; type?: "PF" | "PJ" };
+      const address = payload?.address as { street: string; number: string; neighborhood: string; city?: string; complement?: string } | undefined;
+      if (!orderId) throw new Error("Pedido inválido.");
+      if (!customer?.name) throw new Error("Nome do cliente é obrigatório.");
+
+      const phone = normalizePhone(customer.phone || "");
+
+      // Create customer
+      const { data: newCustomer, error: custErr } = await adminClient
+        .from("customers")
+        .insert({ name: customer.name, phone: phone || null, type: customer.type || "PF" })
+        .select("id")
+        .single();
+      if (custErr) throw custErr;
+
+      // Create address if provided
+      let addressId: string | null = null;
+      if (address?.street && address?.number) {
+        const { data: addrRow, error: addrErr } = await adminClient
+          .from("addresses")
+          .insert({
+            customer_id: newCustomer.id,
+            street: address.street, number: address.number,
+            neighborhood: address.neighborhood || "—",
+            city: address.city || "Santo André", state: "SP",
+            complement: address.complement || null,
+            is_primary: true,
+          })
+          .select("id")
+          .single();
+        if (addrErr) throw addrErr;
+        addressId = addrRow.id;
+      }
+
+      // Link customer to order
+      const updateData: any = { customer_id: newCustomer.id };
+      if (addressId) updateData.address_id = addressId;
+      const { error: orderErr } = await adminClient.from("orders").update(updateData).eq("id", orderId);
+      if (orderErr) throw orderErr;
+
+      return json({ data: { customer_id: newCustomer.id } });
+    }
+
+    if (action === "riders.stats") {
+      // Get stats for riders: count of orders and sum of items for delivered orders
+      const riderIds = (payload?.riderIds || []) as string[];
+      if (riderIds.length === 0) return json({ data: [] });
+
+      const { data: orders, error } = await adminClient
+        .from("orders")
+        .select("rider_id, order_items(qty)")
+        .in("rider_id", riderIds)
+        .eq("status", "entregue");
+      if (error) throw error;
+
+      const stats: Record<string, { pedidos: number; galoes: number }> = {};
+      for (const o of (orders || [])) {
+        const rid = (o as any).rider_id;
+        if (!rid) continue;
+        if (!stats[rid]) stats[rid] = { pedidos: 0, galoes: 0 };
+        stats[rid].pedidos++;
+        stats[rid].galoes += ((o as any).order_items || []).reduce((s: number, i: any) => s + (i.qty || 0), 0);
+      }
+      return json({ data: stats });
     }
 
     return json({ error: "Ação inválida" }, 400);
