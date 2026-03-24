@@ -855,9 +855,12 @@ export function OrdersTab() {
                         {o.order_items.map((i) => `${i.products?.name ?? "?"} x${i.qty}`).join(", ")}
                       </TableCell>
                       <TableCell className="text-xs">
-                        {o.payment_method ? (
-                          <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
-                        ) : "—"}
+                        <div className="flex flex-col gap-1">
+                          {o.payment_method ? (
+                            <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
+                          ) : "—"}
+                          <PixBadge order={o} onToggle={() => togglePixPaid(o.id)} />
+                        </div>
                       </TableCell>
                       {/* Rider columns */}
                       {riders.map((r) => (
