@@ -790,6 +790,7 @@ export function OrdersTab() {
                 onWhatsApp={() => handleWhatsApp(o)}
                 onStatusChange={(v) => updateStatus(o.id, v)}
                 onRiderToggle={(rid) => toggleRider(o.id, rid, o.rider_id)}
+                onPixToggle={() => togglePixPaid(o.id)}
               />
             ))
           )}
