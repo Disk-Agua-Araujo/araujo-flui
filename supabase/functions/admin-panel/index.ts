@@ -680,6 +680,31 @@ serve(async (req) => {
       return json({ ok: true });
     }
 
+    if (action === "riders.delete") {
+      const riderId = payload?.riderId as string;
+      if (!riderId) throw new Error("ID do motoboy é obrigatório.");
+
+      // Check if rider has linked orders
+      const { count, error: countErr } = await adminClient
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("rider_id", riderId);
+      if (countErr) throw countErr;
+
+      if ((count ?? 0) > 0) {
+        // Unlink orders first, then delete
+        const { error: unlinkErr } = await adminClient
+          .from("orders")
+          .update({ rider_id: null })
+          .eq("rider_id", riderId);
+        if (unlinkErr) throw unlinkErr;
+      }
+
+      const { error } = await adminClient.from("delivery_riders").delete().eq("id", riderId);
+      if (error) throw error;
+      return json({ ok: true });
+    }
+
     if (action === "orders.saveCustomerFromOrder") {
       const orderId = payload?.orderId as string;
       const customer = payload?.customer as { name: string; phone?: string; type?: "PF" | "PJ" };
