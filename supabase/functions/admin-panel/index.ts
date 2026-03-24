@@ -820,6 +820,24 @@ serve(async (req) => {
       return json({ data: result });
     }
 
+    if (action === "orders.togglePixPaid") {
+      const orderId = payload?.orderId as string;
+      if (!orderId) throw new Error("Pedido inválido.");
+      const { data: order, error: fetchErr } = await adminClient
+        .from("orders")
+        .select("pix_paid")
+        .eq("id", orderId)
+        .single();
+      if (fetchErr) throw fetchErr;
+      const newVal = !order.pix_paid;
+      const { error } = await adminClient
+        .from("orders")
+        .update({ pix_paid: newVal, pix_paid_at: newVal ? new Date().toISOString() : null })
+        .eq("id", orderId);
+      if (error) throw error;
+      return json({ data: { pix_paid: newVal, pix_paid_at: newVal ? new Date().toISOString() : null } });
+    }
+
     return json({ error: "Ação inválida" }, 400);
   } catch (error) {
     console.error("admin-panel error", error);
