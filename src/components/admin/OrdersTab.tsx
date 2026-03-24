@@ -633,6 +633,21 @@ export function OrdersTab() {
     }
   };
 
+  const togglePixPaid = async (orderId: string) => {
+    // Optimistic update
+    setOrders((prev) => prev.map((o) => {
+      if (o.id !== orderId) return o;
+      const newPaid = !o.pix_paid;
+      return { ...o, pix_paid: newPaid, pix_paid_at: newPaid ? new Date().toISOString() : null };
+    }));
+    try {
+      await adminApi.togglePixPaid(orderId);
+    } catch {
+      toast({ title: "Erro ao atualizar pagamento PIX", variant: "destructive" });
+      fetchOrders();
+    }
+  
+
   const handleLabel = (o: AdminOrderRow) => {
     setLabelData({
       pedidoId: o.id.slice(0, 8).toUpperCase(),
