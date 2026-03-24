@@ -413,9 +413,27 @@ function SaveCustomerModal({
 }
 
 // ---- Mobile Order Card ----
+function PixBadge({ order, onToggle }: { order: AdminOrderRow; onToggle: () => void }) {
+  if (order.payment_method !== "pix") return null;
+  const paid = !!order.pix_paid;
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold transition-colors cursor-pointer border ${
+        paid
+          ? "bg-green-100 text-green-800 border-green-300 hover:bg-green-200"
+          : "bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200"
+      }`}
+    >
+      {paid ? "PIX Pago ✓" : "PIX Pendente"}
+    </button>
+  );
+}
+
 function OrderCard({
   o, riders, statusLabels, statusColors, paymentLabels,
-  onView, onLabel, onWhatsApp, onStatusChange, onRiderToggle,
+  onView, onLabel, onWhatsApp, onStatusChange, onRiderToggle, onPixToggle,
 }: {
   o: AdminOrderRow;
   riders: DeliveryRider[];
@@ -427,6 +445,7 @@ function OrderCard({
   onWhatsApp: () => void;
   onStatusChange: (status: string) => void;
   onRiderToggle: (riderId: string) => void;
+  onPixToggle: () => void;
 }) {
   return (
     <Card className="mb-3">
@@ -465,6 +484,7 @@ function OrderCard({
           {o.payment_method && (
             <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
           )}
+          <PixBadge order={o} onToggle={onPixToggle} />
         </div>
 
         {/* Rider toggles - mobile */}
@@ -510,6 +530,8 @@ export function OrdersTab() {
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
   const [labelData, setLabelData] = useState<LabelData | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [paymentFilter, setPaymentFilter] = useState("all");
+  const [pixSubFilter, setPixSubFilter] = useState("all");
 
   // Riders
   const [riders, setRiders] = useState<DeliveryRider[]>([]);
@@ -556,6 +578,15 @@ export function OrdersTab() {
       result = result.filter((o) => new Date(o.created_at) >= cutoff);
     }
 
+    if (paymentFilter !== "all") {
+      result = result.filter((o) => o.payment_method === paymentFilter);
+      if (paymentFilter === "pix" && pixSubFilter !== "all") {
+        result = result.filter((o) =>
+          pixSubFilter === "paid" ? !!o.pix_paid : !o.pix_paid
+        );
+      }
+    }
+
     if (search) {
       const s = search.toLowerCase();
       result = result.filter(
@@ -569,11 +600,11 @@ export function OrdersTab() {
     }
 
     return result;
-  }, [orders, statusFilter, periodFilter, search]);
+  }, [orders, statusFilter, periodFilter, paymentFilter, pixSubFilter, search]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter, periodFilter]);
+  }, [search, statusFilter, periodFilter, paymentFilter, pixSubFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageStart = (currentPage - 1) * PAGE_SIZE;
@@ -598,6 +629,21 @@ export function OrdersTab() {
       await adminApi.setOrderRider(orderId, newRiderId);
     } catch (err) {
       toast({ title: "Erro ao atribuir motoboy", variant: "destructive" });
+      fetchOrders();
+    }
+  };
+
+  const togglePixPaid = async (orderId: string) => {
+    // Optimistic update
+    setOrders((prev) => prev.map((o) => {
+      if (o.id !== orderId) return o;
+      const newPaid = !o.pix_paid;
+      return { ...o, pix_paid: newPaid, pix_paid_at: newPaid ? new Date().toISOString() : null };
+    }));
+    try {
+      await adminApi.togglePixPaid(orderId);
+    } catch {
+      toast({ title: "Erro ao atualizar pagamento PIX", variant: "destructive" });
       fetchOrders();
     }
   };
@@ -688,6 +734,27 @@ export function OrdersTab() {
           </SelectContent>
         </Select>
 
+        <Select value={paymentFilter} onValueChange={(v) => { setPaymentFilter(v); if (v !== "pix") setPixSubFilter("all"); }}>
+          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Pagamento" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Pgto: Todos</SelectItem>
+            <SelectItem value="cash">💵 Dinheiro</SelectItem>
+            <SelectItem value="pix">📱 PIX</SelectItem>
+            <SelectItem value="card">💳 Cartão</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {paymentFilter === "pix" && (
+          <Select value={pixSubFilter} onValueChange={setPixSubFilter}>
+            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos PIX</SelectItem>
+              <SelectItem value="pending">PIX Pendente</SelectItem>
+              <SelectItem value="paid">PIX Pago</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+
         <div className="flex gap-2">
           <Button variant="outline" size="icon" onClick={fetchOrders} disabled={loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -696,6 +763,10 @@ export function OrdersTab() {
             <Settings className="h-4 w-4" />
           </Button>
         </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <p className="text-sm text-muted-foreground">{filtered.length} pedido{filtered.length !== 1 ? "s" : ""} encontrado{filtered.length !== 1 ? "s" : ""}</p>
       </div>
 
       {/* MOBILE: Card layout */}
@@ -719,6 +790,7 @@ export function OrdersTab() {
                 onWhatsApp={() => handleWhatsApp(o)}
                 onStatusChange={(v) => updateStatus(o.id, v)}
                 onRiderToggle={(rid) => toggleRider(o.id, rid, o.rider_id)}
+                onPixToggle={() => togglePixPaid(o.id)}
               />
             ))
           )}
@@ -783,9 +855,12 @@ export function OrdersTab() {
                         {o.order_items.map((i) => `${i.products?.name ?? "?"} x${i.qty}`).join(", ")}
                       </TableCell>
                       <TableCell className="text-xs">
-                        {o.payment_method ? (
-                          <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
-                        ) : "—"}
+                        <div className="flex flex-col gap-1">
+                          {o.payment_method ? (
+                            <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
+                          ) : "—"}
+                          <PixBadge order={o} onToggle={() => togglePixPaid(o.id)} />
+                        </div>
                       </TableCell>
                       {/* Rider columns */}
                       {riders.map((r) => (
@@ -871,6 +946,20 @@ export function OrdersTab() {
                     <span className="text-muted-foreground"> (Troco: {formatCurrency(selectedOrder.change_for - selectedOrder.total_amount)})</span>
                   )}
                 </p>
+              )}
+              {selectedOrder.payment_method === "pix" && (
+                <div className="flex items-center gap-2">
+                  <strong>PIX:</strong>
+                  <PixBadge order={selectedOrder} onToggle={() => {
+                    togglePixPaid(selectedOrder.id);
+                    setSelectedOrder((prev) => prev ? { ...prev, pix_paid: !prev.pix_paid, pix_paid_at: !prev.pix_paid ? new Date().toISOString() : null } : prev);
+                  }} />
+                  {selectedOrder.pix_paid && selectedOrder.pix_paid_at && (
+                    <span className="text-xs text-muted-foreground">
+                      {format(new Date(selectedOrder.pix_paid_at), "dd/MM/yyyy 'às' HH:mm")}
+                    </span>
+                  )}
+                </div>
               )}
               <p><strong>Motoboy:</strong> {(() => {
                 const r = riders.find((r) => r.id === selectedOrder.rider_id);

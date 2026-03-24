@@ -185,7 +185,7 @@ serve(async (req) => {
       const { data, error } = await adminClient
         .from("orders")
         .select(`
-          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id,
+          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at,
           customers(id, name, phone, cnpj),
           addresses(street, number, neighborhood, city, complement),
           order_items(qty, products(name))
@@ -780,7 +780,7 @@ serve(async (req) => {
 
       let query = adminClient
         .from("orders")
-        .select("rider_id, created_at, order_items(qty, product_id, products(name, category_id, product_categories(name)))")
+        .select("id, rider_id, created_at, order_items(qty, product_id, products(name, category_id, product_categories(name)))")
         .in("rider_id", riderIds);
 
       if (dateFrom) {
@@ -818,6 +818,24 @@ serve(async (req) => {
       }
 
       return json({ data: result });
+    }
+
+    if (action === "orders.togglePixPaid") {
+      const orderId = payload?.orderId as string;
+      if (!orderId) throw new Error("Pedido inválido.");
+      const { data: order, error: fetchErr } = await adminClient
+        .from("orders")
+        .select("pix_paid")
+        .eq("id", orderId)
+        .single();
+      if (fetchErr) throw fetchErr;
+      const newVal = !order.pix_paid;
+      const { error } = await adminClient
+        .from("orders")
+        .update({ pix_paid: newVal, pix_paid_at: newVal ? new Date().toISOString() : null })
+        .eq("id", orderId);
+      if (error) throw error;
+      return json({ data: { pix_paid: newVal, pix_paid_at: newVal ? new Date().toISOString() : null } });
     }
 
     return json({ error: "Ação inválida" }, 400);

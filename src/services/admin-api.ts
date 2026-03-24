@@ -53,6 +53,8 @@ export type AdminOrderRow = {
   total_amount: number | null;
   change_for: number | null;
   rider_id: string | null;
+  pix_paid: boolean | null;
+  pix_paid_at: string | null;
   customers: { id: string; name: string; phone: string | null; cnpj: string | null } | null;
   addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null } | null;
   order_items: { qty: number; products: { name: string } | null }[];
@@ -206,6 +208,8 @@ export const adminApi = {
     callAdminApi<{ ok: boolean }>("riders.delete", { riderId }),
   setOrderRider: (orderId: string, riderId: string | null) =>
     callAdminApi<{ ok: boolean }>("orders.setRider", { orderId, riderId }),
+  togglePixPaid: (orderId: string) =>
+    callAdminApi<{ pix_paid: boolean; pix_paid_at: string | null }>("orders.togglePixPaid", { orderId }),
   getRiderStats: (riderIds: string[]) =>
     callAdminApi<Record<string, { pedidos: number; galoes: number }>>("riders.stats", { riderIds }),
   getRiderDailyStats: (riderIds: string[], dateFrom: string) =>

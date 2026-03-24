@@ -264,6 +264,8 @@ export type Database = {
           id: string
           notes: string | null
           payment_method: string | null
+          pix_paid: boolean | null
+          pix_paid_at: string | null
           rider_id: string | null
           status: Database["public"]["Enums"]["order_status"]
           total_amount: number | null
@@ -281,6 +283,8 @@ export type Database = {
           id?: string
           notes?: string | null
           payment_method?: string | null
+          pix_paid?: boolean | null
+          pix_paid_at?: string | null
           rider_id?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           total_amount?: number | null
@@ -298,6 +302,8 @@ export type Database = {
           id?: string
           notes?: string | null
           payment_method?: string | null
+          pix_paid?: boolean | null
+          pix_paid_at?: string | null
           rider_id?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           total_amount?: number | null
