@@ -309,6 +309,7 @@ function OrderCard({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <Select value={o.status} onValueChange={onStatusChange}>
             <SelectTrigger className="h-7 text-xs w-[110px]">
               <Badge className={`${statusColors[o.status]} text-xs`}>{statusLabels[o.status]}</Badge>
             </SelectTrigger>
@@ -322,7 +323,6 @@ function OrderCard({
           {o.payment_method && (
             <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
           )}
-
         </div>
 
         {/* Rider toggles - mobile */}
@@ -346,7 +346,6 @@ function OrderCard({
             ))}
           </div>
         )}
-        </div>
 
         <div className="flex gap-1 justify-end pt-1 border-t">
           <Button variant="ghost" size="sm" className="h-7" onClick={onView}><Eye className="h-3.5 w-3.5 mr-1" /> Ver</Button>
