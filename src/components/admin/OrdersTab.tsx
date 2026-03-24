@@ -60,6 +60,9 @@ function formatCurrency(value: number) {
 }
 
 // ---- Rider Management Modal ----
+type DailyStats = { dia: string; total_galoes: number; total_pedidos: number };
+type RiderDailyStats = Record<string, DailyStats[]>;
+
 function RiderManagementModal({
   open, onOpenChange, riders, onSave,
 }: {
@@ -71,14 +74,34 @@ function RiderManagementModal({
   const { toast } = useToast();
   const [localRiders, setLocalRiders] = useState<(DeliveryRider & { _new?: boolean })[]>([]);
   const [saving, setSaving] = useState(false);
-  const [stats, setStats] = useState<Record<string, { pedidos: number; galoes: number }>>({});
+  const [dailyStats, setDailyStats] = useState<RiderDailyStats>({});
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsPeriod, setStatsPeriod] = useState("month");
+  const [activeView, setActiveView] = useState<"stats" | "edit">("stats");
 
   useEffect(() => {
     setLocalRiders(riders.map((r) => ({ ...r })));
-    if (riders.length > 0) {
-      adminApi.getRiderStats(riders.map((r) => r.id)).then(setStats).catch(() => {});
-    }
   }, [riders, open]);
+
+  useEffect(() => {
+    if (!open || riders.length === 0) return;
+    loadStats();
+  }, [riders, open, statsPeriod]);
+
+  const loadStats = async () => {
+    setStatsLoading(true);
+    try {
+      const now = new Date();
+      let dateFrom: string;
+      if (statsPeriod === "today") dateFrom = format(startOfDay(now), "yyyy-MM-dd");
+      else if (statsPeriod === "week") dateFrom = format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd");
+      else dateFrom = format(startOfMonth(now), "yyyy-MM-dd");
+
+      const data = await adminApi.getRiderDailyStats(riders.map((r) => r.id), dateFrom);
+      setDailyStats(data);
+    } catch { /* silent */ }
+    finally { setStatsLoading(false); }
+  };
 
   const handleSaveAll = async () => {
     setSaving(true);
@@ -110,69 +133,165 @@ function RiderManagementModal({
     ]);
   };
 
+  const getTodayTotal = (riderId: string) => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    const days = dailyStats[riderId] || [];
+    const t = days.find((d) => d.dia === today);
+    return t?.total_galoes ?? 0;
+  };
+
+  const getMonthTotal = (riderId: string) => {
+    const days = dailyStats[riderId] || [];
+    return days.reduce((s, d) => s + d.total_galoes, 0);
+  };
+
+  const getPeriodPedidos = (riderId: string) => {
+    const days = dailyStats[riderId] || [];
+    return days.reduce((s, d) => s + d.total_pedidos, 0);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Gerenciar motoboys</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          {localRiders.map((r, i) => (
-            <div key={r.id} className="flex gap-2 items-start border rounded-lg p-3">
-              <div className="flex-1 space-y-2">
-                <div className="flex gap-2">
-                  <div className="w-16">
-                    <label className="text-xs font-medium">Inicial</label>
-                    <Input
-                      value={r.label}
-                      onChange={(e) => {
-                        const copy = [...localRiders];
-                        copy[i] = { ...copy[i], label: e.target.value.slice(0, 3) };
-                        setLocalRiders(copy);
-                      }}
-                      maxLength={3}
-                      className="text-center font-bold"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <label className="text-xs font-medium">Nome</label>
-                    <Input
-                      value={r.name}
-                      onChange={(e) => {
-                        const copy = [...localRiders];
-                        copy[i] = { ...copy[i], name: e.target.value };
-                        setLocalRiders(copy);
-                      }}
-                      maxLength={50}
-                    />
-                  </div>
-                </div>
-                {stats[r.id] && (
-                  <p className="text-xs text-muted-foreground">
-                    {stats[r.id].pedidos} pedidos · {stats[r.id].galoes} itens entregues
-                  </p>
-                )}
-              </div>
-              <Button
-                variant={r.active ? "outline" : "destructive"}
-                size="sm"
-                className="mt-5"
-                onClick={() => {
-                  const copy = [...localRiders];
-                  copy[i] = { ...copy[i], active: !copy[i].active };
-                  setLocalRiders(copy);
-                }}
-              >
-                {r.active ? "Ativo" : "Inativo"}
-              </Button>
-            </div>
-          ))}
-          <Button variant="outline" className="w-full" onClick={addRider}>
-            <Plus className="h-4 w-4 mr-1" /> Adicionar motoboy
+
+        {/* Toggle stats/edit */}
+        <div className="flex gap-2 mb-2">
+          <Button variant={activeView === "stats" ? "default" : "outline"} size="sm" onClick={() => setActiveView("stats")}>
+            📊 Estatísticas
           </Button>
-          <Button className="w-full" onClick={handleSaveAll} disabled={saving}>
-            {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
-            Salvar
+          <Button variant={activeView === "edit" ? "default" : "outline"} size="sm" onClick={() => setActiveView("edit")}>
+            ✏️ Editar
           </Button>
         </div>
+
+        {activeView === "stats" && (
+          <div className="space-y-4">
+            {/* Period filter */}
+            <Select value={statsPeriod} onValueChange={setStatsPeriod}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Hoje</SelectItem>
+                <SelectItem value="week">Esta semana</SelectItem>
+                <SelectItem value="month">Este mês</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 gap-3">
+              {riders.map((r) => (
+                <Card key={r.id}>
+                  <CardContent className="p-3 text-center">
+                    <p className="text-2xl font-bold text-[hsl(var(--brand-blue))]">{r.label}</p>
+                    <p className="text-sm font-medium">{r.name}</p>
+                    <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                      <p>Hoje: <strong className="text-foreground">{getTodayTotal(r.id)} gal</strong></p>
+                      <p>Período: <strong className="text-foreground">{getMonthTotal(r.id)} gal · {getPeriodPedidos(r.id)} ped.</strong></p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Daily breakdown per rider */}
+            {statsLoading ? (
+              <p className="text-center text-sm text-muted-foreground py-4"><Loader2 className="inline h-4 w-4 animate-spin mr-1" />Carregando...</p>
+            ) : (
+              riders.map((r) => {
+                const days = dailyStats[r.id] || [];
+                return (
+                  <div key={r.id} className="space-y-1">
+                    <p className="text-sm font-semibold">{r.label} — {r.name}</p>
+                    {days.length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic">Sem entregas neste período.</p>
+                    ) : (
+                      <div className="border rounded-lg overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="text-xs h-8">Data</TableHead>
+                              <TableHead className="text-xs h-8 text-right">Galões</TableHead>
+                              <TableHead className="text-xs h-8 text-right">Pedidos</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {days.map((d) => (
+                              <TableRow key={d.dia}>
+                                <TableCell className="text-xs py-1.5">{format(new Date(`${d.dia}T12:00:00`), "dd/MM/yyyy")}</TableCell>
+                                <TableCell className="text-xs py-1.5 text-right font-medium">{d.total_galoes}</TableCell>
+                                <TableCell className="text-xs py-1.5 text-right">{d.total_pedidos}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Total: <strong>{getMonthTotal(r.id)} galões · {getPeriodPedidos(r.id)} pedidos</strong>
+                    </p>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {activeView === "edit" && (
+          <div className="space-y-3">
+            {localRiders.map((r, i) => (
+              <div key={r.id} className="flex gap-2 items-start border rounded-lg p-3">
+                <div className="flex-1 space-y-2">
+                  <div className="flex gap-2">
+                    <div className="w-16">
+                      <label className="text-xs font-medium">Inicial</label>
+                      <Input
+                        value={r.label}
+                        onChange={(e) => {
+                          const copy = [...localRiders];
+                          copy[i] = { ...copy[i], label: e.target.value.slice(0, 3) };
+                          setLocalRiders(copy);
+                        }}
+                        maxLength={3}
+                        className="text-center font-bold"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-xs font-medium">Nome</label>
+                      <Input
+                        value={r.name}
+                        onChange={(e) => {
+                          const copy = [...localRiders];
+                          copy[i] = { ...copy[i], name: e.target.value };
+                          setLocalRiders(copy);
+                        }}
+                        maxLength={50}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  variant={r.active ? "outline" : "destructive"}
+                  size="sm"
+                  className="mt-5"
+                  onClick={() => {
+                    const copy = [...localRiders];
+                    copy[i] = { ...copy[i], active: !copy[i].active };
+                    setLocalRiders(copy);
+                  }}
+                >
+                  {r.active ? "Ativo" : "Inativo"}
+                </Button>
+              </div>
+            ))}
+            <Button variant="outline" className="w-full" onClick={addRider}>
+              <Plus className="h-4 w-4 mr-1" /> Adicionar motoboy
+            </Button>
+            <Button className="w-full" onClick={handleSaveAll} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+              Salvar
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

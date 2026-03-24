@@ -728,7 +728,7 @@ serve(async (req) => {
     if (action === "riders.stats") {
       // Get stats for riders: count of orders and sum of items for delivered orders
       const riderIds = (payload?.riderIds || []) as string[];
-      if (riderIds.length === 0) return json({ data: [] });
+      if (riderIds.length === 0) return json({ data: {} });
 
       const { data: orders, error } = await adminClient
         .from("orders")
@@ -746,6 +746,53 @@ serve(async (req) => {
         stats[rid].galoes += ((o as any).order_items || []).reduce((s: number, i: any) => s + (i.qty || 0), 0);
       }
       return json({ data: stats });
+    }
+
+    if (action === "riders.dailyStats") {
+      const riderIds = (payload?.riderIds || []) as string[];
+      const dateFrom = (payload?.dateFrom as string) || "";
+      if (riderIds.length === 0) return json({ data: {} });
+
+      let query = adminClient
+        .from("orders")
+        .select("rider_id, created_at, order_items(qty, product_id, products(name, category_id, product_categories(name)))")
+        .in("rider_id", riderIds);
+
+      if (dateFrom) {
+        query = query.gte("created_at", `${dateFrom}T00:00:00`);
+      }
+
+      const { data: orders, error } = await query.order("created_at", { ascending: false });
+      if (error) throw error;
+
+      // Group by rider then by day, counting only galão items
+      const result: Record<string, { dia: string; total_galoes: number; total_pedidos: number }[]> = {};
+      const riderDayMap: Record<string, Record<string, { galoes: number; orderIds: Set<string> }>> = {};
+
+      for (const o of (orders || []) as any[]) {
+        const rid = o.rider_id;
+        if (!rid) continue;
+        const day = (o.created_at as string).substring(0, 10);
+        if (!riderDayMap[rid]) riderDayMap[rid] = {};
+        if (!riderDayMap[rid][day]) riderDayMap[rid][day] = { galoes: 0, orderIds: new Set() };
+
+        riderDayMap[rid][day].orderIds.add(o.id || day);
+        for (const item of (o.order_items || [])) {
+          const catName = (item.products?.product_categories?.name || "").toLowerCase();
+          // Count only galão category items
+          if (catName.includes("gal")) {
+            riderDayMap[rid][day].galoes += item.qty || 0;
+          }
+        }
+      }
+
+      for (const rid of Object.keys(riderDayMap)) {
+        result[rid] = Object.entries(riderDayMap[rid])
+          .map(([dia, v]) => ({ dia, total_galoes: v.galoes, total_pedidos: v.orderIds.size }))
+          .sort((a, b) => b.dia.localeCompare(a.dia));
+      }
+
+      return json({ data: result });
     }
 
     return json({ error: "Ação inválida" }, 400);
