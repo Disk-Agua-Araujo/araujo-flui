@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 import { OrdersTab } from "@/components/admin/OrdersTab";
 import { NewOrderTab } from "@/components/admin/NewOrderTab";
@@ -20,8 +21,17 @@ function isValidTab(value: string | null): value is TabValue {
   return !!value && TAB_VALUES.includes(value as TabValue);
 }
 
+const tabConfig = [
+  { value: "orders" as const, label: "Pedidos", icon: ClipboardList },
+  { value: "new-order" as const, label: "Novo", icon: PlusCircle },
+  { value: "customers" as const, label: "Clientes", icon: Users },
+  { value: "products" as const, label: "Produtos", icon: Package },
+  { value: "reports" as const, label: "Relatórios", icon: BarChart3, ownerOnly: true },
+];
+
 export default function Admin() {
   const { username, isAdmin, isOwner, loading, signOut } = useAuth();
+  const isMobile = useIsMobile();
   
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -65,8 +75,10 @@ export default function Admin() {
     setSearchParams({ tab });
   };
 
+  const visibleTabs = tabConfig.filter((t) => !t.ownerOnly || isOwner);
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className={`min-h-screen bg-background ${isMobile ? "pb-20" : ""}`}>
       <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur">
         <div className="container flex h-14 items-center justify-between">
           <div className="flex items-center gap-3">
@@ -82,32 +94,19 @@ export default function Admin() {
         </div>
       </header>
 
-      <main className="container py-6">
+      <main className="container py-4 sm:py-6">
         <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 mb-6">
-            <TabsTrigger value="orders" className="gap-1">
-              <ClipboardList className="h-4 w-4" />
-              <span className="hidden sm:inline">Pedidos</span>
-            </TabsTrigger>
-            <TabsTrigger value="new-order" className="gap-1">
-              <PlusCircle className="h-4 w-4" />
-              <span className="hidden sm:inline">Novo Pedido</span>
-            </TabsTrigger>
-            <TabsTrigger value="customers" className="gap-1">
-              <Users className="h-4 w-4" />
-              <span className="hidden sm:inline">Clientes</span>
-            </TabsTrigger>
-            <TabsTrigger value="products" className="gap-1">
-              <Package className="h-4 w-4" />
-              <span className="hidden sm:inline">Produtos</span>
-            </TabsTrigger>
-            {isOwner && (
-              <TabsTrigger value="reports" className="gap-1">
-                <BarChart3 className="h-4 w-4" />
-                <span className="hidden sm:inline">Relatórios</span>
-              </TabsTrigger>
-            )}
-          </TabsList>
+          {/* Desktop tabs */}
+          {!isMobile && (
+            <TabsList className="grid w-full grid-cols-5 mb-6">
+              {visibleTabs.map((t) => (
+                <TabsTrigger key={t.value} value={t.value} className="gap-1">
+                  <t.icon className="h-4 w-4" />
+                  <span>{t.label}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          )}
 
           <TabsContent value="orders"><OrdersTab /></TabsContent>
           <TabsContent value="new-order"><NewOrderTab /></TabsContent>
@@ -116,6 +115,32 @@ export default function Admin() {
           {isOwner && <TabsContent value="reports"><ReportsTab /></TabsContent>}
         </Tabs>
       </main>
+
+      {/* Mobile bottom navigation */}
+      {isMobile && (
+        <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t shadow-lg">
+          <div className="flex justify-around items-center h-16">
+            {visibleTabs.map((t) => {
+              const isActive = activeTab === t.value;
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${
+                    isActive
+                      ? "text-[hsl(var(--brand-blue))]"
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => handleTabChange(t.value)}
+                >
+                  <t.icon className="h-5 w-5" />
+                  <span className="text-[10px] leading-tight font-medium">{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+      )}
     </div>
   );
 }
