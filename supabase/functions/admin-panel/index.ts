@@ -780,7 +780,7 @@ serve(async (req) => {
 
       let query = adminClient
         .from("orders")
-        .select("rider_id, created_at, order_items(qty, product_id, products(name, category_id, product_categories(name)))")
+        .select("id, rider_id, created_at, order_items(qty, product_id, products(name, category_id, product_categories(name)))")
         .in("rider_id", riderIds);
 
       if (dateFrom) {
