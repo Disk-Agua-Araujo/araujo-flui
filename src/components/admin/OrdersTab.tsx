@@ -734,6 +734,27 @@ export function OrdersTab() {
           </SelectContent>
         </Select>
 
+        <Select value={paymentFilter} onValueChange={(v) => { setPaymentFilter(v); if (v !== "pix") setPixSubFilter("all"); }}>
+          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Pagamento" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Pgto: Todos</SelectItem>
+            <SelectItem value="cash">💵 Dinheiro</SelectItem>
+            <SelectItem value="pix">📱 PIX</SelectItem>
+            <SelectItem value="card">💳 Cartão</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {paymentFilter === "pix" && (
+          <Select value={pixSubFilter} onValueChange={setPixSubFilter}>
+            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos PIX</SelectItem>
+              <SelectItem value="pending">PIX Pendente</SelectItem>
+              <SelectItem value="paid">PIX Pago</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+
         <div className="flex gap-2">
           <Button variant="outline" size="icon" onClick={fetchOrders} disabled={loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -742,6 +763,10 @@ export function OrdersTab() {
             <Settings className="h-4 w-4" />
           </Button>
         </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <p className="text-sm text-muted-foreground">{filtered.length} pedido{filtered.length !== 1 ? "s" : ""} encontrado{filtered.length !== 1 ? "s" : ""}</p>
       </div>
 
       {/* MOBILE: Card layout */}
