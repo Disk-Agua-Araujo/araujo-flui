@@ -202,6 +202,8 @@ export const adminApi = {
   listRiders: () => callAdminApi<DeliveryRider[]>("riders.list"),
   saveRider: (rider: { id?: string; label: string; name: string; active?: boolean; sort_order?: number }) =>
     callAdminApi<{ ok: boolean }>("riders.save", rider),
+  deleteRider: (riderId: string) =>
+    callAdminApi<{ ok: boolean }>("riders.delete", { riderId }),
   setOrderRider: (orderId: string, riderId: string | null) =>
     callAdminApi<{ ok: boolean }>("orders.setRider", { orderId, riderId }),
   getRiderStats: (riderIds: string[]) =>

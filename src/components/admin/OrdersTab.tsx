@@ -269,18 +269,41 @@ function RiderManagementModal({
                     </div>
                   </div>
                 </div>
-                <Button
-                  variant={r.active ? "outline" : "destructive"}
-                  size="sm"
-                  className="mt-5"
-                  onClick={() => {
-                    const copy = [...localRiders];
-                    copy[i] = { ...copy[i], active: !copy[i].active };
-                    setLocalRiders(copy);
-                  }}
-                >
-                  {r.active ? "Ativo" : "Inativo"}
-                </Button>
+                <div className="flex flex-col gap-1 mt-5">
+                  <Button
+                    variant={r.active ? "outline" : "destructive"}
+                    size="sm"
+                    onClick={() => {
+                      const copy = [...localRiders];
+                      copy[i] = { ...copy[i], active: !copy[i].active };
+                      setLocalRiders(copy);
+                    }}
+                  >
+                    {r.active ? "Ativo" : "Inativo"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={async () => {
+                      if (!confirm(`Excluir o motoboy "${r.name}"? Esta ação não pode ser desfeita.`)) return;
+                      if (r._new) {
+                        setLocalRiders((prev) => prev.filter((_, idx) => idx !== i));
+                        return;
+                      }
+                      try {
+                        await adminApi.deleteRider(r.id);
+                        toast({ title: "Motoboy excluído." });
+                        setLocalRiders((prev) => prev.filter((_, idx) => idx !== i));
+                        onSave();
+                      } catch (err) {
+                        toast({ title: "Erro ao excluir", description: err instanceof Error ? err.message : "Erro", variant: "destructive" });
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
             ))}
             <Button variant="outline" className="w-full" onClick={addRider}>
