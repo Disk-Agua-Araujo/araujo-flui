@@ -198,4 +198,17 @@ export const adminApi = {
   listCategories: () => callAdminApi<AdminCategoryRow[]>("categories.list"),
 
   listReportsOrders: () => callAdminApi<AdminOrderRow[]>("reports.orders"),
+
+  listRiders: () => callAdminApi<DeliveryRider[]>("riders.list"),
+  saveRider: (rider: { id?: string; label: string; name: string; active?: boolean; sort_order?: number }) =>
+    callAdminApi<{ ok: boolean }>("riders.save", rider),
+  setOrderRider: (orderId: string, riderId: string | null) =>
+    callAdminApi<{ ok: boolean }>("orders.setRider", { orderId, riderId }),
+  getRiderStats: (riderIds: string[]) =>
+    callAdminApi<Record<string, { pedidos: number; galoes: number }>>("riders.stats", { riderIds }),
+  saveCustomerFromOrder: (payload: {
+    orderId: string;
+    customer: { name: string; phone?: string; type?: "PF" | "PJ" };
+    address?: { street: string; number: string; neighborhood: string; city?: string; complement?: string };
+  }) => callAdminApi<{ customer_id: string }>("orders.saveCustomerFromOrder", payload),
 };
