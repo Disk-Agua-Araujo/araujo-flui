@@ -413,9 +413,27 @@ function SaveCustomerModal({
 }
 
 // ---- Mobile Order Card ----
+function PixBadge({ order, onToggle }: { order: AdminOrderRow; onToggle: () => void }) {
+  if (order.payment_method !== "pix") return null;
+  const paid = !!order.pix_paid;
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold transition-colors cursor-pointer border ${
+        paid
+          ? "bg-green-100 text-green-800 border-green-300 hover:bg-green-200"
+          : "bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200"
+      }`}
+    >
+      {paid ? "PIX Pago ✓" : "PIX Pendente"}
+    </button>
+  );
+}
+
 function OrderCard({
   o, riders, statusLabels, statusColors, paymentLabels,
-  onView, onLabel, onWhatsApp, onStatusChange, onRiderToggle,
+  onView, onLabel, onWhatsApp, onStatusChange, onRiderToggle, onPixToggle,
 }: {
   o: AdminOrderRow;
   riders: DeliveryRider[];
@@ -427,6 +445,7 @@ function OrderCard({
   onWhatsApp: () => void;
   onStatusChange: (status: string) => void;
   onRiderToggle: (riderId: string) => void;
+  onPixToggle: () => void;
 }) {
   return (
     <Card className="mb-3">
@@ -465,6 +484,7 @@ function OrderCard({
           {o.payment_method && (
             <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
           )}
+          <PixBadge order={o} onToggle={onPixToggle} />
         </div>
 
         {/* Rider toggles - mobile */}
