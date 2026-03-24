@@ -578,6 +578,15 @@ export function OrdersTab() {
       result = result.filter((o) => new Date(o.created_at) >= cutoff);
     }
 
+    if (paymentFilter !== "all") {
+      result = result.filter((o) => o.payment_method === paymentFilter);
+      if (paymentFilter === "pix" && pixSubFilter !== "all") {
+        result = result.filter((o) =>
+          pixSubFilter === "paid" ? !!o.pix_paid : !o.pix_paid
+        );
+      }
+    }
+
     if (search) {
       const s = search.toLowerCase();
       result = result.filter(
@@ -591,7 +600,7 @@ export function OrdersTab() {
     }
 
     return result;
-  }, [orders, statusFilter, periodFilter, search]);
+  }, [orders, statusFilter, periodFilter, paymentFilter, pixSubFilter, search]);
 
   useEffect(() => {
     setCurrentPage(1);
