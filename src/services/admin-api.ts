@@ -208,6 +208,8 @@ export const adminApi = {
     callAdminApi<{ ok: boolean }>("riders.delete", { riderId }),
   setOrderRider: (orderId: string, riderId: string | null) =>
     callAdminApi<{ ok: boolean }>("orders.setRider", { orderId, riderId }),
+  togglePixPaid: (orderId: string) =>
+    callAdminApi<{ pix_paid: boolean; pix_paid_at: string | null }>("orders.togglePixPaid", { orderId }),
   getRiderStats: (riderIds: string[]) =>
     callAdminApi<Record<string, { pedidos: number; galoes: number }>>("riders.stats", { riderIds }),
   getRiderDailyStats: (riderIds: string[], dateFrom: string) =>
