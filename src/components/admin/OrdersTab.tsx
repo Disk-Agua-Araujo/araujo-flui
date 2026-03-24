@@ -947,6 +947,20 @@ export function OrdersTab() {
                   )}
                 </p>
               )}
+              {selectedOrder.payment_method === "pix" && (
+                <div className="flex items-center gap-2">
+                  <strong>PIX:</strong>
+                  <PixBadge order={selectedOrder} onToggle={() => {
+                    togglePixPaid(selectedOrder.id);
+                    setSelectedOrder((prev) => prev ? { ...prev, pix_paid: !prev.pix_paid, pix_paid_at: !prev.pix_paid ? new Date().toISOString() : null } : prev);
+                  }} />
+                  {selectedOrder.pix_paid && selectedOrder.pix_paid_at && (
+                    <span className="text-xs text-muted-foreground">
+                      {format(new Date(selectedOrder.pix_paid_at), "dd/MM/yyyy 'às' HH:mm")}
+                    </span>
+                  )}
+                </div>
+              )}
               <p><strong>Motoboy:</strong> {(() => {
                 const r = riders.find((r) => r.id === selectedOrder.rider_id);
                 return r ? `${r.label} — ${r.name}` : "Não atribuído";
