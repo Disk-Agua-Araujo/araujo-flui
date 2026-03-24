@@ -646,7 +646,7 @@ export function OrdersTab() {
       toast({ title: "Erro ao atualizar pagamento PIX", variant: "destructive" });
       fetchOrders();
     }
-  
+  };
 
   const handleLabel = (o: AdminOrderRow) => {
     setLabelData({
