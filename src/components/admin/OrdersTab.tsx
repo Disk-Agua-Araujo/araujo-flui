@@ -530,6 +530,8 @@ export function OrdersTab() {
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
   const [labelData, setLabelData] = useState<LabelData | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [paymentFilter, setPaymentFilter] = useState("all");
+  const [pixSubFilter, setPixSubFilter] = useState("all");
 
   // Riders
   const [riders, setRiders] = useState<DeliveryRider[]>([]);
