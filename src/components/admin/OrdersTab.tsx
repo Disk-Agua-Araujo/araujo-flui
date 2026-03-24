@@ -495,7 +495,7 @@ export function OrdersTab() {
       entregaHora: o.delivery_time ?? undefined,
       status: statusLabels[o.status] ?? o.status,
       pedidoId: o.id.slice(0, 8).toUpperCase(),
-      fulfillmentType: o.fulfillment_type ?? "delivery",
+      fulfillmentType: (o.fulfillment_type ?? "delivery") as "delivery" | "pickup",
       formaPagamento: payLabel,
       totalAmount: o.total_amount ?? undefined,
       changeFor: o.change_for ?? undefined,
