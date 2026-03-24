@@ -604,7 +604,7 @@ export function OrdersTab() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter, periodFilter]);
+  }, [search, statusFilter, periodFilter, paymentFilter, pixSubFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageStart = (currentPage - 1) * PAGE_SIZE;
