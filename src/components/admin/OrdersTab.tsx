@@ -1217,12 +1217,21 @@ export function OrdersTab() {
                 return r ? `${r.label} — ${r.name}` : "Não atribuído";
               })()}</p>
               <p><strong>Criado em:</strong> {format(new Date(selectedOrder.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+              {selectedOrder.updated_at && (
+                <p className="text-xs text-muted-foreground">
+                  Última edição: {format(new Date(selectedOrder.updated_at), "dd/MM/yyyy 'às' HH:mm")}
+                  {selectedOrder.updated_by ? ` por ${selectedOrder.updated_by}` : ""}
+                </p>
+              )}
               <p><strong>Itens:</strong></p>
               <ul className="list-disc list-inside">
                 {selectedOrder.order_items.map((i, idx) => (<li key={idx}>{i.products?.name}: {i.qty}</li>))}
               </ul>
               {selectedOrder.notes && <p><strong>Obs:</strong> {selectedOrder.notes}</p>}
               <div className="flex gap-2 pt-2 flex-wrap">
+                <Button size="sm" variant="outline" onClick={() => { setEditOrder(selectedOrder); setSelectedOrder(null); }}>
+                  <Pencil className="h-4 w-4 mr-1" /> Editar pedido
+                </Button>
                 <Button size="sm" variant="outline" onClick={() => { handleLabel(selectedOrder); setSelectedOrder(null); }}>
                   <Printer className="h-4 w-4 mr-1" /> Etiqueta
                 </Button>
