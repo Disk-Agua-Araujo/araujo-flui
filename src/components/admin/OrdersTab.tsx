@@ -787,6 +787,9 @@ export function OrdersTab() {
   // Save customer from order
   const [saveCustomerOrder, setSaveCustomerOrder] = useState<AdminOrderRow | null>(null);
 
+  // Edit order
+  const [editOrder, setEditOrder] = useState<AdminOrderRow | null>(null);
+
   const fetchOrders = async () => {
     setLoading(true);
     try {
