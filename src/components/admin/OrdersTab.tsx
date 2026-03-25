@@ -1038,6 +1038,7 @@ export function OrdersTab() {
                 statusColors={statusColors}
                 paymentLabels={paymentLabels}
                 onView={() => setSelectedOrder(o)}
+                onEdit={() => setEditOrder(o)}
                 onLabel={() => handleLabel(o)}
                 onWhatsApp={() => handleWhatsApp(o)}
                 onStatusChange={(v) => updateStatus(o.id, v)}
