@@ -104,7 +104,7 @@ export function Footer() {
         <div className="border-t border-background/20 mt-8 pt-6 text-center text-xs text-background/50 space-y-1">
           <p>© {year} {business.name} — Todos os direitos reservados.</p>
           <p>Criado por{" "}
-            <a href="https://www.instagram.com/next.corporation__/" target="_blank" rel="noopener noreferrer" className="hover:text-background/80 transition-colors underline">
+            <a href="https://nextcorporation.com.br/" target="_blank" rel="noopener noreferrer" className="hover:text-background/80 transition-colors underline">
               Next Corporation
             </a>
           </p>
