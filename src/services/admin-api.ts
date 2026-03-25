@@ -55,9 +55,12 @@ export type AdminOrderRow = {
   rider_id: string | null;
   pix_paid: boolean | null;
   pix_paid_at: string | null;
-  customers: { id: string; name: string; phone: string | null; cnpj: string | null } | null;
-  addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null } | null;
-  order_items: { qty: number; products: { name: string } | null }[];
+  updated_at: string | null;
+  updated_by: string | null;
+  customers: { id: string; name: string; phone: string | null; cnpj: string | null; type?: string } | null;
+  addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null; reference?: string | null } | null;
+  order_items: { qty: number; product_id?: string; products: { name: string } | null }[];
+  rider_name?: string;
 };
 
 export type AdminCustomerRow = {
