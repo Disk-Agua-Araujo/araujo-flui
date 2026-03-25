@@ -204,6 +204,30 @@ export const adminApi = {
 
   listReportsOrders: () => callAdminApi<AdminOrderRow[]>("reports.orders"),
 
+  updateOrder: (payload: {
+    orderId: string;
+    order: {
+      status?: string;
+      notes?: string | null;
+      delivery_date?: string | null;
+      delivery_time?: string | null;
+      fulfillment_type?: string;
+      payment_method?: string | null;
+      total_amount?: number | null;
+      change_for?: number | null;
+      rider_id?: string | null;
+    };
+    items?: { product_id: string; qty: number }[];
+    address?: {
+      street: string;
+      number: string;
+      neighborhood: string;
+      city?: string;
+      complement?: string | null;
+      reference?: string | null;
+    } | null;
+  }) => callAdminApi<{ ok: boolean }>("orders.update", payload),
+
   listRiders: () => callAdminApi<DeliveryRider[]>("riders.list"),
   saveRider: (rider: { id?: string; label: string; name: string; active?: boolean; sort_order?: number }) =>
     callAdminApi<{ ok: boolean }>("riders.save", rider),
