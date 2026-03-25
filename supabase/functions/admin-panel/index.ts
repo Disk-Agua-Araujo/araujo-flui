@@ -185,15 +185,24 @@ serve(async (req) => {
       const { data, error } = await adminClient
         .from("orders")
         .select(`
-          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at,
-          customers(id, name, phone, cnpj),
-          addresses(street, number, neighborhood, city, complement),
-          order_items(qty, products(name))
+          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, updated_at, updated_by,
+          customers(id, name, phone, cnpj, type),
+          addresses(street, number, neighborhood, city, complement, reference),
+          order_items(qty, product_id, products(name))
         `)
         .order("created_at", { ascending: false })
         .limit(500);
       if (error) throw error;
-      return json({ data });
+
+      // Enrich with rider name
+      const riderIds = [...new Set((data || []).map((o: any) => o.rider_id).filter(Boolean))];
+      let ridersMap: Record<string, string> = {};
+      if (riderIds.length > 0) {
+        const { data: ridersData } = await adminClient.from("delivery_riders").select("id, name").in("id", riderIds);
+        (ridersData || []).forEach((r: any) => { ridersMap[r.id] = r.name; });
+      }
+      const enriched = (data || []).map((o: any) => ({ ...o, rider_name: o.rider_id ? ridersMap[o.rider_id] || "—" : undefined }));
+      return json({ data: enriched });
     }
 
     if (action === "orders.updateStatus") {
