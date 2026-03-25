@@ -55,9 +55,12 @@ export type AdminOrderRow = {
   rider_id: string | null;
   pix_paid: boolean | null;
   pix_paid_at: string | null;
-  customers: { id: string; name: string; phone: string | null; cnpj: string | null } | null;
-  addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null } | null;
-  order_items: { qty: number; products: { name: string } | null }[];
+  updated_at: string | null;
+  updated_by: string | null;
+  customers: { id: string; name: string; phone: string | null; cnpj: string | null; type?: string } | null;
+  addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null; reference?: string | null } | null;
+  order_items: { qty: number; product_id?: string; products: { name: string } | null }[];
+  rider_name?: string;
 };
 
 export type AdminCustomerRow = {
@@ -200,6 +203,30 @@ export const adminApi = {
   listCategories: () => callAdminApi<AdminCategoryRow[]>("categories.list"),
 
   listReportsOrders: () => callAdminApi<AdminOrderRow[]>("reports.orders"),
+
+  updateOrder: (payload: {
+    orderId: string;
+    order: {
+      status?: string;
+      notes?: string | null;
+      delivery_date?: string | null;
+      delivery_time?: string | null;
+      fulfillment_type?: string;
+      payment_method?: string | null;
+      total_amount?: number | null;
+      change_for?: number | null;
+      rider_id?: string | null;
+    };
+    items?: { product_id: string; qty: number }[];
+    address?: {
+      street: string;
+      number: string;
+      neighborhood: string;
+      city?: string;
+      complement?: string | null;
+      reference?: string | null;
+    } | null;
+  }) => callAdminApi<{ ok: boolean }>("orders.update", payload),
 
   listRiders: () => callAdminApi<DeliveryRider[]>("riders.list"),
   saveRider: (rider: { id?: string; label: string; name: string; active?: boolean; sort_order?: number }) =>

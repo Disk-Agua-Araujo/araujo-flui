@@ -9,11 +9,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { openWhatsApp, buildOrderMessage } from "@/services/whatsapp";
-import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2, Trash2 } from "lucide-react";
+import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2, Trash2, Pencil } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
-import { adminApi, type AdminOrderRow, type DeliveryRider } from "@/services/admin-api";
+import { adminApi, type AdminOrderRow, type DeliveryRider, type AdminProductRow } from "@/services/admin-api";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const statusColors: Record<string, string> = {
@@ -433,7 +434,7 @@ function PixBadge({ order, onToggle }: { order: AdminOrderRow; onToggle: () => v
 
 function OrderCard({
   o, riders, statusLabels, statusColors, paymentLabels,
-  onView, onLabel, onWhatsApp, onStatusChange, onRiderToggle, onPixToggle,
+  onView, onEdit, onLabel, onWhatsApp, onStatusChange, onRiderToggle, onPixToggle,
 }: {
   o: AdminOrderRow;
   riders: DeliveryRider[];
@@ -441,6 +442,7 @@ function OrderCard({
   statusColors: Record<string, string>;
   paymentLabels: Record<string, string>;
   onView: () => void;
+  onEdit: () => void;
   onLabel: () => void;
   onWhatsApp: () => void;
   onStatusChange: (status: string) => void;
@@ -511,11 +513,258 @@ function OrderCard({
 
         <div className="flex gap-1 justify-end pt-1 border-t">
           <Button variant="ghost" size="sm" className="h-7" onClick={onView}><Eye className="h-3.5 w-3.5 mr-1" /> Ver</Button>
+          <Button variant="ghost" size="sm" className="h-7" onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></Button>
           <Button variant="ghost" size="sm" className="h-7" onClick={onLabel}><Printer className="h-3.5 w-3.5" /></Button>
           <Button variant="ghost" size="sm" className="h-7" onClick={onWhatsApp}><MessageCircle className="h-3.5 w-3.5" /></Button>
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ---- Edit Order Modal ----
+function EditOrderModal({
+  open, onOpenChange, order, riders, onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  order: AdminOrderRow | null;
+  riders: DeliveryRider[];
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [products, setProducts] = useState<AdminProductRow[]>([]);
+
+  // Form state
+  const [status, setStatus] = useState("");
+  const [notes, setNotes] = useState("");
+  const [deliveryDate, setDeliveryDate] = useState("");
+  const [deliveryTime, setDeliveryTime] = useState("");
+  const [fulfillmentType, setFulfillmentType] = useState("delivery");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [totalAmount, setTotalAmount] = useState("");
+  const [changeFor, setChangeFor] = useState("");
+  const [riderId, setRiderId] = useState<string | null>(null);
+
+  // Address
+  const [street, setStreet] = useState("");
+  const [number, setNumber] = useState("");
+  const [neighborhood, setNeighborhood] = useState("");
+  const [city, setCity] = useState("");
+  const [complement, setComplement] = useState("");
+
+  // Items
+  const [items, setItems] = useState<{ product_id: string; qty: number; name: string }[]>([]);
+
+  useEffect(() => {
+    if (!open || !order) return;
+    setStatus(order.status);
+    setNotes(order.notes || "");
+    setDeliveryDate(order.delivery_date || "");
+    setDeliveryTime(order.delivery_time || "");
+    setFulfillmentType(order.fulfillment_type || "delivery");
+    setPaymentMethod(order.payment_method || "");
+    setTotalAmount(order.total_amount != null ? String(order.total_amount) : "");
+    setChangeFor(order.change_for != null ? String(order.change_for) : "");
+    setRiderId(order.rider_id);
+    setStreet(order.addresses?.street || "");
+    setNumber(order.addresses?.number || "");
+    setNeighborhood(order.addresses?.neighborhood || "");
+    setCity(order.addresses?.city || "Santo André");
+    setComplement(order.addresses?.complement || "");
+    setItems(order.order_items.map((i) => ({
+      product_id: i.product_id || "",
+      qty: i.qty,
+      name: i.products?.name || "?",
+    })));
+
+    // Load products for dropdown
+    adminApi.listProducts().then(({ products: prods }) => setProducts(prods.filter((p) => p.active))).catch(() => {});
+  }, [open, order]);
+
+  const handleSave = async () => {
+    if (!order) return;
+    setSaving(true);
+    try {
+      await adminApi.updateOrder({
+        orderId: order.id,
+        order: {
+          status,
+          notes: notes || null,
+          delivery_date: deliveryDate || null,
+          delivery_time: deliveryTime || null,
+          fulfillment_type: fulfillmentType,
+          payment_method: paymentMethod || null,
+          total_amount: totalAmount ? parseFloat(totalAmount) : null,
+          change_for: changeFor ? parseFloat(changeFor) : null,
+          rider_id: riderId,
+        },
+        items: items.filter((i) => i.product_id && i.qty > 0).map((i) => ({ product_id: i.product_id, qty: i.qty })),
+        address: fulfillmentType === "delivery" ? { street, number, neighborhood, city, complement } : null,
+      });
+      toast({ title: "Pedido atualizado com sucesso." });
+      onSaved();
+      onOpenChange(false);
+    } catch (err) {
+      toast({ title: "Erro ao salvar", description: err instanceof Error ? err.message : "Erro", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addItem = () => setItems((prev) => [...prev, { product_id: "", qty: 1, name: "" }]);
+  const removeItem = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx));
+
+  if (!order) return null;
+
+  const isFinalized = order.status === "entregue" || order.status === "cancelado";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Editar Pedido {order.id.slice(0, 8).toUpperCase()}</DialogTitle></DialogHeader>
+
+        {isFinalized && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-2 text-xs text-yellow-800">
+            ⚠️ Este pedido já foi finalizado ({statusLabels[order.status]}). Edite com cuidado.
+          </div>
+        )}
+
+        <div className="space-y-4 text-sm">
+          {/* Status */}
+          <div>
+            <label className="text-xs font-medium">Status</label>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Constants.public.Enums.order_status.map((s) => (
+                  <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Items */}
+          <div>
+            <label className="text-xs font-medium">Itens</label>
+            <div className="space-y-2 mt-1">
+              {items.map((item, idx) => (
+                <div key={idx} className="flex gap-2 items-center">
+                  <Select value={item.product_id} onValueChange={(v) => {
+                    const prod = products.find((p) => p.id === v);
+                    setItems((prev) => prev.map((it, i) => i === idx ? { ...it, product_id: v, name: prod?.name || "" } : it));
+                  }}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Produto" /></SelectTrigger>
+                    <SelectContent>
+                      {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Input type="number" min={1} className="w-16" value={item.qty}
+                    onChange={(e) => setItems((prev) => prev.map((it, i) => i === idx ? { ...it, qty: parseInt(e.target.value) || 1 } : it))} />
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeItem(idx)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+              <Button variant="outline" size="sm" onClick={addItem}><Plus className="h-3.5 w-3.5 mr-1" /> Adicionar item</Button>
+            </div>
+          </div>
+
+          {/* Fulfillment */}
+          <div>
+            <label className="text-xs font-medium">Tipo de Atendimento</label>
+            <Select value={fulfillmentType} onValueChange={setFulfillmentType}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="delivery">Entrega</SelectItem>
+                <SelectItem value="pickup">Retirada</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Address */}
+          {fulfillmentType === "delivery" && (
+            <div className="space-y-2 border rounded-md p-3">
+              <p className="text-xs font-medium">Endereço</p>
+              <div className="grid grid-cols-3 gap-2">
+                <Input placeholder="Rua" value={street} onChange={(e) => setStreet(e.target.value)} className="col-span-2" />
+                <Input placeholder="Nº" value={number} onChange={(e) => setNumber(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="Bairro" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} />
+                <Input placeholder="Cidade" value={city} onChange={(e) => setCity(e.target.value)} />
+              </div>
+              <Input placeholder="Complemento" value={complement} onChange={(e) => setComplement(e.target.value)} />
+            </div>
+          )}
+
+          {/* Delivery date/time */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium">Data entrega</label>
+              <Input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Hora entrega</label>
+              <Input value={deliveryTime} onChange={(e) => setDeliveryTime(e.target.value)} placeholder="Ex: 14:00" />
+            </div>
+          </div>
+
+          {/* Payment */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium">Forma de pagamento</label>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">💵 Dinheiro</SelectItem>
+                  <SelectItem value="pix">📱 PIX</SelectItem>
+                  <SelectItem value="card">💳 Cartão</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium">Valor total</label>
+              <Input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} placeholder="0,00" />
+            </div>
+          </div>
+
+          {paymentMethod === "cash" && (
+            <div>
+              <label className="text-xs font-medium">Troco para</label>
+              <Input type="number" step="0.01" value={changeFor} onChange={(e) => setChangeFor(e.target.value)} placeholder="0,00" />
+            </div>
+          )}
+
+          {/* Rider */}
+          <div>
+            <label className="text-xs font-medium">Motoboy</label>
+            <Select value={riderId || "none"} onValueChange={(v) => setRiderId(v === "none" ? null : v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Não atribuído</SelectItem>
+                {riders.map((r) => <SelectItem key={r.id} value={r.id}>{r.label} — {r.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="text-xs font-medium">Observações</label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <Button className="flex-1" onClick={handleSave} disabled={saving}>
+              {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Salvar alterações
+            </Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -539,6 +788,9 @@ export function OrdersTab() {
 
   // Save customer from order
   const [saveCustomerOrder, setSaveCustomerOrder] = useState<AdminOrderRow | null>(null);
+
+  // Edit order
+  const [editOrder, setEditOrder] = useState<AdminOrderRow | null>(null);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -786,6 +1038,7 @@ export function OrdersTab() {
                 statusColors={statusColors}
                 paymentLabels={paymentLabels}
                 onView={() => setSelectedOrder(o)}
+                onEdit={() => setEditOrder(o)}
                 onLabel={() => handleLabel(o)}
                 onWhatsApp={() => handleWhatsApp(o)}
                 onStatusChange={(v) => updateStatus(o.id, v)}
@@ -893,6 +1146,7 @@ export function OrdersTab() {
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedOrder(o)} title="Detalhes"><Eye className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditOrder(o)} title="Editar"><Pencil className="h-3.5 w-3.5" /></Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleLabel(o)} title="Etiqueta"><Printer className="h-3.5 w-3.5" /></Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleWhatsApp(o)} title="WhatsApp"><MessageCircle className="h-3.5 w-3.5" /></Button>
                         </div>
@@ -966,12 +1220,21 @@ export function OrdersTab() {
                 return r ? `${r.label} — ${r.name}` : "Não atribuído";
               })()}</p>
               <p><strong>Criado em:</strong> {format(new Date(selectedOrder.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+              {selectedOrder.updated_at && (
+                <p className="text-xs text-muted-foreground">
+                  Última edição: {format(new Date(selectedOrder.updated_at), "dd/MM/yyyy 'às' HH:mm")}
+                  {selectedOrder.updated_by ? ` por ${selectedOrder.updated_by}` : ""}
+                </p>
+              )}
               <p><strong>Itens:</strong></p>
               <ul className="list-disc list-inside">
                 {selectedOrder.order_items.map((i, idx) => (<li key={idx}>{i.products?.name}: {i.qty}</li>))}
               </ul>
               {selectedOrder.notes && <p><strong>Obs:</strong> {selectedOrder.notes}</p>}
               <div className="flex gap-2 pt-2 flex-wrap">
+                <Button size="sm" variant="outline" onClick={() => { setEditOrder(selectedOrder); setSelectedOrder(null); }}>
+                  <Pencil className="h-4 w-4 mr-1" /> Editar pedido
+                </Button>
                 <Button size="sm" variant="outline" onClick={() => { handleLabel(selectedOrder); setSelectedOrder(null); }}>
                   <Printer className="h-4 w-4 mr-1" /> Etiqueta
                 </Button>
@@ -1008,6 +1271,14 @@ export function OrdersTab() {
         onOpenChange={(o) => !o && setSaveCustomerOrder(null)}
         order={saveCustomerOrder}
         onSaved={handleCustomerSaved}
+      />
+
+      <EditOrderModal
+        open={!!editOrder}
+        onOpenChange={(o) => { if (!o) setEditOrder(null); }}
+        order={editOrder}
+        riders={riders}
+        onSaved={() => { fetchOrders(); setEditOrder(null); }}
       />
     </div>
   );
