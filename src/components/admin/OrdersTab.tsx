@@ -1269,6 +1269,14 @@ export function OrdersTab() {
         order={saveCustomerOrder}
         onSaved={handleCustomerSaved}
       />
+
+      <EditOrderModal
+        open={!!editOrder}
+        onOpenChange={(o) => { if (!o) setEditOrder(null); }}
+        order={editOrder}
+        riders={riders}
+        onSaved={() => { fetchOrders(); setEditOrder(null); }}
+      />
     </div>
   );
 }
