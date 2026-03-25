@@ -434,7 +434,7 @@ function PixBadge({ order, onToggle }: { order: AdminOrderRow; onToggle: () => v
 
 function OrderCard({
   o, riders, statusLabels, statusColors, paymentLabels,
-  onView, onLabel, onWhatsApp, onStatusChange, onRiderToggle, onPixToggle,
+  onView, onEdit, onLabel, onWhatsApp, onStatusChange, onRiderToggle, onPixToggle,
 }: {
   o: AdminOrderRow;
   riders: DeliveryRider[];
@@ -442,6 +442,7 @@ function OrderCard({
   statusColors: Record<string, string>;
   paymentLabels: Record<string, string>;
   onView: () => void;
+  onEdit: () => void;
   onLabel: () => void;
   onWhatsApp: () => void;
   onStatusChange: (status: string) => void;
@@ -512,6 +513,7 @@ function OrderCard({
 
         <div className="flex gap-1 justify-end pt-1 border-t">
           <Button variant="ghost" size="sm" className="h-7" onClick={onView}><Eye className="h-3.5 w-3.5 mr-1" /> Ver</Button>
+          <Button variant="ghost" size="sm" className="h-7" onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></Button>
           <Button variant="ghost" size="sm" className="h-7" onClick={onLabel}><Printer className="h-3.5 w-3.5" /></Button>
           <Button variant="ghost" size="sm" className="h-7" onClick={onWhatsApp}><MessageCircle className="h-3.5 w-3.5" /></Button>
         </div>
