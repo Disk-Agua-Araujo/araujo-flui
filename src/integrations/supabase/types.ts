@@ -269,6 +269,8 @@ export type Database = {
           rider_id: string | null
           status: Database["public"]["Enums"]["order_status"]
           total_amount: number | null
+          updated_at: string | null
+          updated_by: string | null
         }
         Insert: {
           address_id?: string | null
@@ -288,6 +290,8 @@ export type Database = {
           rider_id?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           total_amount?: number | null
+          updated_at?: string | null
+          updated_by?: string | null
         }
         Update: {
           address_id?: string | null
@@ -307,6 +311,8 @@ export type Database = {
           rider_id?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           total_amount?: number | null
+          updated_at?: string | null
+          updated_by?: string | null
         }
         Relationships: [
           {
