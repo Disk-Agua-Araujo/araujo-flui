@@ -590,11 +590,84 @@ serve(async (req) => {
       }
       const { data, error } = await adminClient
         .from("orders")
-        .select("id, channel, status, delivery_date, created_at, fulfillment_type, payment_method, total_amount, change_for, customers(name), order_items(qty, products(name))")
+        .select(`
+          id, channel, status, delivery_date, delivery_time, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, notes, updated_at, updated_by,
+          customers(id, name, phone, cnpj, type),
+          addresses(street, number, neighborhood, city, complement, reference),
+          order_items(qty, product_id, products(name))
+        `)
         .order("created_at", { ascending: false })
         .limit(1000);
       if (error) throw error;
-      return json({ data });
+
+      // Enrich with rider name
+      const riderIds = [...new Set((data || []).map((o: any) => o.rider_id).filter(Boolean))];
+      let ridersMap: Record<string, string> = {};
+      if (riderIds.length > 0) {
+        const { data: ridersData } = await adminClient.from("delivery_riders").select("id, name").in("id", riderIds);
+        (ridersData || []).forEach((r: any) => { ridersMap[r.id] = r.name; });
+      }
+      const enriched = (data || []).map((o: any) => ({ ...o, rider_name: o.rider_id ? ridersMap[o.rider_id] || "—" : undefined }));
+      return json({ data: enriched });
+    }
+
+    if (action === "orders.update") {
+      const orderId = payload?.orderId as string;
+      if (!orderId) throw new Error("Pedido inválido.");
+
+      const orderData = payload?.order || {};
+      const items = payload?.items as { product_id: string; qty: number }[] | undefined;
+      const address = payload?.address;
+
+      // Update order fields
+      const updateFields: any = { updated_at: new Date().toISOString(), updated_by: admin.username };
+      const allowedFields = ["status", "notes", "delivery_date", "delivery_time", "fulfillment_type", "payment_method", "total_amount", "change_for", "rider_id"];
+      for (const key of allowedFields) {
+        if (key in orderData) updateFields[key] = orderData[key];
+      }
+
+      // Stock deduction check for status change to em_rota
+      if (orderData.status === "em_rota") {
+        const { data: currentOrder } = await adminClient.from("orders").select("status").eq("id", orderId).single();
+        if (currentOrder && currentOrder.status !== "em_rota") {
+          const { error: stockError } = await adminClient.rpc("deduct_stock_for_order", {
+            p_order_id: orderId,
+            p_created_by: admin.username,
+          });
+          if (stockError) throw stockError;
+        }
+      }
+
+      const { error: updateErr } = await adminClient.from("orders").update(updateFields).eq("id", orderId);
+      if (updateErr) throw updateErr;
+
+      // Update items: DELETE + INSERT
+      if (items && items.length > 0) {
+        const { error: delErr } = await adminClient.from("order_items").delete().eq("order_id", orderId);
+        if (delErr) throw delErr;
+        const { error: insErr } = await adminClient.from("order_items").insert(
+          items.map((i) => ({ order_id: orderId, product_id: i.product_id, qty: i.qty }))
+        );
+        if (insErr) throw insErr;
+      }
+
+      // Update address
+      if (address) {
+        const { data: order } = await adminClient.from("orders").select("address_id").eq("id", orderId).single();
+        if (order?.address_id) {
+          const { error: addrErr } = await adminClient.from("addresses").update({
+            street: address.street,
+            number: address.number,
+            neighborhood: address.neighborhood,
+            city: address.city || "Santo André",
+            complement: address.complement || null,
+            reference: address.reference || null,
+          }).eq("id", order.address_id);
+          if (addrErr) throw addrErr;
+        }
+      }
+
+      return json({ ok: true });
     }
 
     if (action === "customers.delete") {
