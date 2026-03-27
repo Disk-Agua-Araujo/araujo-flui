@@ -1461,6 +1461,26 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
         riders={riders}
         onSaved={() => { fetchOrders(); setEditOrder(null); }}
       />
+
+      <ReminderModal
+        open={reminderOpen}
+        onOpenChange={setReminderOpen}
+        orders={scheduledTodayOrOverdue}
+        onViewOrders={() => {
+          setReminderOpen(false);
+          setScheduleFilter("today");
+        }}
+        onDismiss={async () => {
+          setReminderOpen(false);
+          const ids = scheduledTodayOrOverdue.map((o) => o.id);
+          if (ids.length > 0) {
+            try {
+              await adminApi.dismissReminders(ids);
+              fetchOrders();
+            } catch { /* silent */ }
+          }
+        }}
+      />
     </div>
   );
 }
