@@ -433,6 +433,74 @@ function PixBadge({ order, onToggle }: { order: AdminOrderRow; onToggle: () => v
   );
 }
 
+function ScheduledBadge({ order }: { order: AdminOrderRow }) {
+  if (!order.scheduled_date) return null;
+  const today = format(new Date(), "yyyy-MM-dd");
+  const isOverdue = order.scheduled_date < today && !["entregue", "cancelado"].includes(order.status);
+  const isFuture = order.scheduled_date > today;
+  const isToday = order.scheduled_date === today;
+
+  if (!isFuture && !isOverdue && !isToday) return null;
+
+  return (
+    <Badge className={`text-xs gap-1 ${
+      isOverdue
+        ? "bg-red-100 text-red-800 border-red-300"
+        : "bg-[#033D7B]/10 text-[#033D7B] border-[#033D7B]/30"
+    }`} variant="outline">
+      <CalendarClock className="h-3 w-3" />
+      {isOverdue ? "Em atraso" : "📅 Agendado"}
+      {" "}
+      {format(new Date(`${order.scheduled_date}T12:00:00`), "dd/MM")}
+      {order.scheduled_time ? ` ${order.scheduled_time}` : ""}
+    </Badge>
+  );
+}
+
+function ReminderModal({
+  open, onOpenChange, orders, onViewOrders, onDismiss,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  orders: AdminOrderRow[];
+  onViewOrders: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Bell className="h-5 w-5 text-[#033D7B]" /> Pedidos para hoje
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Você tem <strong>{orders.length}</strong> pedido{orders.length !== 1 ? "s" : ""} agendado{orders.length !== 1 ? "s" : ""} para hoje ou em atraso:
+          </p>
+          <div className="max-h-[300px] overflow-y-auto space-y-2">
+            {orders.map((o) => (
+              <div key={o.id} className="border rounded-lg p-2 text-sm">
+                <p className="font-medium">
+                  {o.addresses ? `${o.addresses.street}, ${o.addresses.number}` : "Retirada na loja"}
+                  {o.scheduled_time ? ` — ${o.scheduled_time}` : ""}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {o.order_items.map((i) => `${i.qty}x ${i.products?.name ?? "?"}`).join(", ")}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button className="flex-1" onClick={onViewOrders}>Ver pedidos</Button>
+            <Button variant="outline" className="flex-1" onClick={onDismiss}>Dispensar por hoje</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function OrderCard({
   o, riders, statusLabels, statusColors, paymentLabels,
   onView, onEdit, onLabel, onWhatsApp, onStatusChange, onRiderToggle, onPixToggle,
