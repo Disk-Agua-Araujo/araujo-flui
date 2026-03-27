@@ -57,6 +57,10 @@ export type AdminOrderRow = {
   pix_paid_at: string | null;
   updated_at: string | null;
   updated_by: string | null;
+  scheduled_date: string | null;
+  scheduled_time: string | null;
+  reminder_enabled: boolean;
+  reminder_dismissed: boolean;
   customers: { id: string; name: string; phone: string | null; cnpj: string | null; type?: string } | null;
   addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null; reference?: string | null } | null;
   order_items: { qty: number; product_id?: string; products: { name: string } | null }[];
@@ -151,6 +155,8 @@ export const adminApi = {
     payment_method?: string | null;
     total_amount?: number | null;
     change_for?: number | null;
+    scheduled_date?: string | null;
+    scheduled_time?: string | null;
   }) => callAdminApi<{ order_id: string; customer_id: string }>("orders.createAdmin", payload),
 
   listCustomers: () => callAdminApi<AdminCustomerRow[]>("customers.list"),
@@ -216,6 +222,10 @@ export const adminApi = {
       total_amount?: number | null;
       change_for?: number | null;
       rider_id?: string | null;
+      scheduled_date?: string | null;
+      scheduled_time?: string | null;
+      reminder_enabled?: boolean;
+      reminder_dismissed?: boolean;
     };
     items?: { product_id: string; qty: number }[];
     address?: {
