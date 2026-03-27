@@ -879,7 +879,7 @@ function EditOrderModal({
   );
 }
 
-export function OrdersTab() {
+export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: number) => void }) {
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const [orders, setOrders] = useState<AdminOrderRow[]>([]);
@@ -892,6 +892,7 @@ export function OrdersTab() {
   const [currentPage, setCurrentPage] = useState(1);
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [pixSubFilter, setPixSubFilter] = useState("all");
+  const [scheduleFilter, setScheduleFilter] = useState("all");
 
   // Riders
   const [riders, setRiders] = useState<DeliveryRider[]>([]);
@@ -902,6 +903,10 @@ export function OrdersTab() {
 
   // Edit order
   const [editOrder, setEditOrder] = useState<AdminOrderRow | null>(null);
+
+  // Reminder
+  const [reminderOpen, setReminderOpen] = useState(false);
+  const [reminderChecked, setReminderChecked] = useState(false);
 
   const fetchOrders = async () => {
     setLoading(true);
