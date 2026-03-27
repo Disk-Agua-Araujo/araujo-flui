@@ -1173,6 +1173,16 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
           </Select>
         )}
 
+        <Select value={scheduleFilter} onValueChange={setScheduleFilter}>
+          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Agenda" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Agenda: Todos</SelectItem>
+            <SelectItem value="today">📅 Hoje</SelectItem>
+            <SelectItem value="scheduled">📅 Agendados</SelectItem>
+            <SelectItem value="overdue">🔴 Em atraso</SelectItem>
+          </SelectContent>
+        </Select>
+
         <div className="flex gap-2">
           <Button variant="outline" size="icon" onClick={fetchOrders} disabled={loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
