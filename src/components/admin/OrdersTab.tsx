@@ -7,9 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { openWhatsApp, buildOrderMessage } from "@/services/whatsapp";
-import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2, Trash2, Pencil } from "lucide-react";
+import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2, Trash2, Pencil, CalendarClock, Bell } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
@@ -432,6 +433,74 @@ function PixBadge({ order, onToggle }: { order: AdminOrderRow; onToggle: () => v
   );
 }
 
+function ScheduledBadge({ order }: { order: AdminOrderRow }) {
+  if (!order.scheduled_date) return null;
+  const today = format(new Date(), "yyyy-MM-dd");
+  const isOverdue = order.scheduled_date < today && !["entregue", "cancelado"].includes(order.status);
+  const isFuture = order.scheduled_date > today;
+  const isToday = order.scheduled_date === today;
+
+  if (!isFuture && !isOverdue && !isToday) return null;
+
+  return (
+    <Badge className={`text-xs gap-1 ${
+      isOverdue
+        ? "bg-red-100 text-red-800 border-red-300"
+        : "bg-[#033D7B]/10 text-[#033D7B] border-[#033D7B]/30"
+    }`} variant="outline">
+      <CalendarClock className="h-3 w-3" />
+      {isOverdue ? "Em atraso" : "📅 Agendado"}
+      {" "}
+      {format(new Date(`${order.scheduled_date}T12:00:00`), "dd/MM")}
+      {order.scheduled_time ? ` ${order.scheduled_time}` : ""}
+    </Badge>
+  );
+}
+
+function ReminderModal({
+  open, onOpenChange, orders, onViewOrders, onDismiss,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  orders: AdminOrderRow[];
+  onViewOrders: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Bell className="h-5 w-5 text-[#033D7B]" /> Pedidos para hoje
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Você tem <strong>{orders.length}</strong> pedido{orders.length !== 1 ? "s" : ""} agendado{orders.length !== 1 ? "s" : ""} para hoje ou em atraso:
+          </p>
+          <div className="max-h-[300px] overflow-y-auto space-y-2">
+            {orders.map((o) => (
+              <div key={o.id} className="border rounded-lg p-2 text-sm">
+                <p className="font-medium">
+                  {o.addresses ? `${o.addresses.street}, ${o.addresses.number}` : "Retirada na loja"}
+                  {o.scheduled_time ? ` — ${o.scheduled_time}` : ""}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {o.order_items.map((i) => `${i.qty}x ${i.products?.name ?? "?"}`).join(", ")}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button className="flex-1" onClick={onViewOrders}>Ver pedidos</Button>
+            <Button variant="outline" className="flex-1" onClick={onDismiss}>Dispensar por hoje</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function OrderCard({
   o, riders, statusLabels, statusColors, paymentLabels,
   onView, onEdit, onLabel, onWhatsApp, onStatusChange, onRiderToggle, onPixToggle,
@@ -464,7 +533,10 @@ function OrderCard({
               <p className="text-xs text-muted-foreground">{o.customers.name}</p>
             )}
           </div>
-          <FulfillmentBadge type={o.fulfillment_type} />
+          <div className="flex flex-col gap-1 items-end">
+            <FulfillmentBadge type={o.fulfillment_type} />
+            <ScheduledBadge order={o} />
+          </div>
         </div>
 
         <div className="text-xs text-muted-foreground">
@@ -546,6 +618,9 @@ function EditOrderModal({
   const [totalAmount, setTotalAmount] = useState("");
   const [changeFor, setChangeFor] = useState("");
   const [riderId, setRiderId] = useState<string | null>(null);
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledTime, setScheduledTime] = useState("");
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
 
   // Address
   const [street, setStreet] = useState("");
@@ -568,6 +643,9 @@ function EditOrderModal({
     setTotalAmount(order.total_amount != null ? String(order.total_amount) : "");
     setChangeFor(order.change_for != null ? String(order.change_for) : "");
     setRiderId(order.rider_id);
+    setScheduledDate(order.scheduled_date || "");
+    setScheduledTime(order.scheduled_time || "");
+    setScheduleEnabled(!!order.scheduled_date);
     setStreet(order.addresses?.street || "");
     setNumber(order.addresses?.number || "");
     setNeighborhood(order.addresses?.neighborhood || "");
@@ -599,6 +677,8 @@ function EditOrderModal({
           total_amount: totalAmount ? parseFloat(totalAmount) : null,
           change_for: changeFor ? parseFloat(changeFor) : null,
           rider_id: riderId,
+          scheduled_date: scheduleEnabled ? (scheduledDate || deliveryDate || null) : null,
+          scheduled_time: scheduleEnabled ? (scheduledTime || deliveryTime || null) : null,
         },
         items: items.filter((i) => i.product_id && i.qty > 0).map((i) => ({ product_id: i.product_id, qty: i.qty })),
         address: fulfillmentType === "delivery" ? { street, number, neighborhood, city, complement } : null,
@@ -711,6 +791,37 @@ function EditOrderModal({
             </div>
           </div>
 
+          {/* Schedule toggle */}
+          <div className={`space-y-2 rounded-md p-3 ${scheduleEnabled ? "border-2 border-[#033D7B]/40 bg-[#033D7B]/5" : "border"}`}>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium flex items-center gap-1">
+                <CalendarClock className="h-3.5 w-3.5" /> Agendar para outro dia
+              </label>
+              <Switch checked={scheduleEnabled} onCheckedChange={(v) => {
+                setScheduleEnabled(v);
+                if (v && !scheduledDate) setScheduledDate(deliveryDate);
+                if (v && !scheduledTime) setScheduledTime(deliveryTime);
+              }} />
+            </div>
+            {scheduleEnabled && (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Este pedido será listado e contabilizado na data agendada.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-medium">Data agendada</label>
+                    <Input type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">Hora agendada</label>
+                    <Input value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} placeholder="Ex: 08:00" />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
           {/* Payment */}
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -768,7 +879,7 @@ function EditOrderModal({
   );
 }
 
-export function OrdersTab() {
+export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: number) => void }) {
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const [orders, setOrders] = useState<AdminOrderRow[]>([]);
@@ -781,6 +892,7 @@ export function OrdersTab() {
   const [currentPage, setCurrentPage] = useState(1);
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [pixSubFilter, setPixSubFilter] = useState("all");
+  const [scheduleFilter, setScheduleFilter] = useState("all");
 
   // Riders
   const [riders, setRiders] = useState<DeliveryRider[]>([]);
@@ -791,6 +903,10 @@ export function OrdersTab() {
 
   // Edit order
   const [editOrder, setEditOrder] = useState<AdminOrderRow | null>(null);
+
+  // Reminder
+  const [reminderOpen, setReminderOpen] = useState(false);
+  const [reminderChecked, setReminderChecked] = useState(false);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -811,6 +927,36 @@ export function OrdersTab() {
       setRiders((data ?? []).filter((r) => r.active));
     } catch { /* silent */ }
   }, []);
+
+  const today = format(new Date(), "yyyy-MM-dd");
+
+  // Scheduled orders for today / overdue (for reminder and badge)
+  const scheduledTodayOrOverdue = useMemo(() => {
+    return orders.filter((o) =>
+      o.scheduled_date &&
+      o.scheduled_date <= today &&
+      !["entregue", "cancelado"].includes(o.status) &&
+      !o.reminder_dismissed
+    );
+  }, [orders, today]);
+
+  // Notify parent about pending scheduled count
+  useEffect(() => {
+    const pendingCount = orders.filter((o) =>
+      o.scheduled_date &&
+      o.scheduled_date <= today &&
+      !["entregue", "cancelado"].includes(o.status)
+    ).length;
+    onScheduledCount?.(pendingCount);
+  }, [orders, today, onScheduledCount]);
+
+  // Show reminder on first load
+  useEffect(() => {
+    if (!loading && !reminderChecked && scheduledTodayOrOverdue.length > 0) {
+      setReminderOpen(true);
+      setReminderChecked(true);
+    }
+  }, [loading, reminderChecked, scheduledTodayOrOverdue.length]);
 
   useEffect(() => {
     fetchOrders();
@@ -839,6 +985,17 @@ export function OrdersTab() {
       }
     }
 
+    // Schedule filter
+    if (scheduleFilter === "today") {
+      result = result.filter((o) => o.scheduled_date === today);
+    } else if (scheduleFilter === "scheduled") {
+      result = result.filter((o) => o.scheduled_date && o.scheduled_date > today);
+    } else if (scheduleFilter === "overdue") {
+      result = result.filter((o) =>
+        o.scheduled_date && o.scheduled_date < today && !["entregue", "cancelado"].includes(o.status)
+      );
+    }
+
     if (search) {
       const s = search.toLowerCase();
       result = result.filter(
@@ -851,12 +1008,21 @@ export function OrdersTab() {
       );
     }
 
+    // Sort by scheduled_date ASC when schedule filter is active
+    if (scheduleFilter !== "all") {
+      result = [...result].sort((a, b) => {
+        const dateA = a.scheduled_date || "9999-12-31";
+        const dateB = b.scheduled_date || "9999-12-31";
+        return dateA.localeCompare(dateB);
+      });
+    }
+
     return result;
-  }, [orders, statusFilter, periodFilter, paymentFilter, pixSubFilter, search]);
+  }, [orders, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter, search, today]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter, periodFilter, paymentFilter, pixSubFilter]);
+  }, [search, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageStart = (currentPage - 1) * PAGE_SIZE;
@@ -1007,6 +1173,16 @@ export function OrdersTab() {
           </Select>
         )}
 
+        <Select value={scheduleFilter} onValueChange={setScheduleFilter}>
+          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Agenda" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Agenda: Todos</SelectItem>
+            <SelectItem value="today">📅 Hoje</SelectItem>
+            <SelectItem value="scheduled">📅 Agendados</SelectItem>
+            <SelectItem value="overdue">🔴 Em atraso</SelectItem>
+          </SelectContent>
+        </Select>
+
         <div className="flex gap-2">
           <Button variant="outline" size="icon" onClick={fetchOrders} disabled={loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -1098,8 +1274,13 @@ export function OrdersTab() {
                       </TableCell>
                       <TableCell className="text-xs">{o.channel}</TableCell>
                       <TableCell className="text-xs">
-                        {o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM") : "—"}
-                        {o.delivery_time ? ` ${o.delivery_time}` : ""}
+                        <div className="flex flex-col gap-0.5">
+                          <span>
+                            {o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM") : "—"}
+                            {o.delivery_time ? ` ${o.delivery_time}` : ""}
+                          </span>
+                          <ScheduledBadge order={o} />
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs">
                         {format(new Date(o.created_at), "dd/MM/yyyy 'às' HH:mm")}
@@ -1190,6 +1371,12 @@ export function OrdersTab() {
               {selectedOrder.addresses?.complement && <p><strong>Complemento:</strong> {selectedOrder.addresses.complement}</p>}
               <p><strong>Canal:</strong> {selectedOrder.channel}</p>
               <p><strong>Entrega:</strong> {selectedOrder.delivery_date ?? "—"} {selectedOrder.delivery_time ?? ""}</p>
+              {selectedOrder.scheduled_date && (
+                <div className="flex items-center gap-2">
+                  <strong>Agendado:</strong>
+                  <ScheduledBadge order={selectedOrder} />
+                </div>
+              )}
               <p><strong>Pagamento:</strong> {selectedOrder.payment_method ? (paymentLabels[selectedOrder.payment_method] || selectedOrder.payment_method) : "—"}</p>
               {selectedOrder.total_amount != null && (
                 <p><strong>Total:</strong> {formatCurrency(selectedOrder.total_amount)}</p>
@@ -1279,6 +1466,26 @@ export function OrdersTab() {
         order={editOrder}
         riders={riders}
         onSaved={() => { fetchOrders(); setEditOrder(null); }}
+      />
+
+      <ReminderModal
+        open={reminderOpen}
+        onOpenChange={setReminderOpen}
+        orders={scheduledTodayOrOverdue}
+        onViewOrders={() => {
+          setReminderOpen(false);
+          setScheduleFilter("today");
+        }}
+        onDismiss={async () => {
+          setReminderOpen(false);
+          const ids = scheduledTodayOrOverdue.map((o) => o.id);
+          if (ids.length > 0) {
+            try {
+              await adminApi.dismissReminders(ids);
+              fetchOrders();
+            } catch { /* silent */ }
+          }
+        }}
       />
     </div>
   );

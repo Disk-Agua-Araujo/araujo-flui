@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -32,10 +32,15 @@ const tabConfig = [
 export default function Admin() {
   const { username, isAdmin, isOwner, loading, signOut } = useAuth();
   const isMobile = useIsMobile();
+  const [scheduledCount, setScheduledCount] = useState(0);
   
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabValue>("orders");
+
+  const handleScheduledCount = useCallback((count: number) => {
+    setScheduledCount(count);
+  }, []);
 
   useEffect(() => {
     if (!loading && !isAdmin) {
@@ -100,15 +105,20 @@ export default function Admin() {
           {!isMobile && (
             <TabsList className="grid w-full grid-cols-5 mb-6">
               {visibleTabs.map((t) => (
-                <TabsTrigger key={t.value} value={t.value} className="gap-1">
+                <TabsTrigger key={t.value} value={t.value} className="gap-1 relative">
                   <t.icon className="h-4 w-4" />
                   <span>{t.label}</span>
+                  {t.value === "orders" && scheduledCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full h-4 min-w-[16px] flex items-center justify-center px-1">
+                      {scheduledCount}
+                    </span>
+                  )}
                 </TabsTrigger>
               ))}
             </TabsList>
           )}
 
-          <TabsContent value="orders"><OrdersTab /></TabsContent>
+          <TabsContent value="orders"><OrdersTab onScheduledCount={handleScheduledCount} /></TabsContent>
           <TabsContent value="new-order"><NewOrderTab /></TabsContent>
           <TabsContent value="customers"><CustomersTab /></TabsContent>
           <TabsContent value="products"><ProductsTab /></TabsContent>
@@ -126,7 +136,7 @@ export default function Admin() {
                 <button
                   key={t.value}
                   type="button"
-                  className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${
+                  className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors relative ${
                     isActive
                       ? "text-[hsl(var(--brand-blue))]"
                       : "text-muted-foreground"
@@ -135,6 +145,11 @@ export default function Admin() {
                 >
                   <t.icon className="h-5 w-5" />
                   <span className="text-[10px] leading-tight font-medium">{t.label}</span>
+                  {t.value === "orders" && scheduledCount > 0 && (
+                    <span className="absolute top-1 right-1/4 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full h-4 min-w-[16px] flex items-center justify-center px-1">
+                      {scheduledCount}
+                    </span>
+                  )}
                 </button>
               );
             })}

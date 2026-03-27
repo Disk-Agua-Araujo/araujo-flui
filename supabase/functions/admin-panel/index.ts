@@ -185,7 +185,7 @@ serve(async (req) => {
       const { data, error } = await adminClient
         .from("orders")
         .select(`
-          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, updated_at, updated_by,
+          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
           customers(id, name, phone, cnpj, type),
           addresses(street, number, neighborhood, city, complement, reference),
           order_items(qty, product_id, products(name))
@@ -305,6 +305,9 @@ serve(async (req) => {
         addressId = addressRow.id;
       }
 
+      const scheduledDate = payload?.scheduled_date || payload?.delivery_date || null;
+      const scheduledTime = payload?.scheduled_time || payload?.delivery_time || null;
+
       const { data: order, error: orderError } = await adminClient
         .from("orders")
         .insert({
@@ -319,6 +322,8 @@ serve(async (req) => {
           payment_method: paymentMethod,
           total_amount: totalAmount,
           change_for: changeFor,
+          scheduled_date: scheduledDate,
+          scheduled_time: scheduledTime,
         })
         .select("id")
         .single();
@@ -591,7 +596,7 @@ serve(async (req) => {
       const { data, error } = await adminClient
         .from("orders")
         .select(`
-          id, channel, status, delivery_date, delivery_time, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, notes, updated_at, updated_by,
+          id, channel, status, delivery_date, delivery_time, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, notes, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
           customers(id, name, phone, cnpj, type),
           addresses(street, number, neighborhood, city, complement, reference),
           order_items(qty, product_id, products(name))
@@ -621,7 +626,7 @@ serve(async (req) => {
 
       // Update order fields
       const updateFields: any = { updated_at: new Date().toISOString(), updated_by: admin.username };
-      const allowedFields = ["status", "notes", "delivery_date", "delivery_time", "fulfillment_type", "payment_method", "total_amount", "change_for", "rider_id"];
+      const allowedFields = ["status", "notes", "delivery_date", "delivery_time", "fulfillment_type", "payment_method", "total_amount", "change_for", "rider_id", "scheduled_date", "scheduled_time", "reminder_enabled", "reminder_dismissed"];
       for (const key of allowedFields) {
         if (key in orderData) updateFields[key] = orderData[key];
       }
@@ -918,6 +923,17 @@ serve(async (req) => {
         .eq("id", orderId);
       if (error) throw error;
       return json({ data: { pix_paid: newVal, pix_paid_at: newVal ? new Date().toISOString() : null } });
+    }
+
+    if (action === "orders.dismissReminders") {
+      const orderIds = (payload?.orderIds || []) as string[];
+      if (orderIds.length === 0) return json({ ok: true });
+      const { error } = await adminClient
+        .from("orders")
+        .update({ reminder_dismissed: true })
+        .in("id", orderIds);
+      if (error) throw error;
+      return json({ ok: true });
     }
 
     return json({ error: "Ação inválida" }, 400);

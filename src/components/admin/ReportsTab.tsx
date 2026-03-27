@@ -50,6 +50,13 @@ export function ReportsTab() {
     fetchOrders();
   }, []);
 
+  const getOrderDate = (o: AdminOrderRow) => {
+    // Use scheduled_date when available (for billing purposes), otherwise created_at
+    return (o as any).scheduled_date
+      ? new Date(`${(o as any).scheduled_date}T12:00:00`)
+      : new Date(o.created_at);
+  };
+
   const filteredOrders = useMemo(() => {
     const now = new Date();
     let cutoff: Date;
@@ -57,7 +64,7 @@ export function ReportsTab() {
     else if (period === "week") cutoff = startOfWeek(now, { weekStartsOn: 1 });
     else if (period === "month") cutoff = startOfMonth(now);
     else cutoff = subDays(now, 365);
-    return orders.filter((o) => new Date(o.created_at) >= cutoff);
+    return orders.filter((o) => getOrderDate(o) >= cutoff);
   }, [orders, period]);
 
   // Revenue filtered orders (independent filter)
@@ -67,7 +74,7 @@ export function ReportsTab() {
       const from = startOfDay(revDateFrom);
       const to = revDateTo ? new Date(startOfDay(revDateTo).getTime() + 86400000 - 1) : new Date();
       return orders.filter((o) => {
-        const d = new Date(o.created_at);
+        const d = getOrderDate(o);
         return d >= from && d <= to;
       });
     }
@@ -75,7 +82,7 @@ export function ReportsTab() {
     if (revPeriod === "today") cutoff = startOfDay(now);
     else if (revPeriod === "week") cutoff = startOfWeek(now, { weekStartsOn: 1 });
     else cutoff = startOfMonth(now);
-    return orders.filter((o) => new Date(o.created_at) >= cutoff);
+    return orders.filter((o) => getOrderDate(o) >= cutoff);
   }, [orders, revPeriod, revDateFrom, revDateTo, customApplied]);
 
   const revenuePeriodLabel = useMemo(() => {
