@@ -1274,8 +1274,13 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                       </TableCell>
                       <TableCell className="text-xs">{o.channel}</TableCell>
                       <TableCell className="text-xs">
-                        {o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM") : "—"}
-                        {o.delivery_time ? ` ${o.delivery_time}` : ""}
+                        <div className="flex flex-col gap-0.5">
+                          <span>
+                            {o.delivery_date ? format(new Date(`${o.delivery_date}T12:00:00`), "dd/MM") : "—"}
+                            {o.delivery_time ? ` ${o.delivery_time}` : ""}
+                          </span>
+                          <ScheduledBadge order={o} />
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs">
                         {format(new Date(o.created_at), "dd/MM/yyyy 'às' HH:mm")}
