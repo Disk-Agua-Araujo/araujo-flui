@@ -1371,6 +1371,12 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
               {selectedOrder.addresses?.complement && <p><strong>Complemento:</strong> {selectedOrder.addresses.complement}</p>}
               <p><strong>Canal:</strong> {selectedOrder.channel}</p>
               <p><strong>Entrega:</strong> {selectedOrder.delivery_date ?? "—"} {selectedOrder.delivery_time ?? ""}</p>
+              {selectedOrder.scheduled_date && (
+                <div className="flex items-center gap-2">
+                  <strong>Agendado:</strong>
+                  <ScheduledBadge order={selectedOrder} />
+                </div>
+              )}
               <p><strong>Pagamento:</strong> {selectedOrder.payment_method ? (paymentLabels[selectedOrder.payment_method] || selectedOrder.payment_method) : "—"}</p>
               {selectedOrder.total_amount != null && (
                 <p><strong>Total:</strong> {formatCurrency(selectedOrder.total_amount)}</p>
