@@ -266,7 +266,11 @@ export type Database = {
           payment_method: string | null
           pix_paid: boolean | null
           pix_paid_at: string | null
+          reminder_dismissed: boolean
+          reminder_enabled: boolean
           rider_id: string | null
+          scheduled_date: string | null
+          scheduled_time: string | null
           status: Database["public"]["Enums"]["order_status"]
           total_amount: number | null
           updated_at: string | null
@@ -287,7 +291,11 @@ export type Database = {
           payment_method?: string | null
           pix_paid?: boolean | null
           pix_paid_at?: string | null
+          reminder_dismissed?: boolean
+          reminder_enabled?: boolean
           rider_id?: string | null
+          scheduled_date?: string | null
+          scheduled_time?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           total_amount?: number | null
           updated_at?: string | null
@@ -308,7 +316,11 @@ export type Database = {
           payment_method?: string | null
           pix_paid?: boolean | null
           pix_paid_at?: string | null
+          reminder_dismissed?: boolean
+          reminder_enabled?: boolean
           rider_id?: string | null
+          scheduled_date?: string | null
+          scheduled_time?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           total_amount?: number | null
           updated_at?: string | null
