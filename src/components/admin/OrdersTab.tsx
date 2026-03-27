@@ -643,6 +643,9 @@ function EditOrderModal({
     setTotalAmount(order.total_amount != null ? String(order.total_amount) : "");
     setChangeFor(order.change_for != null ? String(order.change_for) : "");
     setRiderId(order.rider_id);
+    setScheduledDate(order.scheduled_date || "");
+    setScheduledTime(order.scheduled_time || "");
+    setScheduleEnabled(!!order.scheduled_date);
     setStreet(order.addresses?.street || "");
     setNumber(order.addresses?.number || "");
     setNeighborhood(order.addresses?.neighborhood || "");
@@ -674,6 +677,8 @@ function EditOrderModal({
           total_amount: totalAmount ? parseFloat(totalAmount) : null,
           change_for: changeFor ? parseFloat(changeFor) : null,
           rider_id: riderId,
+          scheduled_date: scheduleEnabled ? (scheduledDate || deliveryDate || null) : null,
+          scheduled_time: scheduleEnabled ? (scheduledTime || deliveryTime || null) : null,
         },
         items: items.filter((i) => i.product_id && i.qty > 0).map((i) => ({ product_id: i.product_id, qty: i.qty })),
         address: fulfillmentType === "delivery" ? { street, number, neighborhood, city, complement } : null,
