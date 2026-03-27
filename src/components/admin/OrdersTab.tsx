@@ -928,6 +928,36 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     } catch { /* silent */ }
   }, []);
 
+  const today = format(new Date(), "yyyy-MM-dd");
+
+  // Scheduled orders for today / overdue (for reminder and badge)
+  const scheduledTodayOrOverdue = useMemo(() => {
+    return orders.filter((o) =>
+      o.scheduled_date &&
+      o.scheduled_date <= today &&
+      !["entregue", "cancelado"].includes(o.status) &&
+      !o.reminder_dismissed
+    );
+  }, [orders, today]);
+
+  // Notify parent about pending scheduled count
+  useEffect(() => {
+    const pendingCount = orders.filter((o) =>
+      o.scheduled_date &&
+      o.scheduled_date <= today &&
+      !["entregue", "cancelado"].includes(o.status)
+    ).length;
+    onScheduledCount?.(pendingCount);
+  }, [orders, today, onScheduledCount]);
+
+  // Show reminder on first load
+  useEffect(() => {
+    if (!loading && !reminderChecked && scheduledTodayOrOverdue.length > 0) {
+      setReminderOpen(true);
+      setReminderChecked(true);
+    }
+  }, [loading, reminderChecked, scheduledTodayOrOverdue.length]);
+
   useEffect(() => {
     fetchOrders();
     fetchRiders();
@@ -955,6 +985,17 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
       }
     }
 
+    // Schedule filter
+    if (scheduleFilter === "today") {
+      result = result.filter((o) => o.scheduled_date === today);
+    } else if (scheduleFilter === "scheduled") {
+      result = result.filter((o) => o.scheduled_date && o.scheduled_date > today);
+    } else if (scheduleFilter === "overdue") {
+      result = result.filter((o) =>
+        o.scheduled_date && o.scheduled_date < today && !["entregue", "cancelado"].includes(o.status)
+      );
+    }
+
     if (search) {
       const s = search.toLowerCase();
       result = result.filter(
@@ -967,12 +1008,21 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
       );
     }
 
+    // Sort by scheduled_date ASC when schedule filter is active
+    if (scheduleFilter !== "all") {
+      result = [...result].sort((a, b) => {
+        const dateA = a.scheduled_date || "9999-12-31";
+        const dateB = b.scheduled_date || "9999-12-31";
+        return dateA.localeCompare(dateB);
+      });
+    }
+
     return result;
-  }, [orders, statusFilter, periodFilter, paymentFilter, pixSubFilter, search]);
+  }, [orders, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter, search, today]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter, periodFilter, paymentFilter, pixSubFilter]);
+  }, [search, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageStart = (currentPage - 1) * PAGE_SIZE;
