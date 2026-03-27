@@ -618,6 +618,9 @@ function EditOrderModal({
   const [totalAmount, setTotalAmount] = useState("");
   const [changeFor, setChangeFor] = useState("");
   const [riderId, setRiderId] = useState<string | null>(null);
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledTime, setScheduledTime] = useState("");
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
 
   // Address
   const [street, setStreet] = useState("");
