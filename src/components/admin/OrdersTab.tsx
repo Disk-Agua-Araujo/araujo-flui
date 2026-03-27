@@ -533,7 +533,10 @@ function OrderCard({
               <p className="text-xs text-muted-foreground">{o.customers.name}</p>
             )}
           </div>
-          <FulfillmentBadge type={o.fulfillment_type} />
+          <div className="flex flex-col gap-1 items-end">
+            <FulfillmentBadge type={o.fulfillment_type} />
+            <ScheduledBadge order={o} />
+          </div>
         </div>
 
         <div className="text-xs text-muted-foreground">
