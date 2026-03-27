@@ -185,7 +185,7 @@ serve(async (req) => {
       const { data, error } = await adminClient
         .from("orders")
         .select(`
-          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, updated_at, updated_by,
+          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
           customers(id, name, phone, cnpj, type),
           addresses(street, number, neighborhood, city, complement, reference),
           order_items(qty, product_id, products(name))
@@ -591,7 +591,7 @@ serve(async (req) => {
       const { data, error } = await adminClient
         .from("orders")
         .select(`
-          id, channel, status, delivery_date, delivery_time, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, notes, updated_at, updated_by,
+          id, channel, status, delivery_date, delivery_time, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, notes, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
           customers(id, name, phone, cnpj, type),
           addresses(street, number, neighborhood, city, complement, reference),
           order_items(qty, product_id, products(name))
@@ -621,7 +621,7 @@ serve(async (req) => {
 
       // Update order fields
       const updateFields: any = { updated_at: new Date().toISOString(), updated_by: admin.username };
-      const allowedFields = ["status", "notes", "delivery_date", "delivery_time", "fulfillment_type", "payment_method", "total_amount", "change_for", "rider_id"];
+      const allowedFields = ["status", "notes", "delivery_date", "delivery_time", "fulfillment_type", "payment_method", "total_amount", "change_for", "rider_id", "scheduled_date", "scheduled_time", "reminder_enabled", "reminder_dismissed"];
       for (const key of allowedFields) {
         if (key in orderData) updateFields[key] = orderData[key];
       }
