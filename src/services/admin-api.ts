@@ -256,4 +256,7 @@ export const adminApi = {
     customer: { name: string; phone?: string; type?: "PF" | "PJ" };
     address?: { street: string; number: string; neighborhood: string; city?: string; complement?: string };
   }) => callAdminApi<{ customer_id: string }>("orders.saveCustomerFromOrder", payload),
+
+  dismissReminders: (orderIds: string[]) =>
+    callAdminApi<{ ok: boolean }>("orders.dismissReminders", { orderIds }),
 };
