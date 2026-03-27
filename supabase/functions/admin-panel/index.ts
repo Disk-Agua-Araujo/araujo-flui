@@ -925,6 +925,17 @@ serve(async (req) => {
       return json({ data: { pix_paid: newVal, pix_paid_at: newVal ? new Date().toISOString() : null } });
     }
 
+    if (action === "orders.dismissReminders") {
+      const orderIds = (payload?.orderIds || []) as string[];
+      if (orderIds.length === 0) return json({ ok: true });
+      const { error } = await adminClient
+        .from("orders")
+        .update({ reminder_dismissed: true })
+        .in("id", orderIds);
+      if (error) throw error;
+      return json({ ok: true });
+    }
+
     return json({ error: "Ação inválida" }, 400);
   } catch (error) {
     console.error("admin-panel error", error);
