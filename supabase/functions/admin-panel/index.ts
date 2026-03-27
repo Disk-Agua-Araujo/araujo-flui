@@ -305,6 +305,9 @@ serve(async (req) => {
         addressId = addressRow.id;
       }
 
+      const scheduledDate = payload?.scheduled_date || payload?.delivery_date || null;
+      const scheduledTime = payload?.scheduled_time || payload?.delivery_time || null;
+
       const { data: order, error: orderError } = await adminClient
         .from("orders")
         .insert({
@@ -319,6 +322,8 @@ serve(async (req) => {
           payment_method: paymentMethod,
           total_amount: totalAmount,
           change_for: changeFor,
+          scheduled_date: scheduledDate,
+          scheduled_time: scheduledTime,
         })
         .select("id")
         .single();
