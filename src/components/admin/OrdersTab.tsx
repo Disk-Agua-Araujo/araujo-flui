@@ -791,6 +791,37 @@ function EditOrderModal({
             </div>
           </div>
 
+          {/* Schedule toggle */}
+          <div className={`space-y-2 rounded-md p-3 ${scheduleEnabled ? "border-2 border-[#033D7B]/40 bg-[#033D7B]/5" : "border"}`}>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium flex items-center gap-1">
+                <CalendarClock className="h-3.5 w-3.5" /> Agendar para outro dia
+              </label>
+              <Switch checked={scheduleEnabled} onCheckedChange={(v) => {
+                setScheduleEnabled(v);
+                if (v && !scheduledDate) setScheduledDate(deliveryDate);
+                if (v && !scheduledTime) setScheduledTime(deliveryTime);
+              }} />
+            </div>
+            {scheduleEnabled && (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Este pedido será listado e contabilizado na data agendada.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-medium">Data agendada</label>
+                    <Input type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">Hora agendada</label>
+                    <Input value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} placeholder="Ex: 08:00" />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
           {/* Payment */}
           <div className="grid grid-cols-2 gap-2">
             <div>
