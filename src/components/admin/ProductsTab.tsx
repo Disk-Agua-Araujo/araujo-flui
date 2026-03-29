@@ -155,8 +155,8 @@ export function ProductsTab() {
       toast({ title: "Formato inválido", description: "Use JPEG, PNG ou WebP.", variant: "destructive" });
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      toast({ title: "Arquivo muito grande", description: "Máximo 2MB.", variant: "destructive" });
+    if (file.size > 20 * 1024 * 1024) {
+      toast({ title: "Arquivo muito grande", description: "O tamanho máximo permitido é 20MB.", variant: "destructive" });
       return;
     }
     setImageFile(file);
