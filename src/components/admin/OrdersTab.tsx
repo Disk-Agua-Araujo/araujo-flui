@@ -17,11 +17,10 @@ import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
 import { adminApi, type AdminOrderRow, type DeliveryRider, type AdminProductRow } from "@/services/admin-api";
 import { useIsMobile } from "@/hooks/use-mobile";
-
-const formatTimeValue = (val: string): string => {
-  if (!val) return "";
-  return val.includes(":") ? val : `${val}:00`;
-};
+import {
+  getTodayInSP, isScheduledToday, isScheduledFuture, isScheduledLate,
+  getScheduleLabel, getScheduleBadgeType, formatTimeValue,
+} from "@/lib/schedulingRules";
 
 const statusColors: Record<string, string> = {
   novo: "bg-blue-100 text-blue-800",
