@@ -995,14 +995,19 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
       }
     }
 
-    // Schedule filter
+    // Schedule filter — timezone-aware using schedulingRules
     if (scheduleFilter === "today") {
-      result = result.filter((o) => o.scheduled_date === today);
+      result = result.filter((o) => o.scheduled_date && isScheduledToday(o.scheduled_date, tickNow));
     } else if (scheduleFilter === "scheduled") {
-      result = result.filter((o) => o.scheduled_date && o.scheduled_date > today);
+      result = result.filter((o) =>
+        o.scheduled_date &&
+        isScheduledFuture(o.scheduled_date, o.scheduled_time, tickNow) &&
+        o.status !== "cancelado"
+      );
     } else if (scheduleFilter === "overdue") {
       result = result.filter((o) =>
-        o.scheduled_date && o.scheduled_date < today && !["entregue", "cancelado"].includes(o.status)
+        o.scheduled_date &&
+        isScheduledLate(o.scheduled_date, o.scheduled_time, o.status, tickNow)
       );
     }
 
