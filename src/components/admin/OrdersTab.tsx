@@ -17,11 +17,10 @@ import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
 import { adminApi, type AdminOrderRow, type DeliveryRider, type AdminProductRow } from "@/services/admin-api";
 import { useIsMobile } from "@/hooks/use-mobile";
-
-const formatTimeValue = (val: string): string => {
-  if (!val) return "";
-  return val.includes(":") ? val : `${val}:00`;
-};
+import {
+  isScheduledToday, isScheduledFuture, isScheduledLate,
+  getScheduleLabel, getScheduleBadgeType, formatTimeValue,
+} from "@/lib/schedulingRules";
 
 const statusColors: Record<string, string> = {
   novo: "bg-blue-100 text-blue-800",
@@ -438,26 +437,24 @@ function PixBadge({ order, onToggle }: { order: AdminOrderRow; onToggle: () => v
   );
 }
 
-function ScheduledBadge({ order }: { order: AdminOrderRow }) {
+function ScheduledBadge({ order, now }: { order: AdminOrderRow; now?: Date }) {
   if (!order.scheduled_date) return null;
-  const today = format(new Date(), "yyyy-MM-dd");
-  const isOverdue = order.scheduled_date < today && !["entregue", "cancelado"].includes(order.status);
-  const isFuture = order.scheduled_date > today;
-  const isToday = order.scheduled_date === today;
+  const currentNow = now ?? new Date();
+  const badgeType = getScheduleBadgeType(order, currentNow);
+  if (!badgeType) return null;
+  const label = getScheduleLabel(order.scheduled_date, order.scheduled_time, currentNow);
 
-  if (!isFuture && !isOverdue && !isToday) return null;
+  const styles = {
+    late: "bg-red-100 text-red-800 border-red-300",
+    today: "bg-amber-100 text-amber-800 border-amber-300",
+    future: "bg-[#033D7B]/10 text-[#033D7B] border-[#033D7B]/30",
+  };
+  const icons = { late: "🔴", today: "🟡", future: "📅" };
 
   return (
-    <Badge className={`text-xs gap-1 ${
-      isOverdue
-        ? "bg-red-100 text-red-800 border-red-300"
-        : "bg-[#033D7B]/10 text-[#033D7B] border-[#033D7B]/30"
-    }`} variant="outline">
+    <Badge className={`text-xs gap-1 ${styles[badgeType]}`} variant="outline">
       <CalendarClock className="h-3 w-3" />
-      {isOverdue ? "Em atraso" : "📅 Agendado"}
-      {" "}
-      {format(new Date(`${order.scheduled_date}T12:00:00`), "dd/MM")}
-      {order.scheduled_time ? ` ${order.scheduled_time}` : ""}
+      {icons[badgeType]} {badgeType === "late" ? `Em atraso · ${label}` : label}
     </Badge>
   );
 }
@@ -933,27 +930,35 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     } catch { /* silent */ }
   }, []);
 
-  const today = format(new Date(), "yyyy-MM-dd");
+  const [tickNow, setTickNow] = useState(() => new Date());
+
+  // Auto-refresh badges every 60 seconds
+  useEffect(() => {
+    const interval = setInterval(() => setTickNow(new Date()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  
 
   // Scheduled orders for today / overdue (for reminder and badge)
   const scheduledTodayOrOverdue = useMemo(() => {
     return orders.filter((o) =>
       o.scheduled_date &&
-      o.scheduled_date <= today &&
+      !o.reminder_dismissed &&
       !["entregue", "cancelado"].includes(o.status) &&
-      !o.reminder_dismissed
+      !isScheduledFuture(o.scheduled_date, o.scheduled_time, tickNow)
     );
-  }, [orders, today]);
+  }, [orders, tickNow]);
 
   // Notify parent about pending scheduled count
   useEffect(() => {
     const pendingCount = orders.filter((o) =>
       o.scheduled_date &&
-      o.scheduled_date <= today &&
-      !["entregue", "cancelado"].includes(o.status)
+      !["entregue", "cancelado"].includes(o.status) &&
+      !isScheduledFuture(o.scheduled_date, o.scheduled_time, tickNow)
     ).length;
     onScheduledCount?.(pendingCount);
-  }, [orders, today, onScheduledCount]);
+  }, [orders, tickNow, onScheduledCount]);
 
   // Show reminder on first load
   useEffect(() => {
@@ -990,14 +995,19 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
       }
     }
 
-    // Schedule filter
+    // Schedule filter — timezone-aware using schedulingRules
     if (scheduleFilter === "today") {
-      result = result.filter((o) => o.scheduled_date === today);
+      result = result.filter((o) => o.scheduled_date && isScheduledToday(o.scheduled_date, tickNow));
     } else if (scheduleFilter === "scheduled") {
-      result = result.filter((o) => o.scheduled_date && o.scheduled_date > today);
+      result = result.filter((o) =>
+        o.scheduled_date &&
+        isScheduledFuture(o.scheduled_date, o.scheduled_time, tickNow) &&
+        o.status !== "cancelado"
+      );
     } else if (scheduleFilter === "overdue") {
       result = result.filter((o) =>
-        o.scheduled_date && o.scheduled_date < today && !["entregue", "cancelado"].includes(o.status)
+        o.scheduled_date &&
+        isScheduledLate(o.scheduled_date, o.scheduled_time, o.status, tickNow)
       );
     }
 
@@ -1023,7 +1033,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     }
 
     return result;
-  }, [orders, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter, search, today]);
+  }, [orders, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter, search, tickNow]);
 
   useEffect(() => {
     setCurrentPage(1);
