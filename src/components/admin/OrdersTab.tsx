@@ -18,6 +18,11 @@ import { Constants } from "@/integrations/supabase/types";
 import { adminApi, type AdminOrderRow, type DeliveryRider, type AdminProductRow } from "@/services/admin-api";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+const formatTimeValue = (val: string): string => {
+  if (!val) return "";
+  return val.includes(":") ? val : `${val}:00`;
+};
+
 const statusColors: Record<string, string> = {
   novo: "bg-blue-100 text-blue-800",
   agendado: "bg-yellow-100 text-yellow-800",
@@ -637,14 +642,14 @@ function EditOrderModal({
     setStatus(order.status);
     setNotes(order.notes || "");
     setDeliveryDate(order.delivery_date || "");
-    setDeliveryTime(order.delivery_time || "");
+    setDeliveryTime(formatTimeValue(order.delivery_time || ""));
     setFulfillmentType(order.fulfillment_type || "delivery");
     setPaymentMethod(order.payment_method || "");
     setTotalAmount(order.total_amount != null ? String(order.total_amount) : "");
     setChangeFor(order.change_for != null ? String(order.change_for) : "");
     setRiderId(order.rider_id);
     setScheduledDate(order.scheduled_date || "");
-    setScheduledTime(order.scheduled_time || "");
+    setScheduledTime(formatTimeValue(order.scheduled_time || ""));
     setScheduleEnabled(!!order.scheduled_date);
     setStreet(order.addresses?.street || "");
     setNumber(order.addresses?.number || "");
@@ -787,7 +792,7 @@ function EditOrderModal({
             </div>
             <div>
               <label className="text-xs font-medium">Hora entrega</label>
-              <Input value={deliveryTime} onChange={(e) => setDeliveryTime(e.target.value)} placeholder="Ex: 14:00" />
+              <Input type="time" value={deliveryTime} onChange={(e) => setDeliveryTime(e.target.value)} />
             </div>
           </div>
 
@@ -815,7 +820,7 @@ function EditOrderModal({
                   </div>
                   <div>
                     <label className="text-xs font-medium">Hora agendada</label>
-                    <Input value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} placeholder="Ex: 08:00" />
+                    <Input type="time" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} />
                   </div>
                 </div>
               </>
