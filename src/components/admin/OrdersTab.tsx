@@ -18,7 +18,7 @@ import { Constants } from "@/integrations/supabase/types";
 import { adminApi, type AdminOrderRow, type DeliveryRider, type AdminProductRow } from "@/services/admin-api";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
-  getTodayInSP, isScheduledToday, isScheduledFuture, isScheduledLate,
+  isScheduledToday, isScheduledFuture, isScheduledLate,
   getScheduleLabel, getScheduleBadgeType, formatTimeValue,
 } from "@/lib/schedulingRules";
 
