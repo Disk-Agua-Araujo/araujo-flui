@@ -637,7 +637,7 @@ function EditOrderModal({
     setStatus(order.status);
     setNotes(order.notes || "");
     setDeliveryDate(order.delivery_date || "");
-    setDeliveryTime(order.delivery_time || "");
+    setDeliveryTime(formatTimeValue(order.delivery_time || ""));
     setFulfillmentType(order.fulfillment_type || "delivery");
     setPaymentMethod(order.payment_method || "");
     setTotalAmount(order.total_amount != null ? String(order.total_amount) : "");
