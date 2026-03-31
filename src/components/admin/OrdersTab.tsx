@@ -938,7 +938,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     return () => clearInterval(interval);
   }, []);
 
-  const todaySP = getTodayInSP(tickNow);
+  
 
   // Scheduled orders for today / overdue (for reminder and badge)
   const scheduledTodayOrOverdue = useMemo(() => {
