@@ -930,7 +930,15 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     } catch { /* silent */ }
   }, []);
 
-  const today = format(new Date(), "yyyy-MM-dd");
+  const [tickNow, setTickNow] = useState(() => new Date());
+
+  // Auto-refresh badges every 60 seconds
+  useEffect(() => {
+    const interval = setInterval(() => setTickNow(new Date()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const todaySP = getTodayInSP(tickNow);
 
   // Scheduled orders for today / overdue (for reminder and badge)
   const scheduledTodayOrOverdue = useMemo(() => {
