@@ -18,6 +18,11 @@ import { Constants } from "@/integrations/supabase/types";
 import { adminApi, type AdminOrderRow, type DeliveryRider, type AdminProductRow } from "@/services/admin-api";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+const formatTimeValue = (val: string): string => {
+  if (!val) return "";
+  return val.includes(":") ? val : `${val}:00`;
+};
+
 const statusColors: Record<string, string> = {
   novo: "bg-blue-100 text-blue-800",
   agendado: "bg-yellow-100 text-yellow-800",
