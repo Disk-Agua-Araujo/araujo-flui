@@ -644,7 +644,7 @@ function EditOrderModal({
     setChangeFor(order.change_for != null ? String(order.change_for) : "");
     setRiderId(order.rider_id);
     setScheduledDate(order.scheduled_date || "");
-    setScheduledTime(order.scheduled_time || "");
+    setScheduledTime(formatTimeValue(order.scheduled_time || ""));
     setScheduleEnabled(!!order.scheduled_date);
     setStreet(order.addresses?.street || "");
     setNumber(order.addresses?.number || "");
