@@ -815,7 +815,7 @@ function EditOrderModal({
                   </div>
                   <div>
                     <label className="text-xs font-medium">Hora agendada</label>
-                    <Input value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} placeholder="Ex: 08:00" />
+                    <Input type="time" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} />
                   </div>
                 </div>
               </>
