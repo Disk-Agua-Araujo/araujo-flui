@@ -437,26 +437,24 @@ function PixBadge({ order, onToggle }: { order: AdminOrderRow; onToggle: () => v
   );
 }
 
-function ScheduledBadge({ order }: { order: AdminOrderRow }) {
+function ScheduledBadge({ order, now }: { order: AdminOrderRow; now?: Date }) {
   if (!order.scheduled_date) return null;
-  const today = format(new Date(), "yyyy-MM-dd");
-  const isOverdue = order.scheduled_date < today && !["entregue", "cancelado"].includes(order.status);
-  const isFuture = order.scheduled_date > today;
-  const isToday = order.scheduled_date === today;
+  const currentNow = now ?? new Date();
+  const badgeType = getScheduleBadgeType(order, currentNow);
+  if (!badgeType) return null;
+  const label = getScheduleLabel(order.scheduled_date, order.scheduled_time, currentNow);
 
-  if (!isFuture && !isOverdue && !isToday) return null;
+  const styles = {
+    late: "bg-red-100 text-red-800 border-red-300",
+    today: "bg-amber-100 text-amber-800 border-amber-300",
+    future: "bg-[#033D7B]/10 text-[#033D7B] border-[#033D7B]/30",
+  };
+  const icons = { late: "🔴", today: "🟡", future: "📅" };
 
   return (
-    <Badge className={`text-xs gap-1 ${
-      isOverdue
-        ? "bg-red-100 text-red-800 border-red-300"
-        : "bg-[#033D7B]/10 text-[#033D7B] border-[#033D7B]/30"
-    }`} variant="outline">
+    <Badge className={`text-xs gap-1 ${styles[badgeType]}`} variant="outline">
       <CalendarClock className="h-3 w-3" />
-      {isOverdue ? "Em atraso" : "📅 Agendado"}
-      {" "}
-      {format(new Date(`${order.scheduled_date}T12:00:00`), "dd/MM")}
-      {order.scheduled_time ? ` ${order.scheduled_time}` : ""}
+      {icons[badgeType]} {badgeType === "late" ? `Em atraso · ${label}` : label}
     </Badge>
   );
 }
