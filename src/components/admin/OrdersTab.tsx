@@ -944,21 +944,21 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const scheduledTodayOrOverdue = useMemo(() => {
     return orders.filter((o) =>
       o.scheduled_date &&
-      o.scheduled_date <= today &&
+      !o.reminder_dismissed &&
       !["entregue", "cancelado"].includes(o.status) &&
-      !o.reminder_dismissed
+      !isScheduledFuture(o.scheduled_date, o.scheduled_time, tickNow)
     );
-  }, [orders, today]);
+  }, [orders, tickNow]);
 
   // Notify parent about pending scheduled count
   useEffect(() => {
     const pendingCount = orders.filter((o) =>
       o.scheduled_date &&
-      o.scheduled_date <= today &&
-      !["entregue", "cancelado"].includes(o.status)
+      !["entregue", "cancelado"].includes(o.status) &&
+      !isScheduledFuture(o.scheduled_date, o.scheduled_time, tickNow)
     ).length;
     onScheduledCount?.(pendingCount);
-  }, [orders, today, onScheduledCount]);
+  }, [orders, tickNow, onScheduledCount]);
 
   // Show reminder on first load
   useEffect(() => {
