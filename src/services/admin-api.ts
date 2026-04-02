@@ -200,10 +200,10 @@ export const adminApi = {
   deleteCustomer: (customerId: string) =>
     callAdminApi<{ ok: boolean }>("customers.delete", { customerId }),
 
-  checkDuplicateAddress: (street: string, number: string, excludeCustomerId?: string) =>
-    callAdminApi<{ id: string; customer_id: string; customers: { name: string } } | null>(
+  checkDuplicateAddress: (street: string, number: string, complement?: string, excludeCustomerId?: string) =>
+    callAdminApi<{ id: string; customer_id: string; complement: string | null; customers: { name: string } } | null>(
       "customers.checkDuplicate",
-      { street, number, excludeCustomerId }
+      { street, number, complement: complement || "", excludeCustomerId }
     ),
 
   listCategories: () => callAdminApi<AdminCategoryRow[]>("categories.list"),

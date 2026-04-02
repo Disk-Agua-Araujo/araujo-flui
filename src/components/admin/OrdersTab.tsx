@@ -354,13 +354,18 @@ function SaveCustomerModal({
     }
     setSaving(true);
     try {
-      // Check duplicate address
+      // Check duplicate address (including complement)
       if (order.addresses?.street && order.addresses?.number) {
-        const dup = await adminApi.checkDuplicateAddress(order.addresses.street, order.addresses.number);
+        const dup = await adminApi.checkDuplicateAddress(
+          order.addresses.street,
+          order.addresses.number,
+          order.addresses.complement || ""
+        );
         if (dup && dup.customers) {
+          const complementInfo = order.addresses.complement ? `, ${order.addresses.complement}` : "";
           toast({
             title: "Endereço já cadastrado",
-            description: `Cliente existente: ${dup.customers.name} — ${order.addresses.street}, ${order.addresses.number}`,
+            description: `Cliente existente: ${dup.customers.name} — ${order.addresses.street}, ${order.addresses.number}${complementInfo}`,
             variant: "destructive",
           });
           setSaving(false);
