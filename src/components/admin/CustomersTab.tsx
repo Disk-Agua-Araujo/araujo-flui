@@ -152,13 +152,14 @@ export function CustomersTab() {
     if (!forceCreate) {
       try {
         const dup = await adminApi.checkDuplicateAddress(
-          formStreet.trim(), formNumber.trim(), editing?.id
+          formStreet.trim(), formNumber.trim(), formComplement.trim(), editing?.id
         );
         if (dup && dup.customers) {
           setDuplicateWarning({
             name: dup.customers.name,
             street: formStreet.trim(),
             number: formNumber.trim(),
+            complement: formComplement.trim() || undefined,
             customerId: dup.customer_id,
           });
           return;
