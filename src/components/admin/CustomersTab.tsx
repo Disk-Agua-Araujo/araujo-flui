@@ -55,7 +55,7 @@ export function CustomersTab() {
   const [formReference, setFormReference] = useState("");
 
   // Duplicate address warning
-  const [duplicateWarning, setDuplicateWarning] = useState<{ name: string; street: string; number: string; customerId: string } | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<{ name: string; street: string; number: string; complement?: string; customerId: string } | null>(null);
   const [forceCreate, setForceCreate] = useState(false);
 
   // Delete confirmation
