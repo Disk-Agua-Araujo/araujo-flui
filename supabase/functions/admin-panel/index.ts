@@ -710,25 +710,38 @@ serve(async (req) => {
     if (action === "customers.checkDuplicate") {
       const street = ((payload?.street as string) || "").trim();
       const number = ((payload?.number as string) || "").trim();
+      const complement = ((payload?.complement as string) || "").trim();
       const excludeCustomerId = payload?.excludeCustomerId as string | undefined;
 
       if (!street || !number) return json({ data: null });
 
+      // Normalize complement for comparison
+      const normalizeComp = (val: string | null | undefined): string =>
+        (val ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+      const normalizedComplement = normalizeComp(complement);
+
+      // Fetch all addresses with same street+number, then filter by complement in code
       let query = adminClient
         .from("addresses")
-        .select("id, customer_id, customers(name)")
+        .select("id, customer_id, complement, customers(name)")
         .ilike("street", street)
         .eq("number", number)
-        .limit(1);
+        .limit(50);
 
       if (excludeCustomerId) {
         query = query.neq("customer_id", excludeCustomerId);
       }
 
-      const { data, error } = await query.maybeSingle();
+      const { data, error } = await query;
       if (error) throw error;
 
-      return json({ data: data || null });
+      // Find match where complement also matches (both empty = match)
+      const match = (data ?? []).find((row: { complement: string | null }) =>
+        normalizeComp(row.complement) === normalizedComplement
+      );
+
+      return json({ data: match || null });
     }
 
     // ---- Riders ----

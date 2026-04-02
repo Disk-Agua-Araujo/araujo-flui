@@ -458,10 +458,10 @@ export function CustomersTab() {
             {duplicateWarning && (
               <div className="rounded-md border border-red-300 bg-red-50 p-3 space-y-2">
                 <p className="text-sm text-red-700 font-medium">
-                  Já existe um cliente cadastrado neste endereço:
+                  Já existe um cliente cadastrado neste endereço e complemento:
                 </p>
                 <p className="text-sm text-red-600">
-                  {duplicateWarning.name} — {duplicateWarning.street}, {duplicateWarning.number}
+                  {duplicateWarning.name} — {duplicateWarning.street}, {duplicateWarning.number}{duplicateWarning.complement ? `, ${duplicateWarning.complement}` : ""}
                 </p>
                 <p className="text-xs text-red-500">Verifique se é o mesmo cliente antes de continuar.</p>
                 <div className="flex gap-2">
