@@ -1,4 +1,4 @@
-import { Droplets, CheckCircle, MessageCircle } from "lucide-react";
+import { CheckCircle, MessageCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { trackEvent } from "@/hooks/use-analytics";
@@ -11,6 +11,8 @@ interface WaterProduct {
   extra: string;
   minerals: { name: string; value?: string }[];
   differentials: string[];
+  image: string;
+  imageAlt: string;
 }
 
 const waters: WaterProduct[] = [
@@ -27,6 +29,8 @@ const waters: WaterProduct[] = [
       { name: "Potássio", value: "1,43" },
     ],
     differentials: ["Água naturalmente alcalina", "Fonte mineral protegida", "Equilíbrio de minerais essenciais"],
+    image: "/products/aguas/galao-fontana-di-trevi-20l.png",
+    imageAlt: "Galão 20L Água Mineral Fontana di Trevi",
   },
   {
     name: "Água Mineral Crystal de Trevi",
@@ -35,6 +39,8 @@ const waters: WaterProduct[] = [
     extra: "Tipo: água mineral natural",
     minerals: [{ name: "Bicarbonato" }, { name: "Cálcio" }, { name: "Magnésio" }, { name: "Potássio" }],
     differentials: ["Naturalmente alcalina", "Leve e agradável ao paladar", "Excelente para consumo diário"],
+    image: "/products/aguas/galao-crystal-20l.png",
+    imageAlt: "Galão 20L Água Mineral Crystal de Trevi",
   },
   {
     name: "Água Mineral Bioleve",
@@ -49,6 +55,8 @@ const waters: WaterProduct[] = [
       { name: "Potássio", value: "1,40" },
     ],
     differentials: ["Baixo teor de sódio", "Água leve e equilibrada", "Excelente para consumo diário"],
+    image: "/products/aguas/galao-bioleve-20l.png",
+    imageAlt: "Galão 20L Água Mineral Bioleve",
   },
   {
     name: "Água Mineral Estância – Fonte São Luiz I",
@@ -57,6 +65,8 @@ const waters: WaterProduct[] = [
     extra: "Origem: Fonte São Luiz I",
     minerals: [{ name: "Bicarbonato" }, { name: "Cálcio" }, { name: "Magnésio" }, { name: "Potássio" }],
     differentials: ["Fonte mineral natural protegida", "Equilíbrio mineral ideal", "Rigoroso controle de produção"],
+    image: "/products/aguas/galao-estancia-20l.png",
+    imageAlt: "Galão 20L Água Mineral Estância Fonte São Luiz I",
   },
 ];
 
@@ -65,22 +75,26 @@ function WaterCard({ water }: { water: WaterProduct }) {
   const waLink = `https://wa.me/5511940060056?text=${encodeURIComponent(waMsg)}`;
 
   return (
-    <Card className="h-full border-border/60 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
-      <CardContent className="p-5 flex flex-col h-full gap-3">
-        <div className="flex items-start gap-3 min-h-[4.5rem]">
-          <div className="shrink-0 h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Droplets className="h-5 w-5 text-primary" />
-          </div>
+    <Card className="h-full border-border/60 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
+      <CardContent className="p-0 flex flex-col h-full">
+        <div className="w-full h-44 bg-white flex items-center justify-center p-3 rounded-t-xl border-b border-border/40">
+          <img
+            src={water.image}
+            alt={water.imageAlt}
+            loading="lazy"
+            className="h-full w-full object-contain"
+          />
+        </div>
+        <div className="p-5 flex flex-col h-full gap-3">
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-primary leading-snug text-sm">{water.name}</h3>
             <p className="text-[11px] text-muted-foreground mt-0.5">{water.extra}</p>
           </div>
-        </div>
-        <div className="flex items-center">
-          <span className="inline-flex items-center bg-primary text-primary-foreground text-[11px] font-bold px-2.5 py-0.5 rounded-full">
-            pH {water.ph}
-          </span>
-        </div>
+          <div className="flex items-center">
+            <span className="inline-flex items-center bg-primary text-primary-foreground text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+              pH {water.ph}
+            </span>
+          </div>
         <p className="text-xs text-muted-foreground leading-relaxed min-h-[3rem]">{water.description}</p>
         <div className="min-h-[3.5rem]">
           <p className="text-[10px] font-semibold text-foreground mb-1 uppercase tracking-wider">Principais minerais</p>
@@ -115,6 +129,7 @@ function WaterCard({ water }: { water: WaterProduct }) {
             Pedir no WhatsApp
           </a>
         </Button>
+        </div>
       </CardContent>
     </Card>
   );
