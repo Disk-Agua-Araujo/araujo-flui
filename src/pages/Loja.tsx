@@ -164,7 +164,7 @@ export default function Loja() {
 
       <main className="flex-1 container py-6 md:py-8">
         <div className="mb-6">
-          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">🛒 Loja</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">Loja</h1>
           <p className="text-muted-foreground text-sm md:text-base">Adicione os produtos e finalize seu pedido</p>
         </div>
 
