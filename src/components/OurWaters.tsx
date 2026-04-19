@@ -129,6 +129,7 @@ function WaterCard({ water }: { water: WaterProduct }) {
             Pedir no WhatsApp
           </a>
         </Button>
+        </div>
       </CardContent>
     </Card>
   );
