@@ -33,7 +33,7 @@ export function Products() {
               <ScrollReveal key={p.id} animation="scaleUp" delay={Math.min(i, 5) * 80}>
                 <Card className="group hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 border-primary/10 shadow-lg h-full">
                   <CardContent className="p-6 flex flex-col items-center text-center gap-3 h-full">
-                    <div className="w-full h-40 md:h-44 rounded-lg bg-[#F6F8FB] flex items-center justify-center overflow-hidden">
+                    <div className="w-full h-40 md:h-44 bg-white flex items-center justify-center overflow-hidden">
                       {hasImage ? (
                         <img
                           src={p.image as string}
