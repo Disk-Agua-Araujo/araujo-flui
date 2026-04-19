@@ -262,21 +262,19 @@ export default function Loja() {
         </SheetContent>
       </Sheet>
 
-      {/* Mobile floating cart button (when items, no top bar visible while scrolling) */}
+      {/* Mobile floating cart button */}
       {totalItems > 0 && view === "shop" && (
-        <SheetTrigger asChild>
-          <button
-            type="button"
-            onClick={() => setMobileCartOpen(true)}
-            className="lg:hidden fixed bottom-4 right-4 z-40 bg-primary text-primary-foreground h-14 w-14 rounded-full shadow-lg flex items-center justify-center"
-            aria-label="Abrir carrinho"
-          >
-            <ShoppingCart className="h-6 w-6" />
-            <span className="absolute -top-1 -right-1 bg-accent text-accent-foreground text-xs font-bold h-5 min-w-5 px-1 rounded-full flex items-center justify-center">
-              {totalItems}
-            </span>
-          </button>
-        </SheetTrigger>
+        <button
+          type="button"
+          onClick={() => setMobileCartOpen(true)}
+          className="lg:hidden fixed bottom-4 right-4 z-40 bg-primary text-primary-foreground h-14 w-14 rounded-full shadow-lg flex items-center justify-center"
+          aria-label="Abrir carrinho"
+        >
+          <ShoppingCart className="h-6 w-6" />
+          <span className="absolute -top-1 -right-1 bg-accent text-accent-foreground text-xs font-bold h-5 min-w-5 px-1 rounded-full flex items-center justify-center">
+            {totalItems}
+          </span>
+        </button>
       )}
 
       <Footer />
