@@ -28,12 +28,24 @@ export function Products() {
           {business.products.map((p, i) => {
             const Icon = iconMap[p.icon];
             const msg = `Olá! Tenho interesse no produto: ${p.name}. Poderia me informar o preço e disponibilidade?`;
+            const hasImage = "image" in p && p.image;
             return (
               <ScrollReveal key={p.id} animation="scaleUp" delay={Math.min(i, 5) * 80}>
                 <Card className="group hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 border-primary/10 shadow-lg h-full">
                   <CardContent className="p-6 flex flex-col items-center text-center gap-3 h-full">
-                    <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                      <Icon className="h-7 w-7 text-primary" />
+                    <div className="w-full h-40 md:h-44 rounded-lg bg-[#F6F8FB] flex items-center justify-center overflow-hidden">
+                      {hasImage ? (
+                        <img
+                          src={p.image as string}
+                          alt={("imageAlt" in p && p.imageAlt) ? p.imageAlt as string : p.name}
+                          loading={i === 0 ? "eager" : "lazy"}
+                          className="h-full w-full object-contain p-2 group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                          <Icon className="h-7 w-7 text-primary" />
+                        </div>
+                      )}
                     </div>
                     <h3 className="font-bold text-base text-foreground">{p.name}</h3>
                     <p className="text-sm text-muted-foreground">{p.description}</p>
