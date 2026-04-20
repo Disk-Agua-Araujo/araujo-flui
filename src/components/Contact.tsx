@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { business } from "@/config/business";
 import { trackEvent } from "@/hooks/use-analytics";
 import { ScrollReveal } from "@/components/ScrollReveal";
+import { cn } from "@/lib/utils";
 
 const contactCards = [
   { icon: MessageCircle, label: "WhatsApp", value: business.waPhone, action: business.waLink(business.waDefaultMessage), external: true, event: "whatsapp_click" as const },
