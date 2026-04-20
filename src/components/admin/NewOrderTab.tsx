@@ -14,6 +14,7 @@ import { FulfillmentToggle } from "@/components/FulfillmentToggle";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon, Minus, Plus, Save, Search, X, Loader2 } from "lucide-react";
+import { PaymentIcon } from "@/components/PaymentIcon";
 import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
 import { useToast } from "@/hooks/use-toast";
