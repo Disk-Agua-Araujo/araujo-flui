@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PaymentIcon, type PaymentMethodKey } from "@/components/PaymentIcon";
 import { FulfillmentToggle } from "@/components/FulfillmentToggle";
 import { useCart } from "@/contexts/CartContext";
 import { useToast } from "@/hooks/use-toast";
@@ -13,7 +13,11 @@ import { createSiteOrder } from "@/services/orders";
 import { buildOrderMessage, openWhatsApp } from "@/services/whatsapp";
 import { trackEvent } from "@/hooks/use-analytics";
 
-const paymentOptions = ["PIX", "Dinheiro", "Cartão"];
+const paymentOptions: { value: PaymentMethodKey; label: string }[] = [
+  { value: "pix", label: "PIX" },
+  { value: "cash", label: "Dinheiro" },
+  { value: "card", label: "Cartão" },
+];
 
 interface CheckoutFormProps {
   onBack: () => void;
@@ -132,11 +136,27 @@ export function CheckoutForm({ onBack, onSuccess }: CheckoutFormProps) {
         </>
       )}
       <div>
-        <Label>Pagamento *</Label>
-        <Select value={pagamento} onValueChange={setPagamento}>
-          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-          <SelectContent>{paymentOptions.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
-        </Select>
+        <Label className="mb-2 block">Pagamento *</Label>
+        <div className="grid grid-cols-3 gap-2">
+          {paymentOptions.map((opt) => {
+            const selected = pagamento === opt.label;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setPagamento(opt.label)}
+                className={`flex flex-col items-center gap-1 rounded-lg border-2 px-2 py-2.5 text-sm font-medium transition-colors ${
+                  selected
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-primary/30 bg-background text-foreground hover:border-primary/60"
+                }`}
+              >
+                <PaymentIcon method={opt.value} size={22} />
+                <span className="text-xs">{opt.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div><Label htmlFor="c-obs">Observações</Label><Textarea id="c-obs" value={obs} onChange={(e) => setObs(e.target.value)} rows={2} /></div>
       {fulfillmentType === "delivery" && (
