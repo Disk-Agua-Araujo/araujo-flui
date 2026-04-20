@@ -34,23 +34,34 @@ export function Contact() {
           <h2 className="text-2xl md:text-3xl font-bold text-center mb-8">Contato</h2>
         </ScrollReveal>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto mb-12">
-          {contactCards.map((c, i) => (
-            <ScrollReveal key={i} animation="fadeUp" delay={Math.min(i, 5) * 100}>
-              <Card className="hover:shadow-md transition-shadow border-primary/10 h-full">
-                <CardContent className="p-4 flex flex-col items-center text-center gap-2 h-full">
-                  <c.icon className="h-6 w-6 text-primary" />
-                  <span className="font-semibold text-sm">{c.label}</span>
-                  <span className="text-xs text-muted-foreground whitespace-pre-line">{c.value}</span>
-                  {c.action && (
-                    <Button variant="ghost" size="sm" className="mt-1" asChild onClick={() => c.event && trackEvent(c.event, { source: "contact_card" })}>
-                      <a href={c.action} target={c.external ? "_blank" : undefined} rel={c.external ? "noopener noreferrer" : undefined}>Abrir</a>
-                    </Button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto mb-12 items-stretch">
+          {contactCards.map((c, i) => {
+            const CardWrapper = c.action ? 'a' : 'div';
+            const cardProps = c.action ? {
+              href: c.action,
+              target: c.external ? "_blank" : undefined,
+              rel: c.external ? "noopener noreferrer" : undefined,
+              onClick: () => c.event && trackEvent(c.event, { source: "contact_card" })
+            } : {};
+            
+            return (
+              <ScrollReveal key={i} animation="fadeUp" delay={Math.min(i, 5) * 100}>
+                <CardWrapper
+                  {...cardProps}
+                  className={cn(
+                    "block h-full rounded-lg border border-primary/10 bg-card text-card-foreground shadow-sm relative overflow-hidden",
+                    c.action && "cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
                   )}
-                </CardContent>
-              </Card>
-            </ScrollReveal>
-          ))}
+                >
+                  <CardContent className="p-4 flex flex-col items-center justify-center text-center gap-2 h-full">
+                    <c.icon className="h-6 w-6 text-primary" />
+                    <span className="font-semibold text-sm">{c.label}</span>
+                    <span className="text-xs text-muted-foreground whitespace-pre-line">{c.value}</span>
+                  </CardContent>
+                </CardWrapper>
+              </ScrollReveal>
+            );
+          })}
         </div>
 
         <ScrollReveal animation="fadeIn" delay={200}>
