@@ -68,11 +68,11 @@ export const business = {
     },
     {
       id: "agua-gas",
-      name: "Água com Gás (opção)",
+      name: "Água com Gás 510ml",
       description: "Água mineral gaseificada para quem prefere com gás.",
       icon: "sparkles" as const,
-      image: null,
-      imageAlt: "Água com Gás",
+      image: "/products/agua-com-gas-510ml.png",
+      imageAlt: "Garrafa Bioleve Água com Gás 510ml",
     },
     {
       id: "suporte",

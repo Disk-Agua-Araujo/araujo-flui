@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { MessageCircle, Plus, Minus, Copy, Check, Loader2 } from "lucide-react";
+import { PaymentIcon } from "@/components/PaymentIcon";
 import { ProductImage } from "@/components/ProductImage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,10 +14,10 @@ import { useToast } from "@/hooks/use-toast";
 
 type PaymentMethod = "cash" | "pix" | "card";
 
-const PAYMENT_OPTIONS: { value: PaymentMethod; emoji: string; label: string }[] = [
-  { value: "cash", emoji: "💵", label: "Dinheiro" },
-  { value: "pix", emoji: "📱", label: "PIX" },
-  { value: "card", emoji: "💳", label: "Cartão" },
+const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
+  { value: "cash", label: "Dinheiro" },
+  { value: "pix", label: "PIX" },
+  { value: "card", label: "Cartão" },
 ];
 
 const paymentLabel = (v: PaymentMethod) =>

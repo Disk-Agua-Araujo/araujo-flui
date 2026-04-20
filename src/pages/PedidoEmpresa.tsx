@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon, MessageCircle, MapPin, Minus, Plus, Loader2, Copy, Check } from "lucide-react";
+import { PaymentIcon } from "@/components/PaymentIcon";
 import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
 import { validateDeliveryDistance, MAX_DELIVERY_KM } from "@/lib/geo";
@@ -36,10 +37,10 @@ const horarios = [
 
 type PaymentMethod = "cash" | "pix" | "card";
 
-const PAYMENT_OPTIONS: { value: PaymentMethod; emoji: string; label: string }[] = [
-  { value: "cash", emoji: "💵", label: "Dinheiro" },
-  { value: "pix", emoji: "📱", label: "PIX" },
-  { value: "card", emoji: "💳", label: "Cartão" },
+const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
+  { value: "cash", label: "Dinheiro" },
+  { value: "pix", label: "PIX" },
+  { value: "card", label: "Cartão" },
 ];
 
 const paymentLabel = (v: PaymentMethod) =>

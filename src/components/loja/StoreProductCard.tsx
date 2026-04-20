@@ -26,7 +26,10 @@ export function StoreProductCard({ product, qty, onAdd, onIncrease, onDecrease }
       </div>
       <div className="flex-1 flex flex-col p-3 gap-2">
         <h3 className="text-sm md:text-base font-semibold text-foreground line-clamp-2">{product.name}</h3>
-        <p className="text-base md:text-lg font-bold text-primary mt-auto">{product.price_text}</p>
+        {product.price_text && product.price_text.trim().toLowerCase() !== "consulte no whatsapp" && (
+          <p className="text-base md:text-lg font-bold text-primary mt-auto">{product.price_text}</p>
+        )}
+        <div className="mt-auto" />
         {inCart ? (
           <div className="flex items-center justify-between gap-1 border border-primary/20 rounded-md p-1 bg-primary/5">
             <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" onClick={onDecrease} aria-label="Diminuir quantidade">
