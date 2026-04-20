@@ -381,7 +381,7 @@ export default function PedidoEmpresa() {
                         : "border-primary/30 bg-background text-foreground hover:border-primary/60"
                     }`}
                   >
-                    <span className="text-lg">{opt.emoji}</span>
+                    <PaymentIcon method={opt.value} size={22} />
                     <span className="text-xs">{opt.label}</span>
                   </button>
                 ))}
