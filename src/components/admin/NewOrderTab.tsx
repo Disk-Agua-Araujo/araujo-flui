@@ -14,6 +14,7 @@ import { FulfillmentToggle } from "@/components/FulfillmentToggle";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon, Minus, Plus, Save, Search, X, Loader2 } from "lucide-react";
+import { PaymentIcon } from "@/components/PaymentIcon";
 import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
 import { useToast } from "@/hooks/use-toast";
@@ -595,20 +596,22 @@ export function NewOrderTab() {
         <CardContent className="space-y-4">
           <div className="flex gap-2 flex-wrap">
             {[
-              { value: "cash", label: "💵 Dinheiro" },
-              { value: "pix", label: "📱 PIX" },
-              { value: "card", label: "💳 Cartão" },
+              { value: "cash", label: "Dinheiro" },
+              { value: "pix", label: "PIX" },
+              { value: "card", label: "Cartão" },
             ].map((opt) => (
               <Button
                 key={opt.value}
                 type="button"
                 variant={paymentMethod === opt.value ? "default" : "outline"}
                 size="sm"
+                className="gap-1.5"
                 onClick={() => {
                   setPaymentMethod(paymentMethod === opt.value ? "" : opt.value);
                   if (opt.value !== "cash") setChangeFor("");
                 }}
               >
+                <PaymentIcon method={opt.value} size={16} />
                 {opt.label}
               </Button>
             ))}

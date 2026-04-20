@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { openWhatsApp, buildOrderMessage } from "@/services/whatsapp";
 import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2, Trash2, Pencil, CalendarClock, Bell } from "lucide-react";
+import { PaymentIcon, PAYMENT_LABELS } from "@/components/PaymentIcon";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
@@ -31,10 +32,21 @@ const statusColors: Record<string, string> = {
 };
 
 const paymentLabels: Record<string, string> = {
-  cash: "💵 Dinheiro",
-  pix: "📱 PIX",
-  card: "💳 Cartão",
+  cash: "Dinheiro",
+  pix: "PIX",
+  card: "Cartão",
 };
+
+function PaymentBadge({ method, className }: { method: string | null | undefined; className?: string }) {
+  if (!method) return null;
+  const label = paymentLabels[method] || method;
+  return (
+    <Badge variant="outline" className={`text-xs gap-1 ${className ?? ""}`}>
+      <PaymentIcon method={method} size={12} />
+      {label}
+    </Badge>
+  );
+}
 
 const statusLabels: Record<string, string> = {
   novo: "Novo",
@@ -562,9 +574,7 @@ function OrderCard({
             </SelectContent>
           </Select>
 
-          {o.payment_method && (
-            <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
-          )}
+          {o.payment_method && <PaymentBadge method={o.payment_method} />}
           <PixBadge order={o} onToggle={onPixToggle} />
         </div>
 
@@ -836,9 +846,9 @@ function EditOrderModal({
               <Select value={paymentMethod} onValueChange={setPaymentMethod}>
                 <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cash">💵 Dinheiro</SelectItem>
-                  <SelectItem value="pix">📱 PIX</SelectItem>
-                  <SelectItem value="card">💳 Cartão</SelectItem>
+                  <SelectItem value="cash"><span className="inline-flex items-center gap-2"><PaymentIcon method="cash" size={14} /> Dinheiro</span></SelectItem>
+                  <SelectItem value="pix"><span className="inline-flex items-center gap-2"><PaymentIcon method="pix" size={14} /> PIX</span></SelectItem>
+                  <SelectItem value="card"><span className="inline-flex items-center gap-2"><PaymentIcon method="card" size={14} /> Cartão</span></SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1176,9 +1186,9 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Pagamento" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Pgto: Todos</SelectItem>
-            <SelectItem value="cash">💵 Dinheiro</SelectItem>
-            <SelectItem value="pix">📱 PIX</SelectItem>
-            <SelectItem value="card">💳 Cartão</SelectItem>
+            <SelectItem value="cash"><span className="inline-flex items-center gap-2"><PaymentIcon method="cash" size={14} /> Dinheiro</span></SelectItem>
+            <SelectItem value="pix"><span className="inline-flex items-center gap-2"><PaymentIcon method="pix" size={14} /> PIX</span></SelectItem>
+            <SelectItem value="card"><span className="inline-flex items-center gap-2"><PaymentIcon method="card" size={14} /> Cartão</span></SelectItem>
           </SelectContent>
         </Select>
 
@@ -1311,7 +1321,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                       <TableCell className="text-xs">
                         <div className="flex flex-col gap-1">
                           {o.payment_method ? (
-                            <Badge variant="outline" className="text-xs">{paymentLabels[o.payment_method] || o.payment_method}</Badge>
+                            <PaymentBadge method={o.payment_method} />
                           ) : "—"}
                           <PixBadge order={o} onToggle={() => togglePixPaid(o.id)} />
                         </div>
@@ -1397,7 +1407,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                   <ScheduledBadge order={selectedOrder} />
                 </div>
               )}
-              <p><strong>Pagamento:</strong> {selectedOrder.payment_method ? (paymentLabels[selectedOrder.payment_method] || selectedOrder.payment_method) : "—"}</p>
+              <div className="flex items-center gap-2"><strong>Pagamento:</strong> {selectedOrder.payment_method ? <PaymentBadge method={selectedOrder.payment_method} /> : "—"}</div>
               {selectedOrder.total_amount != null && (
                 <p><strong>Total:</strong> {formatCurrency(selectedOrder.total_amount)}</p>
               )}
