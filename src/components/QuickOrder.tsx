@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { MessageCircle, Plus, Minus, Copy, Check, Loader2 } from "lucide-react";
+import { MessageCircle, Plus, Minus, Copy, Check, Loader2, ShoppingCart } from "lucide-react";
 import { PaymentIcon } from "@/components/PaymentIcon";
 import { ProductImage } from "@/components/ProductImage";
 import { Button } from "@/components/ui/button";
@@ -177,7 +177,10 @@ export function QuickOrder() {
       <div className="container max-w-lg">
         <Card className="shadow-lg border-primary/10">
           <CardHeader>
-            <CardTitle className="text-center text-primary text-xl">⚡ Pedido rápido</CardTitle>
+            <CardTitle className="text-center text-primary text-xl flex items-center justify-center gap-2">
+              <ShoppingCart size={22} className="text-primary" />
+              Pedido rápido
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Products grouped by category */}
