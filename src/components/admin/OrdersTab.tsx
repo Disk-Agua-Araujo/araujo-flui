@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { openWhatsApp, buildOrderMessage } from "@/services/whatsapp";
 import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2, Trash2, Pencil, CalendarClock, Bell } from "lucide-react";
+import { PaymentIcon, PAYMENT_LABELS } from "@/components/PaymentIcon";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
@@ -31,10 +32,21 @@ const statusColors: Record<string, string> = {
 };
 
 const paymentLabels: Record<string, string> = {
-  cash: "💵 Dinheiro",
-  pix: "📱 PIX",
-  card: "💳 Cartão",
+  cash: "Dinheiro",
+  pix: "PIX",
+  card: "Cartão",
 };
+
+function PaymentBadge({ method, className }: { method: string | null | undefined; className?: string }) {
+  if (!method) return null;
+  const label = paymentLabels[method] || method;
+  return (
+    <Badge variant="outline" className={`text-xs gap-1 ${className ?? ""}`}>
+      <PaymentIcon method={method} size={12} />
+      {label}
+    </Badge>
+  );
+}
 
 const statusLabels: Record<string, string> = {
   novo: "Novo",
