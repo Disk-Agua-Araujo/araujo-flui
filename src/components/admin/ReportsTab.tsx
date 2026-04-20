@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Download, Package, ClipboardList, TrendingUp, CalendarIcon } from "lucide-react";
+import { PaymentIcon } from "@/components/PaymentIcon";
 import { format, startOfMonth, startOfWeek, startOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -114,9 +115,9 @@ export function ReportsTab() {
   }, [revenueOrders]);
 
   const chartData = useMemo(() => [
-    { name: "💵 Dinheiro", value: revenueStats.byMethod.cash.total, color: "#4CAF50" },
-    { name: "📱 PIX", value: revenueStats.byMethod.pix.total, color: "#2196F3" },
-    { name: "💳 Cartão", value: revenueStats.byMethod.card.total, color: "#9C27B0" },
+    { name: "Dinheiro", value: revenueStats.byMethod.cash.total, color: "#4CAF50" },
+    { name: "PIX", value: revenueStats.byMethod.pix.total, color: "#2196F3" },
+    { name: "Cartão", value: revenueStats.byMethod.card.total, color: "#9C27B0" },
   ], [revenueStats]);
 
   const stats = useMemo(() => {
@@ -308,24 +309,24 @@ export function ReportsTab() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="border-l-4" style={{ borderLeftColor: "#4CAF50" }}>
               <CardContent className="pt-4 text-center">
-                <p className="text-lg">💵</p>
-                <p className="text-sm font-medium">Dinheiro</p>
+                <PaymentIcon method="cash" size={24} className="mx-auto text-[#4CAF50]" />
+                <p className="text-sm font-medium mt-1">Dinheiro</p>
                 <p className="text-xl font-bold">{formatCurrency(revenueStats.byMethod.cash.total)}</p>
                 <p className="text-xs text-muted-foreground">{revenueStats.byMethod.cash.count} pedido{revenueStats.byMethod.cash.count !== 1 ? "s" : ""}</p>
               </CardContent>
             </Card>
             <Card className="border-l-4" style={{ borderLeftColor: "#2196F3" }}>
               <CardContent className="pt-4 text-center">
-                <p className="text-lg">📱</p>
-                <p className="text-sm font-medium">PIX</p>
+                <PaymentIcon method="pix" size={24} className="mx-auto text-[#2196F3]" />
+                <p className="text-sm font-medium mt-1">PIX</p>
                 <p className="text-xl font-bold">{formatCurrency(revenueStats.byMethod.pix.total)}</p>
                 <p className="text-xs text-muted-foreground">{revenueStats.byMethod.pix.count} pedido{revenueStats.byMethod.pix.count !== 1 ? "s" : ""}</p>
               </CardContent>
             </Card>
             <Card className="border-l-4" style={{ borderLeftColor: "#9C27B0" }}>
               <CardContent className="pt-4 text-center">
-                <p className="text-lg">💳</p>
-                <p className="text-sm font-medium">Cartão</p>
+                <PaymentIcon method="card" size={24} className="mx-auto text-[#9C27B0]" />
+                <p className="text-sm font-medium mt-1">Cartão</p>
                 <p className="text-xl font-bold">{formatCurrency(revenueStats.byMethod.card.total)}</p>
                 <p className="text-xs text-muted-foreground">{revenueStats.byMethod.card.count} pedido{revenueStats.byMethod.card.count !== 1 ? "s" : ""}</p>
               </CardContent>
