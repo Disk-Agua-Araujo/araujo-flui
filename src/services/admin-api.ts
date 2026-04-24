@@ -138,8 +138,27 @@ export type DeliveryRider = {
   created_at: string;
 };
 
+export type OrdersListPayload = {
+  page?: number;
+  pageSize?: number;
+};
+
+export type OrdersListResult = {
+  rows: AdminOrderRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export type ReportsSummary = {
+  summary: { total_orders: number; delivered: number; cancelled: number; total_items: number };
+  revenue: { payment_method: string; total: number; order_count: number }[];
+  products: { product_name: string; qty: number }[];
+};
+
 export const adminApi = {
-  listOrders: () => callAdminApi<AdminOrderRow[]>("orders.list"),
+  listOrders: (payload?: OrdersListPayload) =>
+    callAdminApi<OrdersListResult>("orders.list", payload ?? {}),
   updateOrderStatus: (orderId: string, status: string) =>
     callAdminApi<{ ok: boolean }>("orders.updateStatus", { orderId, status }),
 
@@ -208,7 +227,11 @@ export const adminApi = {
 
   listCategories: () => callAdminApi<AdminCategoryRow[]>("categories.list"),
 
-  listReportsOrders: () => callAdminApi<AdminOrderRow[]>("reports.orders"),
+  listReportsOrders: (payload?: { dateStart?: string; dateEnd?: string }) =>
+    callAdminApi<AdminOrderRow[]>("reports.orders", payload ?? {}),
+
+  getReportsSummary: (dateStart: string, dateEnd: string) =>
+    callAdminApi<ReportsSummary>("reports.summary", { dateStart, dateEnd }),
 
   updateOrder: (payload: {
     orderId: string;
