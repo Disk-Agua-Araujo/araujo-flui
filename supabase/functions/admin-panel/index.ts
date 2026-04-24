@@ -594,30 +594,91 @@ serve(async (req) => {
       return json({ ok: true });
     }
 
+    if (action === "reports.summary") {
+      if (admin.role !== "admin_owner") {
+        return json({ error: "Acesso negado. Apenas o proprietário pode acessar relatórios." }, 403);
+      }
+      const dateStart = payload?.dateStart as string;
+      const dateEnd = payload?.dateEnd as string;
+      if (!dateStart || !dateEnd) throw new Error("Período inválido.");
+
+      const [summaryRes, revenueRes, productsRes] = await Promise.all([
+        adminClient.rpc("get_orders_summary", { date_start: dateStart, date_end: dateEnd }),
+        adminClient.rpc("get_revenue_by_payment_method", { date_start: dateStart, date_end: dateEnd }),
+        adminClient.rpc("get_sales_by_product", { date_start: dateStart, date_end: dateEnd }),
+      ]);
+
+      if (summaryRes.error) throw summaryRes.error;
+      if (revenueRes.error) throw revenueRes.error;
+      if (productsRes.error) throw productsRes.error;
+
+      const summary = (summaryRes.data && summaryRes.data[0]) || { total_orders: 0, delivered: 0, cancelled: 0, total_items: 0 };
+
+      return json({
+        data: {
+          summary: {
+            total_orders: Number(summary.total_orders ?? 0),
+            delivered: Number(summary.delivered ?? 0),
+            cancelled: Number(summary.cancelled ?? 0),
+            total_items: Number(summary.total_items ?? 0),
+          },
+          revenue: (revenueRes.data || []).map((r: any) => ({
+            payment_method: r.payment_method,
+            total: Number(r.total ?? 0),
+            order_count: Number(r.order_count ?? 0),
+          })),
+          products: (productsRes.data || []).map((p: any) => ({
+            product_name: p.product_name,
+            qty: Number(p.qty ?? 0),
+          })),
+        },
+      });
+    }
+
     if (action === "reports.orders") {
       if (admin.role !== "admin_owner") {
         return json({ error: "Acesso negado. Apenas o proprietário pode acessar relatórios." }, 403);
       }
-      const { data, error } = await adminClient
-        .from("orders")
-        .select(`
-          id, channel, status, delivery_date, delivery_time, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, notes, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
-          customers(id, name, phone, cnpj, type),
-          addresses(street, number, neighborhood, city, complement, reference),
-          order_items(qty, product_id, products(name))
-        `)
-        .order("created_at", { ascending: false })
-        .limit(1000);
-      if (error) throw error;
+
+      const dateStart = payload?.dateStart as string | undefined;
+      const dateEnd = payload?.dateEnd as string | undefined;
+
+      // Paginate internally to bypass the 1000-row cap
+      const BATCH = 1000;
+      const HARD_CAP = 50000; // safety cap
+      const all: any[] = [];
+      let from = 0;
+      while (from < HARD_CAP) {
+        let q = adminClient
+          .from("orders")
+          .select(`
+            id, channel, status, delivery_date, delivery_time, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, notes, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
+            customers(id, name, phone, cnpj, type),
+            addresses(street, number, neighborhood, city, complement, reference),
+            order_items(qty, product_id, products(name))
+          `)
+          .order("created_at", { ascending: false })
+          .range(from, from + BATCH - 1);
+
+        if (dateStart) q = q.gte("created_at", `${dateStart}T00:00:00`);
+        if (dateEnd) q = q.lte("created_at", `${dateEnd}T23:59:59.999`);
+
+        const { data, error } = await q;
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < BATCH) break;
+        from += BATCH;
+      }
 
       // Enrich with rider name
-      const riderIds = [...new Set((data || []).map((o: any) => o.rider_id).filter(Boolean))];
+      const riderIds = [...new Set(all.map((o: any) => o.rider_id).filter(Boolean))];
       let ridersMap: Record<string, string> = {};
       if (riderIds.length > 0) {
         const { data: ridersData } = await adminClient.from("delivery_riders").select("id, name").in("id", riderIds);
         (ridersData || []).forEach((r: any) => { ridersMap[r.id] = r.name; });
       }
-      const enriched = (data || []).map((o: any) => ({ ...o, rider_name: o.rider_id ? ridersMap[o.rider_id] || "—" : undefined }));
+      const enriched = all.map((o: any) => ({ ...o, rider_name: o.rider_id ? ridersMap[o.rider_id] || "—" : undefined }));
       return json({ data: enriched });
     }
 
