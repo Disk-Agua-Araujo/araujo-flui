@@ -1,16 +1,16 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Download, Package, ClipboardList, TrendingUp, CalendarIcon } from "lucide-react";
+import { Download, Package, ClipboardList, TrendingUp, CalendarIcon, Loader2 } from "lucide-react";
 import { PaymentIcon } from "@/components/PaymentIcon";
 import { format, startOfMonth, startOfWeek, startOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { adminApi, type AdminOrderRow } from "@/services/admin-api";
+import { adminApi, type AdminOrderRow, type ReportsSummary } from "@/services/admin-api";
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from "recharts";
 
 function formatCurrency(value: number) {
@@ -23,68 +23,87 @@ const paymentLabels: Record<string, string> = {
   card: "Cartão",
 };
 
+type PeriodKey = "today" | "week" | "month" | "all";
+
+function periodToRange(period: PeriodKey | "custom", from?: Date, to?: Date) {
+  const now = new Date();
+  if (period === "custom" && from) {
+    return { start: startOfDay(from), end: to ?? now };
+  }
+  if (period === "today") return { start: startOfDay(now), end: now };
+  if (period === "week") return { start: startOfWeek(now, { weekStartsOn: 1 }), end: now };
+  if (period === "month") return { start: startOfMonth(now), end: now };
+  return { start: subDays(now, 365 * 5), end: now }; // "all" → 5 years window
+}
+
+function fmtDate(d: Date) {
+  return format(d, "yyyy-MM-dd");
+}
+
 export function ReportsTab() {
   const { toast } = useToast();
-  const [orders, setOrders] = useState<AdminOrderRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState("month");
+  const [period, setPeriod] = useState<PeriodKey>("month");
 
   // Revenue section independent filter
-  const [revPeriod, setRevPeriod] = useState("month");
+  const [revPeriod, setRevPeriod] = useState<PeriodKey | "custom">("month");
   const [revDateFrom, setRevDateFrom] = useState<Date | undefined>();
   const [revDateTo, setRevDateTo] = useState<Date | undefined>();
   const [customApplied, setCustomApplied] = useState(false);
 
+  // Aggregated data from RPC (no row limit)
+  const [statsData, setStatsData] = useState<ReportsSummary | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  const [revenueData, setRevenueData] = useState<ReportsSummary | null>(null);
+  const [revenueLoading, setRevenueLoading] = useState(true);
+
+  // CSV export state
+  const [exporting, setExporting] = useState(false);
+
+  // Load main stats whenever the top-level period changes
   useEffect(() => {
-    const fetchOrders = async () => {
-      setLoading(true);
+    let cancelled = false;
+    const load = async () => {
+      setStatsLoading(true);
       try {
-        const data = await adminApi.listReportsOrders();
-        setOrders(data ?? []);
+        const { start, end } = periodToRange(period);
+        const data = await adminApi.getReportsSummary(fmtDate(start), fmtDate(end));
+        if (!cancelled) setStatsData(data);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Erro ao carregar relatórios";
-        toast({ title: "Erro", description: message, variant: "destructive" });
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : "Erro ao carregar relatórios";
+          toast({ title: "Erro", description: message, variant: "destructive" });
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setStatsLoading(false);
       }
     };
-    fetchOrders();
-  }, []);
+    load();
+    return () => { cancelled = true; };
+  }, [period, toast]);
 
-  const getOrderDate = (o: AdminOrderRow) => {
-    // Use scheduled_date when available (for billing purposes), otherwise created_at
-    return (o as any).scheduled_date
-      ? new Date(`${(o as any).scheduled_date}T12:00:00`)
-      : new Date(o.created_at);
-  };
-
-  const filteredOrders = useMemo(() => {
-    const now = new Date();
-    let cutoff: Date;
-    if (period === "today") cutoff = startOfDay(now);
-    else if (period === "week") cutoff = startOfWeek(now, { weekStartsOn: 1 });
-    else if (period === "month") cutoff = startOfMonth(now);
-    else cutoff = subDays(now, 365);
-    return orders.filter((o) => getOrderDate(o) >= cutoff);
-  }, [orders, period]);
-
-  // Revenue filtered orders (independent filter)
-  const revenueOrders = useMemo(() => {
-    const now = new Date();
-    if (revPeriod === "custom" && customApplied && revDateFrom) {
-      const from = startOfDay(revDateFrom);
-      const to = revDateTo ? new Date(startOfDay(revDateTo).getTime() + 86400000 - 1) : new Date();
-      return orders.filter((o) => {
-        const d = getOrderDate(o);
-        return d >= from && d <= to;
-      });
-    }
-    let cutoff: Date;
-    if (revPeriod === "today") cutoff = startOfDay(now);
-    else if (revPeriod === "week") cutoff = startOfWeek(now, { weekStartsOn: 1 });
-    else cutoff = startOfMonth(now);
-    return orders.filter((o) => getOrderDate(o) >= cutoff);
-  }, [orders, revPeriod, revDateFrom, revDateTo, customApplied]);
+  // Load revenue stats whenever revenue filter changes
+  useEffect(() => {
+    if (revPeriod === "custom" && (!customApplied || !revDateFrom)) return;
+    let cancelled = false;
+    const load = async () => {
+      setRevenueLoading(true);
+      try {
+        const { start, end } = periodToRange(revPeriod, revDateFrom, revDateTo);
+        const data = await adminApi.getReportsSummary(fmtDate(start), fmtDate(end));
+        if (!cancelled) setRevenueData(data);
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : "Erro ao carregar faturamento";
+          toast({ title: "Erro", description: message, variant: "destructive" });
+        }
+      } finally {
+        if (!cancelled) setRevenueLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [revPeriod, revDateFrom, revDateTo, customApplied, toast]);
 
   const revenuePeriodLabel = useMemo(() => {
     if (revPeriod === "custom" && customApplied && revDateFrom) {
@@ -97,116 +116,117 @@ export function ReportsTab() {
     return `Exibindo: ${format(startOfMonth(new Date()), "dd/MM/yyyy")} a ${format(new Date(), "dd/MM/yyyy")}`;
   }, [revPeriod, revDateFrom, revDateTo, customApplied]);
 
-  const revenueStats = useMemo(() => {
-    const methods = ["cash", "pix", "card"] as const;
-    const result: Record<string, { total: number; count: number }> = {};
-    methods.forEach((m) => { result[m] = { total: 0, count: 0 }; });
-
-    revenueOrders.forEach((o) => {
-      const method = o.payment_method;
-      if (method && result[method]) {
-        result[method].count++;
-        result[method].total += o.total_amount ?? 0;
+  const revenueByMethod = useMemo(() => {
+    const map: Record<string, { total: number; count: number }> = {
+      cash: { total: 0, count: 0 },
+      pix: { total: 0, count: 0 },
+      card: { total: 0, count: 0 },
+    };
+    (revenueData?.revenue ?? []).forEach((r) => {
+      if (r.payment_method && map[r.payment_method]) {
+        map[r.payment_method] = { total: r.total, count: r.order_count };
       }
     });
-
-    const grandTotal = methods.reduce((s, m) => s + result[m].total, 0);
-    return { byMethod: result, grandTotal };
-  }, [revenueOrders]);
+    const grandTotal = map.cash.total + map.pix.total + map.card.total;
+    return { byMethod: map, grandTotal };
+  }, [revenueData]);
 
   const chartData = useMemo(() => [
-    { name: "Dinheiro", value: revenueStats.byMethod.cash.total, color: "#4CAF50" },
-    { name: "PIX", value: revenueStats.byMethod.pix.total, color: "#2196F3" },
-    { name: "Cartão", value: revenueStats.byMethod.card.total, color: "#9C27B0" },
-  ], [revenueStats]);
+    { name: "Dinheiro", value: revenueByMethod.byMethod.cash.total, color: "#4CAF50" },
+    { name: "PIX", value: revenueByMethod.byMethod.pix.total, color: "#2196F3" },
+    { name: "Cartão", value: revenueByMethod.byMethod.card.total, color: "#9C27B0" },
+  ], [revenueByMethod]);
 
   const stats = useMemo(() => {
-    const total = filteredOrders.length;
-    const entregues = filteredOrders.filter((o) => o.status === "entregue").length;
-    const cancelados = filteredOrders.filter((o) => o.status === "cancelado").length;
-    const totalItems = filteredOrders.reduce(
-      (sum, o) => sum + o.order_items.reduce((s, i) => s + i.qty, 0),
-      0,
-    );
+    return {
+      total: statsData?.summary.total_orders ?? 0,
+      entregues: statsData?.summary.delivered ?? 0,
+      cancelados: statsData?.summary.cancelled ?? 0,
+      totalItems: statsData?.summary.total_items ?? 0,
+      productBreakdown: (statsData?.products ?? []).map((p) => [p.product_name, p.qty] as [string, number]),
+    };
+  }, [statsData]);
 
-    const productMap: Record<string, number> = {};
-    filteredOrders.forEach((o) =>
-      o.order_items.forEach((i) => {
-        const name = i.products?.name ?? "Desconhecido";
-        productMap[name] = (productMap[name] || 0) + i.qty;
-      }),
-    );
+  const exportCSV = useCallback(async () => {
+    setExporting(true);
+    try {
+      const { start, end } = periodToRange(period);
+      const orders: AdminOrderRow[] = await adminApi.listReportsOrders({
+        dateStart: fmtDate(start),
+        dateEnd: fmtDate(end),
+      });
 
-    const productBreakdown = Object.entries(productMap).sort(([, a], [, b]) => b - a);
-    return { total, entregues, cancelados, totalItems, productBreakdown };
-  }, [filteredOrders]);
-
-  const exportCSV = () => {
-    const BOM = "\uFEFF";
-    const header = [
-      "ID do Pedido", "Data do Pedido", "Hora do Pedido", "Nome do Cliente", "Telefone",
-      "Tipo (PF/PJ)", "CNPJ", "Endereço", "Bairro", "Cidade", "Complemento", "Referência",
-      "Itens", "Qtd Total de Galões", "Canal", "Tipo de Atendimento", "Data de Entrega",
-      "Hora de Entrega", "Status", "Forma de Pagamento", "Valor Total", "Troco Para",
-      "PIX Pago", "Motoboy", "Observações", "Última Edição"
-    ].join(";");
-
-    const rows = filteredOrders.map((o) => {
-      const createdAt = new Date(o.created_at);
-      const totalGaloes = o.order_items.reduce((s, i) => s + i.qty, 0);
-      const payLabel = o.payment_method ? (paymentLabels[o.payment_method] || o.payment_method) : "—";
-      const pixPago = o.payment_method === "pix" ? (o.pix_paid ? "Sim" : "Não") : "N/A";
-      const riderName = (o as any).rider_name || "—";
-      const updatedAt = (o as any).updated_at
-        ? format(new Date((o as any).updated_at), "dd/MM/yyyy HH:mm")
-        : "—";
-
-      return [
-        o.id.slice(0, 8),
-        format(createdAt, "dd/MM/yyyy"),
-        format(createdAt, "HH:mm"),
-        `"${o.customers?.name ?? "Sem cadastro"}"`,
-        o.customers?.phone || "—",
-        o.customers?.type || "—",
-        o.customers?.cnpj || "—",
-        o.addresses ? `"${o.addresses.street}, ${o.addresses.number}"` : "—",
-        o.addresses?.neighborhood || "—",
-        o.addresses?.city || "—",
-        o.addresses?.complement || "—",
-        (o.addresses as any)?.reference || "—",
-        `"${o.order_items.map((i) => `${i.products?.name ?? "?"} x${i.qty}`).join("; ")}"`,
-        totalGaloes,
-        o.channel,
-        o.fulfillment_type === "pickup" ? "Retirada" : "Entrega",
-        o.delivery_date ?? "—",
-        o.delivery_time ?? "—",
-        o.status,
-        payLabel,
-        o.total_amount != null ? formatCurrency(o.total_amount) : "—",
-        o.change_for != null ? formatCurrency(o.change_for) : "—",
-        pixPago,
-        riderName,
-        o.notes ? `"${o.notes.replace(/"/g, '""')}"` : "—",
-        updatedAt,
+      const BOM = "\uFEFF";
+      const header = [
+        "ID do Pedido", "Data do Pedido", "Hora do Pedido", "Nome do Cliente", "Telefone",
+        "Tipo (PF/PJ)", "CNPJ", "Endereço", "Bairro", "Cidade", "Complemento", "Referência",
+        "Itens", "Qtd Total de Galões", "Canal", "Tipo de Atendimento", "Data de Entrega",
+        "Hora de Entrega", "Status", "Forma de Pagamento", "Valor Total", "Troco Para",
+        "PIX Pago", "Motoboy", "Observações", "Última Edição"
       ].join(";");
-    }).join("\n");
 
-    const blob = new Blob([BOM + header + "\n" + rows], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `relatorio-disk-agua-${format(new Date(), "dd-MM-yyyy")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast({ title: "CSV exportado!" });
-  };
+      const rows = orders.map((o) => {
+        const createdAt = new Date(o.created_at);
+        const totalGaloes = o.order_items.reduce((s, i) => s + i.qty, 0);
+        const payLabel = o.payment_method ? (paymentLabels[o.payment_method] || o.payment_method) : "—";
+        const pixPago = o.payment_method === "pix" ? (o.pix_paid ? "Sim" : "Não") : "N/A";
+        const riderName = (o as { rider_name?: string }).rider_name || "—";
+        const updatedAt = o.updated_at
+          ? format(new Date(o.updated_at), "dd/MM/yyyy HH:mm")
+          : "—";
+
+        return [
+          o.id.slice(0, 8),
+          format(createdAt, "dd/MM/yyyy"),
+          format(createdAt, "HH:mm"),
+          `"${o.customers?.name ?? "Sem cadastro"}"`,
+          o.customers?.phone || "—",
+          o.customers?.type || "—",
+          o.customers?.cnpj || "—",
+          o.addresses ? `"${o.addresses.street}, ${o.addresses.number}"` : "—",
+          o.addresses?.neighborhood || "—",
+          o.addresses?.city || "—",
+          o.addresses?.complement || "—",
+          o.addresses?.reference || "—",
+          `"${o.order_items.map((i) => `${i.products?.name ?? "?"} x${i.qty}`).join("; ")}"`,
+          totalGaloes,
+          o.channel,
+          o.fulfillment_type === "pickup" ? "Retirada" : "Entrega",
+          o.delivery_date ?? "—",
+          o.delivery_time ?? "—",
+          o.status,
+          payLabel,
+          o.total_amount != null ? formatCurrency(o.total_amount) : "—",
+          o.change_for != null ? formatCurrency(o.change_for) : "—",
+          pixPago,
+          riderName,
+          o.notes ? `"${o.notes.replace(/"/g, '""')}"` : "—",
+          updatedAt,
+        ].join(";");
+      }).join("\n");
+
+      const blob = new Blob([BOM + header + "\n" + rows], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `relatorio-disk-agua-${format(new Date(), "dd-MM-yyyy")}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: `CSV exportado! (${orders.length} pedidos)` });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao exportar";
+      toast({ title: "Erro", description: message, variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  }, [period, toast]);
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold">Relatórios</h2>
         <div className="flex gap-2">
-          <Select value={period} onValueChange={setPeriod}>
+          <Select value={period} onValueChange={(v) => setPeriod(v as PeriodKey)}>
             <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="today">Hoje</SelectItem>
@@ -215,8 +235,9 @@ export function ReportsTab() {
               <SelectItem value="all">Tudo</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={exportCSV}>
-            <Download className="h-4 w-4 mr-1" /> CSV
+          <Button variant="outline" onClick={exportCSV} disabled={exporting}>
+            {exporting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
+            CSV
           </Button>
         </div>
       </div>
@@ -225,27 +246,27 @@ export function ReportsTab() {
         <Card>
           <CardContent className="pt-6 text-center">
             <ClipboardList className="h-6 w-6 mx-auto text-primary mb-1" />
-            <p className="text-2xl font-bold">{stats.total}</p>
+            <p className="text-2xl font-bold">{statsLoading ? "…" : stats.total}</p>
             <p className="text-xs text-muted-foreground">Total pedidos</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6 text-center">
             <TrendingUp className="h-6 w-6 mx-auto text-primary mb-1" />
-            <p className="text-2xl font-bold">{stats.entregues}</p>
+            <p className="text-2xl font-bold">{statsLoading ? "…" : stats.entregues}</p>
             <p className="text-xs text-muted-foreground">Entregues</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6 text-center">
             <Package className="h-6 w-6 mx-auto text-primary mb-1" />
-            <p className="text-2xl font-bold">{stats.totalItems}</p>
+            <p className="text-2xl font-bold">{statsLoading ? "…" : stats.totalItems}</p>
             <p className="text-xs text-muted-foreground">Itens vendidos</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6 text-center">
-            <p className="text-2xl font-bold text-destructive">{stats.cancelados}</p>
+            <p className="text-2xl font-bold text-destructive">{statsLoading ? "…" : stats.cancelados}</p>
             <p className="text-xs text-muted-foreground">Cancelados</p>
           </CardContent>
         </Card>
@@ -257,7 +278,7 @@ export function ReportsTab() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <CardTitle className="text-lg">Faturamento por Pagamento</CardTitle>
             <div className="flex gap-2 flex-wrap">
-              <Select value={revPeriod} onValueChange={(v) => { setRevPeriod(v); if (v !== "custom") setCustomApplied(false); }}>
+              <Select value={revPeriod} onValueChange={(v) => { setRevPeriod(v as PeriodKey | "custom"); if (v !== "custom") setCustomApplied(false); }}>
                 <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="today">Hoje</SelectItem>
@@ -306,35 +327,40 @@ export function ReportsTab() {
           <p className="text-xs text-muted-foreground mt-2">{revenuePeriodLabel}</p>
         </CardHeader>
         <CardContent className="space-y-4">
+          {revenueLoading && (
+            <p className="text-center text-sm text-muted-foreground">
+              <Loader2 className="inline h-4 w-4 animate-spin mr-1" />Calculando faturamento...
+            </p>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="border-l-4" style={{ borderLeftColor: "#4CAF50" }}>
               <CardContent className="pt-4 text-center">
                 <PaymentIcon method="cash" size={24} className="mx-auto text-[#4CAF50]" />
                 <p className="text-sm font-medium mt-1">Dinheiro</p>
-                <p className="text-xl font-bold">{formatCurrency(revenueStats.byMethod.cash.total)}</p>
-                <p className="text-xs text-muted-foreground">{revenueStats.byMethod.cash.count} pedido{revenueStats.byMethod.cash.count !== 1 ? "s" : ""}</p>
+                <p className="text-xl font-bold">{formatCurrency(revenueByMethod.byMethod.cash.total)}</p>
+                <p className="text-xs text-muted-foreground">{revenueByMethod.byMethod.cash.count} pedido{revenueByMethod.byMethod.cash.count !== 1 ? "s" : ""}</p>
               </CardContent>
             </Card>
             <Card className="border-l-4" style={{ borderLeftColor: "#2196F3" }}>
               <CardContent className="pt-4 text-center">
                 <PaymentIcon method="pix" size={24} className="mx-auto text-[#2196F3]" />
                 <p className="text-sm font-medium mt-1">PIX</p>
-                <p className="text-xl font-bold">{formatCurrency(revenueStats.byMethod.pix.total)}</p>
-                <p className="text-xs text-muted-foreground">{revenueStats.byMethod.pix.count} pedido{revenueStats.byMethod.pix.count !== 1 ? "s" : ""}</p>
+                <p className="text-xl font-bold">{formatCurrency(revenueByMethod.byMethod.pix.total)}</p>
+                <p className="text-xs text-muted-foreground">{revenueByMethod.byMethod.pix.count} pedido{revenueByMethod.byMethod.pix.count !== 1 ? "s" : ""}</p>
               </CardContent>
             </Card>
             <Card className="border-l-4" style={{ borderLeftColor: "#9C27B0" }}>
               <CardContent className="pt-4 text-center">
                 <PaymentIcon method="card" size={24} className="mx-auto text-[#9C27B0]" />
                 <p className="text-sm font-medium mt-1">Cartão</p>
-                <p className="text-xl font-bold">{formatCurrency(revenueStats.byMethod.card.total)}</p>
-                <p className="text-xs text-muted-foreground">{revenueStats.byMethod.card.count} pedido{revenueStats.byMethod.card.count !== 1 ? "s" : ""}</p>
+                <p className="text-xl font-bold">{formatCurrency(revenueByMethod.byMethod.card.total)}</p>
+                <p className="text-xs text-muted-foreground">{revenueByMethod.byMethod.card.count} pedido{revenueByMethod.byMethod.card.count !== 1 ? "s" : ""}</p>
               </CardContent>
             </Card>
           </div>
 
           <p className="text-center text-sm font-semibold">
-            Total geral: {formatCurrency(revenueStats.grandTotal)}
+            Total geral: {formatCurrency(revenueByMethod.grandTotal)}
           </p>
 
           {/* Bar chart */}
@@ -366,7 +392,7 @@ export function ReportsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? (
+              {statsLoading ? (
                 <TableRow><TableCell colSpan={2} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
               ) : stats.productBreakdown.length === 0 ? (
                 <TableRow><TableCell colSpan={2} className="text-center py-8 text-muted-foreground">Sem dados</TableCell></TableRow>

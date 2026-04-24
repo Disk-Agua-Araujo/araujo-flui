@@ -928,8 +928,20 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const data = await adminApi.listOrders();
-      setOrders(data ?? []);
+      // Paginate internally to bypass the per-request row limit and fetch ALL orders
+      const PAGE = 200;
+      const HARD_CAP = 50000;
+      const all: AdminOrderRow[] = [];
+      let page = 0;
+      while (page * PAGE < HARD_CAP) {
+        const res = await adminApi.listOrders({ page, pageSize: PAGE });
+        const rows = res?.rows ?? [];
+        all.push(...rows);
+        const total = res?.total ?? 0;
+        if (rows.length === 0 || all.length >= total) break;
+        page++;
+      }
+      setOrders(all);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro ao carregar pedidos";
       toast({ title: "Erro ao carregar pedidos", description: message, variant: "destructive" });

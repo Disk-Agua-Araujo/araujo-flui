@@ -591,6 +591,30 @@ export type Database = {
         Args: { p_created_by?: string; p_order_id: string }
         Returns: boolean
       }
+      get_orders_summary: {
+        Args: { date_end: string; date_start: string }
+        Returns: {
+          cancelled: number
+          delivered: number
+          total_items: number
+          total_orders: number
+        }[]
+      }
+      get_revenue_by_payment_method: {
+        Args: { date_end: string; date_start: string }
+        Returns: {
+          order_count: number
+          payment_method: string
+          total: number
+        }[]
+      }
+      get_sales_by_product: {
+        Args: { date_end: string; date_start: string }
+        Returns: {
+          product_name: string
+          qty: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
