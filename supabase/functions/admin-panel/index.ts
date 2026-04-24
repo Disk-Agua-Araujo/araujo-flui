@@ -182,16 +182,21 @@ serve(async (req) => {
     const { action, payload } = await req.json();
 
     if (action === "orders.list") {
-      const { data, error } = await adminClient
+      const page = Math.max(0, Number(payload?.page ?? 0) | 0);
+      const pageSize = Math.min(200, Math.max(1, Number(payload?.pageSize ?? 50) | 0));
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+
+      const { data, error, count } = await adminClient
         .from("orders")
         .select(`
           id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
           customers(id, name, phone, cnpj, type),
           addresses(street, number, neighborhood, city, complement, reference),
           order_items(qty, product_id, products(name))
-        `)
+        `, { count: "exact" })
         .order("created_at", { ascending: false })
-        .limit(500);
+        .range(from, to);
       if (error) throw error;
 
       // Enrich with rider name
@@ -202,7 +207,7 @@ serve(async (req) => {
         (ridersData || []).forEach((r: any) => { ridersMap[r.id] = r.name; });
       }
       const enriched = (data || []).map((o: any) => ({ ...o, rider_name: o.rider_id ? ridersMap[o.rider_id] || "—" : undefined }));
-      return json({ data: enriched });
+      return json({ data: { rows: enriched, total: count ?? 0, page, pageSize } });
     }
 
     if (action === "orders.updateStatus") {
