@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon, Minus, Plus, Save, Search, X, Loader2 } from "lucide-react";
 import { PaymentIcon } from "@/components/PaymentIcon";
+import { SplitPaymentSection, emptySplitPayment, validateSplitPayment, splitPaymentToPayload, type SplitPaymentValue } from "@/components/admin/SplitPaymentSection";
 import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
 import { useToast } from "@/hooks/use-toast";
@@ -77,9 +78,7 @@ export function NewOrderTab() {
   const [qtys, setQtys] = useState<Record<string, number>>({});
   const [productSearch, setProductSearch] = useState("");
   const debouncedProductSearch = useDebounce(productSearch, 250);
-  const [paymentMethod, setPaymentMethod] = useState<string>("");
-  const [totalAmount, setTotalAmount] = useState<string>("");
-  const [changeFor, setChangeFor] = useState<string>("");
+  const [payment, setPayment] = useState<SplitPaymentValue>(emptySplitPayment());
 
   const filteredProducts = useMemo(() => {
     if (!debouncedProductSearch) return products;
@@ -89,9 +88,7 @@ export function NewOrderTab() {
 
   const isEnterprise = tipo === "PJ";
 
-  const totalAmountNum = parseFloat(totalAmount) || 0;
-  const changeForNum = parseFloat(changeFor) || 0;
-  const changeResult = changeForNum > 0 && totalAmountNum > 0 ? changeForNum - totalAmountNum : null;
+  const totalAmountNum = parseFloat(payment.totalAmount) || 0;
 
   const fetchProducts = async () => {
     try {
@@ -249,10 +246,7 @@ export function NewOrderTab() {
     setSelectedCustomerId(null);
     setSearchQuery("");
     setSearchResults([]);
-    setPaymentMethod("");
-    setTotalAmount("");
-    setChangeFor("");
-  };
+    setPayment(emptySplitPayment());
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
