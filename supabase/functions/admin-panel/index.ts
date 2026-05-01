@@ -190,7 +190,7 @@ serve(async (req) => {
       const { data, error, count } = await adminClient
         .from("orders")
         .select(`
-          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
+          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
           customers(id, name, phone, cnpj, type),
           addresses(street, number, neighborhood, city, complement, reference),
           order_items(qty, product_id, products(name))
