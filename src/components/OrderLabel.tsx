@@ -25,6 +25,12 @@ export interface LabelData {
   obs?: string;
   totalAmount?: number;
   changeFor?: number;
+  // Split payment
+  isSplitPayment?: boolean;
+  pagamento2?: string;
+  paymentAmount1?: number;
+  paymentAmount2?: number;
+  changeFor2?: number;
 }
 
 export function OrderLabel({ data }: { data: LabelData }) {
