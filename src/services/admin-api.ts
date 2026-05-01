@@ -177,8 +177,13 @@ export const adminApi = {
     delivery_time?: string;
     fulfillment_type?: "delivery" | "pickup";
     payment_method?: string | null;
+    payment_method_2?: string | null;
+    payment_amount_1?: number | null;
+    payment_amount_2?: number | null;
+    is_split_payment?: boolean;
     total_amount?: number | null;
     change_for?: number | null;
+    change_for_2?: number | null;
     scheduled_date?: string | null;
     scheduled_time?: string | null;
   }) => callAdminApi<{ order_id: string; customer_id: string }>("orders.createAdmin", payload),
