@@ -190,7 +190,7 @@ serve(async (req) => {
       const { data, error, count } = await adminClient
         .from("orders")
         .select(`
-          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
+          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
           customers(id, name, phone, cnpj, type),
           addresses(street, number, neighborhood, city, complement, reference),
           order_items(qty, product_id, products(name))
@@ -247,8 +247,13 @@ serve(async (req) => {
       const items = payload?.items as { product_id: string; qty: number }[];
       const fulfillmentType = payload?.fulfillment_type || "delivery";
       const paymentMethod = payload?.payment_method || null;
+      const paymentMethod2 = payload?.payment_method_2 || null;
+      const paymentAmount1 = payload?.payment_amount_1 ?? null;
+      const paymentAmount2 = payload?.payment_amount_2 ?? null;
+      const isSplitPayment = !!payload?.is_split_payment;
       const totalAmount = payload?.total_amount ?? null;
       const changeFor = payload?.change_for ?? null;
+      const changeFor2 = payload?.change_for_2 ?? null;
 
       if (!Array.isArray(items) || items.length === 0) {
         throw new Error("Selecione ao menos um produto.");
@@ -325,8 +330,13 @@ serve(async (req) => {
           status: "novo",
           fulfillment_type: fulfillmentType,
           payment_method: paymentMethod,
+          payment_method_2: paymentMethod2,
+          payment_amount_1: paymentAmount1,
+          payment_amount_2: paymentAmount2,
+          is_split_payment: isSplitPayment,
           total_amount: totalAmount,
           change_for: changeFor,
+          change_for_2: changeFor2,
           scheduled_date: scheduledDate,
           scheduled_time: scheduledTime,
         })
@@ -652,7 +662,7 @@ serve(async (req) => {
         let q = adminClient
           .from("orders")
           .select(`
-            id, channel, status, delivery_date, delivery_time, created_at, fulfillment_type, payment_method, total_amount, change_for, rider_id, pix_paid, pix_paid_at, notes, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
+            id, channel, status, delivery_date, delivery_time, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, notes, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
             customers(id, name, phone, cnpj, type),
             addresses(street, number, neighborhood, city, complement, reference),
             order_items(qty, product_id, products(name))
@@ -692,7 +702,7 @@ serve(async (req) => {
 
       // Update order fields
       const updateFields: any = { updated_at: new Date().toISOString(), updated_by: admin.username };
-      const allowedFields = ["status", "notes", "delivery_date", "delivery_time", "fulfillment_type", "payment_method", "total_amount", "change_for", "rider_id", "scheduled_date", "scheduled_time", "reminder_enabled", "reminder_dismissed"];
+      const allowedFields = ["status", "notes", "delivery_date", "delivery_time", "fulfillment_type", "payment_method", "payment_method_2", "payment_amount_1", "payment_amount_2", "is_split_payment", "total_amount", "change_for", "change_for_2", "rider_id", "scheduled_date", "scheduled_time", "reminder_enabled", "reminder_dismissed"];
       for (const key of allowedFields) {
         if (key in orderData) updateFields[key] = orderData[key];
       }

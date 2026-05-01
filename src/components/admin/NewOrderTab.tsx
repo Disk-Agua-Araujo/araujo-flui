@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon, Minus, Plus, Save, Search, X, Loader2 } from "lucide-react";
 import { PaymentIcon } from "@/components/PaymentIcon";
+import { SplitPaymentSection, emptySplitPayment, validateSplitPayment, splitPaymentToPayload, type SplitPaymentValue } from "@/components/admin/SplitPaymentSection";
 import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
 import { useToast } from "@/hooks/use-toast";
@@ -77,9 +78,7 @@ export function NewOrderTab() {
   const [qtys, setQtys] = useState<Record<string, number>>({});
   const [productSearch, setProductSearch] = useState("");
   const debouncedProductSearch = useDebounce(productSearch, 250);
-  const [paymentMethod, setPaymentMethod] = useState<string>("");
-  const [totalAmount, setTotalAmount] = useState<string>("");
-  const [changeFor, setChangeFor] = useState<string>("");
+  const [payment, setPayment] = useState<SplitPaymentValue>(emptySplitPayment());
 
   const filteredProducts = useMemo(() => {
     if (!debouncedProductSearch) return products;
@@ -89,9 +88,7 @@ export function NewOrderTab() {
 
   const isEnterprise = tipo === "PJ";
 
-  const totalAmountNum = parseFloat(totalAmount) || 0;
-  const changeForNum = parseFloat(changeFor) || 0;
-  const changeResult = changeForNum > 0 && totalAmountNum > 0 ? changeForNum - totalAmountNum : null;
+  const totalAmountNum = parseFloat(payment.totalAmount) || 0;
 
   const fetchProducts = async () => {
     try {
@@ -249,9 +246,7 @@ export function NewOrderTab() {
     setSelectedCustomerId(null);
     setSearchQuery("");
     setSearchResults([]);
-    setPaymentMethod("");
-    setTotalAmount("");
-    setChangeFor("");
+    setPayment(emptySplitPayment());
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -259,6 +254,12 @@ export function NewOrderTab() {
 
     if (selectedItems.length === 0) {
       toast({ title: "Selecione ao menos um produto", variant: "destructive" });
+      return;
+    }
+
+    const splitErr = validateSplitPayment(payment);
+    if (splitErr) {
+      toast({ title: splitErr, variant: "destructive" });
       return;
     }
 
@@ -303,9 +304,7 @@ export function NewOrderTab() {
         delivery_date: date ? format(date, "yyyy-MM-dd") : undefined,
         delivery_time: hora || undefined,
         fulfillment_type: fulfillmentType,
-        payment_method: paymentMethod || null,
-        total_amount: totalAmountNum > 0 ? totalAmountNum : null,
-        change_for: paymentMethod === "cash" && changeForNum > 0 ? changeForNum : null,
+        ...splitPaymentToPayload(payment),
       });
 
       const pedidoId = result.order_id.slice(0, 8).toUpperCase();
@@ -319,10 +318,15 @@ export function NewOrderTab() {
         itens: selectedItems.map((i) => ({ nome: i.nome, qtd: i.qtd })),
         entregaData,
         entregaHora: hora || undefined,
-        pagamento: paymentMethod || undefined,
+        pagamento: payment.paymentMethod || undefined,
         obs: obs.trim() || undefined,
         totalAmount: totalAmountNum > 0 ? totalAmountNum : undefined,
-        changeFor: paymentMethod === "cash" && changeForNum > 0 ? changeForNum : undefined,
+        changeFor: payment.paymentMethod === "cash" && parseFloat(payment.changeFor) > 0 ? parseFloat(payment.changeFor) : undefined,
+        isSplitPayment: payment.isSplit,
+        pagamento2: payment.paymentMethod2 || undefined,
+        paymentAmount1: payment.isSplit && parseFloat(payment.paymentAmount1) > 0 ? parseFloat(payment.paymentAmount1) : undefined,
+        paymentAmount2: payment.isSplit && parseFloat(payment.paymentAmount2) > 0 ? parseFloat(payment.paymentAmount2) : undefined,
+        changeFor2: payment.isSplit && payment.paymentMethod2 === "cash" && parseFloat(payment.changeFor2) > 0 ? parseFloat(payment.changeFor2) : undefined,
       });
 
       trackEvent("order_created", { tipo: tipo === "PJ" ? "empresa" : "varejo", canal, pedidoId, fulfillmentType });
@@ -594,69 +598,7 @@ export function NewOrderTab() {
       <Card>
         <CardHeader><CardTitle className="text-lg">Forma de pagamento</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex gap-2 flex-wrap">
-            {[
-              { value: "cash", label: "Dinheiro" },
-              { value: "pix", label: "PIX" },
-              { value: "card", label: "Cartão" },
-            ].map((opt) => (
-              <Button
-                key={opt.value}
-                type="button"
-                variant={paymentMethod === opt.value ? "default" : "outline"}
-                size="sm"
-                className="gap-1.5"
-                onClick={() => {
-                  setPaymentMethod(paymentMethod === opt.value ? "" : opt.value);
-                  if (opt.value !== "cash") setChangeFor("");
-                }}
-              >
-                <PaymentIcon method={opt.value} size={16} />
-                {opt.label}
-              </Button>
-            ))}
-          </div>
-
-          {paymentMethod && (
-            <div className="space-y-3 pt-2">
-              <div>
-                <Label>Valor total do pedido (R$)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="0,00"
-                  value={totalAmount}
-                  onChange={(e) => setTotalAmount(e.target.value)}
-                />
-              </div>
-
-              {paymentMethod === "cash" && (
-                <div>
-                  <Label>Troco para (R$)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0,00"
-                    value={changeFor}
-                    onChange={(e) => setChangeFor(e.target.value)}
-                  />
-                  {changeResult !== null && changeResult > 0 && (
-                    <p className="text-sm font-medium text-green-700 mt-1">
-                      Troco: {formatCurrency(changeResult)}
-                    </p>
-                  )}
-                  {changeResult !== null && changeResult < 0 && (
-                    <p className="text-sm font-medium text-destructive mt-1">
-                      Valor insuficiente para cobrir o pedido.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
+          <SplitPaymentSection value={payment} onChange={setPayment} />
           <p className="text-xs text-muted-foreground">Opcional — selecione se o cliente informou.</p>
         </CardContent>
       </Card>

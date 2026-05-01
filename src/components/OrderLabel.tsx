@@ -25,6 +25,12 @@ export interface LabelData {
   obs?: string;
   totalAmount?: number;
   changeFor?: number;
+  // Split payment
+  isSplitPayment?: boolean;
+  pagamento2?: string;
+  paymentAmount1?: number;
+  paymentAmount2?: number;
+  changeFor2?: number;
 }
 
 export function OrderLabel({ data }: { data: LabelData }) {
@@ -74,9 +80,15 @@ export function OrderLabel({ data }: { data: LabelData }) {
         <ul>${data.itens.map((i) => `<li>${i.nome} x${i.qtd}</li>`).join("")}</ul>
         ${data.entregaData ? `<hr/><p>Entrega: ${data.entregaData}${data.entregaHora ? ` às ${data.entregaHora}` : ""}</p>` : ""}
         <hr/>
-        ${data.pagamento ? `<p class="label-payment">Pagamento: ${paymentLabels[data.pagamento] || data.pagamento}</p>` : ""}
+        ${data.isSplitPayment && data.pagamento && data.pagamento2
+          ? `<p class="label-payment">Pagamento: ${paymentLabels[data.pagamento] || data.pagamento} + ${paymentLabels[data.pagamento2] || data.pagamento2}</p>
+             ${data.paymentAmount1 != null ? `<p class="label-payment">${paymentLabels[data.pagamento] || data.pagamento}: ${formatCurrency(data.paymentAmount1)}</p>` : ""}
+             ${data.paymentAmount2 != null ? `<p class="label-payment">${paymentLabels[data.pagamento2] || data.pagamento2}: ${formatCurrency(data.paymentAmount2)}</p>` : ""}`
+          : data.pagamento ? `<p class="label-payment">Pagamento: ${paymentLabels[data.pagamento] || data.pagamento}</p>` : ""}
         ${data.totalAmount != null ? `<p class="label-total">Total: ${formatCurrency(data.totalAmount)}</p>` : ""}
-        ${data.pagamento === "cash" && data.changeFor != null && data.totalAmount != null ? `<p class="label-change">Troco para: ${formatCurrency(data.changeFor)} (Troco: ${formatCurrency(data.changeFor - data.totalAmount)})</p>` : ""}
+        ${data.pagamento === "cash" && data.changeFor != null && data.totalAmount != null && !data.isSplitPayment ? `<p class="label-change">Troco para: ${formatCurrency(data.changeFor)} (Troco: ${formatCurrency(data.changeFor - data.totalAmount)})</p>` : ""}
+        ${data.isSplitPayment && data.pagamento === "cash" && data.changeFor != null && data.paymentAmount1 != null && data.changeFor > data.paymentAmount1 ? `<p class="label-change">Troco (Dinheiro): ${formatCurrency(data.changeFor)} (Troco: ${formatCurrency(data.changeFor - data.paymentAmount1)})</p>` : ""}
+        ${data.isSplitPayment && data.pagamento2 === "cash" && data.changeFor2 != null && data.paymentAmount2 != null && data.changeFor2 > data.paymentAmount2 ? `<p class="label-change">Troco (Dinheiro): ${formatCurrency(data.changeFor2)} (Troco: ${formatCurrency(data.changeFor2 - data.paymentAmount2)})</p>` : ""}
         ${data.obs && data.obs.trim() !== "" ? `<hr/><div class="obs-block label-notes"><strong>Observações:</strong>${data.obs}</div>` : ""}
         <hr/>
         <p class="id">ID: ${data.pedidoId}</p>
@@ -109,15 +121,41 @@ export function OrderLabel({ data }: { data: LabelData }) {
           </>
         )}
         <hr className="my-1 border-border" />
-        {data.pagamento && (
+        {data.isSplitPayment && data.pagamento && data.pagamento2 ? (
+          <>
+            <p className="label-payment font-semibold">
+              Pagamento: {paymentLabels[data.pagamento] || data.pagamento} + {paymentLabels[data.pagamento2] || data.pagamento2}
+            </p>
+            {data.paymentAmount1 != null && (
+              <p className="label-payment text-xs pl-2">
+                └ {paymentLabels[data.pagamento] || data.pagamento}: {formatCurrency(data.paymentAmount1)}
+              </p>
+            )}
+            {data.paymentAmount2 != null && (
+              <p className="label-payment text-xs pl-2">
+                └ {paymentLabels[data.pagamento2] || data.pagamento2}: {formatCurrency(data.paymentAmount2)}
+              </p>
+            )}
+          </>
+        ) : data.pagamento && (
           <p className="label-payment">Pagamento: {paymentLabels[data.pagamento] || data.pagamento}</p>
         )}
         {data.totalAmount != null && (
           <p className="label-total">Total: {formatCurrency(data.totalAmount)}</p>
         )}
-        {data.pagamento === "cash" && data.changeFor != null && data.totalAmount != null && (
+        {!data.isSplitPayment && data.pagamento === "cash" && data.changeFor != null && data.totalAmount != null && (
           <p className="label-change">
             Troco para: {formatCurrency(data.changeFor)} (Troco: {formatCurrency(data.changeFor - data.totalAmount)})
+          </p>
+        )}
+        {data.isSplitPayment && data.pagamento === "cash" && data.changeFor != null && data.paymentAmount1 != null && data.changeFor > data.paymentAmount1 && (
+          <p className="label-change">
+            Troco (Dinheiro): {formatCurrency(data.changeFor)} (Troco: {formatCurrency(data.changeFor - data.paymentAmount1)})
+          </p>
+        )}
+        {data.isSplitPayment && data.pagamento2 === "cash" && data.changeFor2 != null && data.paymentAmount2 != null && data.changeFor2 > data.paymentAmount2 && (
+          <p className="label-change">
+            Troco (Dinheiro): {formatCurrency(data.changeFor2)} (Troco: {formatCurrency(data.changeFor2 - data.paymentAmount2)})
           </p>
         )}
         {data.obs && data.obs.trim() !== "" && (
