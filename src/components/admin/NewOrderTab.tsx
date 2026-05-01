@@ -318,10 +318,15 @@ export function NewOrderTab() {
         itens: selectedItems.map((i) => ({ nome: i.nome, qtd: i.qtd })),
         entregaData,
         entregaHora: hora || undefined,
-        pagamento: paymentMethod || undefined,
+        pagamento: payment.paymentMethod || undefined,
         obs: obs.trim() || undefined,
         totalAmount: totalAmountNum > 0 ? totalAmountNum : undefined,
-        changeFor: paymentMethod === "cash" && changeForNum > 0 ? changeForNum : undefined,
+        changeFor: payment.paymentMethod === "cash" && parseFloat(payment.changeFor) > 0 ? parseFloat(payment.changeFor) : undefined,
+        isSplitPayment: payment.isSplit,
+        pagamento2: payment.paymentMethod2 || undefined,
+        paymentAmount1: payment.isSplit && parseFloat(payment.paymentAmount1) > 0 ? parseFloat(payment.paymentAmount1) : undefined,
+        paymentAmount2: payment.isSplit && parseFloat(payment.paymentAmount2) > 0 ? parseFloat(payment.paymentAmount2) : undefined,
+        changeFor2: payment.isSplit && payment.paymentMethod2 === "cash" && parseFloat(payment.changeFor2) > 0 ? parseFloat(payment.changeFor2) : undefined,
       });
 
       trackEvent("order_created", { tipo: tipo === "PJ" ? "empresa" : "varejo", canal, pedidoId, fulfillmentType });
