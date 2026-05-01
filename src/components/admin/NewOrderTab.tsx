@@ -598,69 +598,7 @@ export function NewOrderTab() {
       <Card>
         <CardHeader><CardTitle className="text-lg">Forma de pagamento</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex gap-2 flex-wrap">
-            {[
-              { value: "cash", label: "Dinheiro" },
-              { value: "pix", label: "PIX" },
-              { value: "card", label: "Cartão" },
-            ].map((opt) => (
-              <Button
-                key={opt.value}
-                type="button"
-                variant={paymentMethod === opt.value ? "default" : "outline"}
-                size="sm"
-                className="gap-1.5"
-                onClick={() => {
-                  setPaymentMethod(paymentMethod === opt.value ? "" : opt.value);
-                  if (opt.value !== "cash") setChangeFor("");
-                }}
-              >
-                <PaymentIcon method={opt.value} size={16} />
-                {opt.label}
-              </Button>
-            ))}
-          </div>
-
-          {paymentMethod && (
-            <div className="space-y-3 pt-2">
-              <div>
-                <Label>Valor total do pedido (R$)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="0,00"
-                  value={totalAmount}
-                  onChange={(e) => setTotalAmount(e.target.value)}
-                />
-              </div>
-
-              {paymentMethod === "cash" && (
-                <div>
-                  <Label>Troco para (R$)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0,00"
-                    value={changeFor}
-                    onChange={(e) => setChangeFor(e.target.value)}
-                  />
-                  {changeResult !== null && changeResult > 0 && (
-                    <p className="text-sm font-medium text-green-700 mt-1">
-                      Troco: {formatCurrency(changeResult)}
-                    </p>
-                  )}
-                  {changeResult !== null && changeResult < 0 && (
-                    <p className="text-sm font-medium text-destructive mt-1">
-                      Valor insuficiente para cobrir o pedido.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
+          <SplitPaymentSection value={payment} onChange={setPayment} />
           <p className="text-xs text-muted-foreground">Opcional — selecione se o cliente informou.</p>
         </CardContent>
       </Card>
