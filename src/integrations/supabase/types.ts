@@ -254,6 +254,7 @@ export type Database = {
         Row: {
           address_id: string | null
           change_for: number | null
+          change_for_2: number | null
           channel: Database["public"]["Enums"]["order_channel"]
           created_at: string
           created_by: string | null
@@ -262,8 +263,12 @@ export type Database = {
           delivery_time: string | null
           fulfillment_type: string
           id: string
+          is_split_payment: boolean
           notes: string | null
+          payment_amount_1: number | null
+          payment_amount_2: number | null
           payment_method: string | null
+          payment_method_2: string | null
           pix_paid: boolean | null
           pix_paid_at: string | null
           reminder_dismissed: boolean
@@ -279,6 +284,7 @@ export type Database = {
         Insert: {
           address_id?: string | null
           change_for?: number | null
+          change_for_2?: number | null
           channel?: Database["public"]["Enums"]["order_channel"]
           created_at?: string
           created_by?: string | null
@@ -287,8 +293,12 @@ export type Database = {
           delivery_time?: string | null
           fulfillment_type?: string
           id?: string
+          is_split_payment?: boolean
           notes?: string | null
+          payment_amount_1?: number | null
+          payment_amount_2?: number | null
           payment_method?: string | null
+          payment_method_2?: string | null
           pix_paid?: boolean | null
           pix_paid_at?: string | null
           reminder_dismissed?: boolean
@@ -304,6 +314,7 @@ export type Database = {
         Update: {
           address_id?: string | null
           change_for?: number | null
+          change_for_2?: number | null
           channel?: Database["public"]["Enums"]["order_channel"]
           created_at?: string
           created_by?: string | null
@@ -312,8 +323,12 @@ export type Database = {
           delivery_time?: string | null
           fulfillment_type?: string
           id?: string
+          is_split_payment?: boolean
           notes?: string | null
+          payment_amount_1?: number | null
+          payment_amount_2?: number | null
           payment_method?: string | null
+          payment_method_2?: string | null
           pix_paid?: boolean | null
           pix_paid_at?: string | null
           reminder_dismissed?: boolean
