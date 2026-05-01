@@ -29,7 +29,7 @@ export interface SiteOrderResult {
 }
 
 export async function createSiteOrder(data: SiteOrderData): Promise<SiteOrderResult> {
-  const { data: result, error } = await (supabase.rpc as any)("create_full_site_order", {
+  const payload = {
     p_customer_name: data.customer.name,
     p_customer_phone: data.customer.phone,
     p_customer_type: data.customer.type,
@@ -46,8 +46,16 @@ export async function createSiteOrder(data: SiteOrderData): Promise<SiteOrderRes
     p_delivery_time: data.delivery_time || null,
     p_items: data.items,
     p_fulfillment_type: data.fulfillment_type || "delivery",
+  };
+
+  // Routed through edge function for IP-based rate limiting (security hardening).
+  const { data: result, error } = await supabase.functions.invoke("create-site-order", {
+    body: payload,
   });
 
   if (error) throw new Error(`Erro ao salvar pedido: ${error.message}`);
+  if (result && (result as any).error) {
+    throw new Error((result as any).message || "Erro ao salvar pedido");
+  }
   return result as SiteOrderResult;
 }
