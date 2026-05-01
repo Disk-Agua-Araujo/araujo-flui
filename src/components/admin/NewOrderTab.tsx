@@ -247,6 +247,7 @@ export function NewOrderTab() {
     setSearchQuery("");
     setSearchResults([]);
     setPayment(emptySplitPayment());
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
