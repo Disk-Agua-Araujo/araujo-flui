@@ -257,6 +257,12 @@ export function NewOrderTab() {
       return;
     }
 
+    const splitErr = validateSplitPayment(payment);
+    if (splitErr) {
+      toast({ title: splitErr, variant: "destructive" });
+      return;
+    }
+
     if (tipo === "PJ" && cnpj && !isValidCnpj(cnpj)) {
       toast({ title: "CNPJ inválido", variant: "destructive" });
       return;
@@ -298,9 +304,7 @@ export function NewOrderTab() {
         delivery_date: date ? format(date, "yyyy-MM-dd") : undefined,
         delivery_time: hora || undefined,
         fulfillment_type: fulfillmentType,
-        payment_method: paymentMethod || null,
-        total_amount: totalAmountNum > 0 ? totalAmountNum : null,
-        change_for: paymentMethod === "cash" && changeForNum > 0 ? changeForNum : null,
+        ...splitPaymentToPayload(payment),
       });
 
       const pedidoId = result.order_id.slice(0, 8).toUpperCase();
