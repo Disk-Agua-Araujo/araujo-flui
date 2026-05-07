@@ -53,7 +53,18 @@ export async function createSiteOrder(data: SiteOrderData): Promise<SiteOrderRes
     body: payload,
   });
 
-  if (error) throw new Error(`Erro ao salvar pedido: ${error.message}`);
+  // FunctionsHttpError: try to read body for the real reason
+  if (error) {
+    let detail = error.message;
+    try {
+      const ctx: any = (error as any).context;
+      if (ctx && typeof ctx.json === "function") {
+        const body = await ctx.json();
+        if (body?.message) detail = body.message;
+      }
+    } catch {}
+    throw new Error(detail || "Erro ao salvar pedido");
+  }
   if (result && (result as any).error) {
     throw new Error((result as any).message || "Erro ao salvar pedido");
   }
