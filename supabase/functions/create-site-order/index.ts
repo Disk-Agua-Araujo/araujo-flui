@@ -1,13 +1,17 @@
+// create-site-order edge function
+// Public endpoint for site quick orders. Validates origin, anon key, and rate-limits by IP.
+// v2 - forced redeploy with diagnostics
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const MAX_REQUESTS = 5;          // max orders per IP per window
-const WINDOW_SECONDS = 600;      // 10 minutes
+const MAX_REQUESTS = 5;
+const WINDOW_SECONDS = 600;
 
 const ALLOWED_ORIGINS = [
   "https://araujo-flui.lovable.app",
@@ -32,52 +36,59 @@ function getServiceClient() {
   );
 }
 
-// Reuses the geocode_rate_limits table, namespacing by prefix
 async function isRateLimited(clientIp: string): Promise<boolean> {
-  const sb = getServiceClient();
-  const key = `order:${clientIp}`;
-  const now = new Date();
-  const windowStart = new Date(now.getTime() - WINDOW_SECONDS * 1000);
+  try {
+    const sb = getServiceClient();
+    const key = `order:${clientIp}`;
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - WINDOW_SECONDS * 1000);
 
-  const { data: existing } = await sb
-    .from("geocode_rate_limits")
-    .select("id, request_count, window_start")
-    .eq("client_ip", key)
-    .single();
+    const { data: existing } = await sb
+      .from("geocode_rate_limits")
+      .select("id, request_count, window_start")
+      .eq("client_ip", key)
+      .maybeSingle();
 
-  if (!existing) {
-    await sb.from("geocode_rate_limits").insert({
-      client_ip: key,
-      request_count: 1,
-      window_start: now.toISOString(),
-    });
-    return false;
-  }
+    if (!existing) {
+      await sb.from("geocode_rate_limits").insert({
+        client_ip: key,
+        request_count: 1,
+        window_start: now.toISOString(),
+      });
+      return false;
+    }
 
-  const recordWindow = new Date(existing.window_start);
-  if (recordWindow < windowStart) {
+    const recordWindow = new Date(existing.window_start);
+    if (recordWindow < windowStart) {
+      await sb
+        .from("geocode_rate_limits")
+        .update({ request_count: 1, window_start: now.toISOString() })
+        .eq("id", existing.id);
+      return false;
+    }
+
+    if (existing.request_count >= MAX_REQUESTS) return true;
+
     await sb
       .from("geocode_rate_limits")
-      .update({ request_count: 1, window_start: now.toISOString() })
+      .update({ request_count: existing.request_count + 1 })
       .eq("id", existing.id);
     return false;
+  } catch (e) {
+    console.error("rate-limit check failed (fail-open):", e);
+    return false;
   }
-
-  if (existing.request_count >= MAX_REQUESTS) {
-    return true;
-  }
-
-  await sb
-    .from("geocode_rate_limits")
-    .update({ request_count: existing.request_count + 1 })
-    .eq("id", existing.id);
-  return false;
 }
 
 serve(async (req) => {
+  // CORS preflight MUST be the very first thing
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
   }
+
+  console.log("=== create-site-order chamada ===");
+  console.log("Method:", req.method);
+  console.log("Origin:", req.headers.get("origin"), "Referer:", req.headers.get("referer"));
 
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "method_not_allowed" }), {
@@ -86,20 +97,38 @@ serve(async (req) => {
     });
   }
 
+  // Env check
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceKey) {
+    console.error("Variáveis de ambiente ausentes (SUPABASE_URL/SERVICE_ROLE_KEY)");
+    return new Response(
+      JSON.stringify({ error: "server_misconfigured", message: "Configuração do servidor ausente" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
   if (!isAllowedOrigin(req)) {
+    console.warn("Origem não permitida:", req.headers.get("origin"), req.headers.get("referer"));
     return new Response(JSON.stringify({ error: "forbidden" }), {
       status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  // Validate anon key
+  // Validate anon key (any of the configured publishable keys)
   const authHeader = req.headers.get("authorization") || "";
   const apiKeyHeader = req.headers.get("apikey") || "";
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
-  if (anonKey) {
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
+  const validKeys = new Set<string>();
+  if (anonKey) validKeys.add(anonKey);
+  const multiKeys = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS") || "";
+  multiKeys.split(",").map((k) => k.trim()).filter(Boolean).forEach((k) => validKeys.add(k));
+
+  if (validKeys.size > 0) {
     const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-    if (token !== anonKey && apiKeyHeader !== anonKey) {
+    if (!validKeys.has(token) && !validKeys.has(apiKeyHeader)) {
+      console.warn("Chave anon inválida");
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -107,7 +136,6 @@ serve(async (req) => {
     }
   }
 
-  // IP-based rate limit
   const clientIp =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   if (await isRateLimited(clientIp)) {
@@ -123,21 +151,22 @@ serve(async (req) => {
   let payload: any;
   try {
     payload = await req.json();
-  } catch {
-    return new Response(JSON.stringify({ error: "invalid_json" }), {
+    console.log("Body recebido (keys):", Object.keys(payload || {}));
+  } catch (e: any) {
+    console.error("Erro ao parsear body:", e?.message);
+    return new Response(JSON.stringify({ error: "invalid_json", message: "Body inválido" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  // Light client-side shape validation; the RPC enforces deep validation.
   if (
     !payload?.p_customer_name ||
     !payload?.p_customer_phone ||
     !Array.isArray(payload?.p_items) ||
     payload.p_items.length === 0
   ) {
-    return new Response(JSON.stringify({ error: "invalid_payload" }), {
+    return new Response(JSON.stringify({ error: "invalid_payload", message: "Dados do pedido incompletos" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -147,19 +176,21 @@ serve(async (req) => {
     const sb = getServiceClient();
     const { data, error } = await sb.rpc("create_full_site_order", payload);
     if (error) {
+      console.error("RPC create_full_site_order erro:", error);
       return new Response(
         JSON.stringify({ error: "rpc_error", message: error.message }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    console.log("Pedido criado com sucesso:", (data as any)?.order_id);
     return new Response(JSON.stringify(data), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (err) {
-    console.error("create-site-order error:", err);
+  } catch (err: any) {
+    console.error("create-site-order server error:", err?.message, err);
     return new Response(
-      JSON.stringify({ error: "server_error", message: "Erro interno do servidor." }),
+      JSON.stringify({ error: "server_error", message: err?.message || "Erro interno do servidor." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
