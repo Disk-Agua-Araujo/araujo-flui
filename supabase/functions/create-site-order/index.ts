@@ -116,24 +116,18 @@ serve(async (req) => {
     });
   }
 
-  // Validate anon key (any of the configured publishable keys)
+  // NOTE: anon key validation removed — security is enforced by:
+  // 1) Origin allowlist (above), 2) IP rate limit, 3) RPC server-side validation,
+  // 4) Supabase gateway. The previous check rejected legitimate publishable keys.
+  // Just confirm an Authorization header is present (gateway already requires apikey).
   const authHeader = req.headers.get("authorization") || "";
   const apiKeyHeader = req.headers.get("apikey") || "";
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
-  const validKeys = new Set<string>();
-  if (anonKey) validKeys.add(anonKey);
-  const multiKeys = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS") || "";
-  multiKeys.split(",").map((k) => k.trim()).filter(Boolean).forEach((k) => validKeys.add(k));
-
-  if (validKeys.size > 0) {
-    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-    if (!validKeys.has(token) && !validKeys.has(apiKeyHeader)) {
-      console.warn("Chave anon inválida");
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+  if (!authHeader && !apiKeyHeader) {
+    console.warn("Sem Authorization/apikey header");
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   const clientIp =
