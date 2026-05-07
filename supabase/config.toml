@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.admin-panel]
 verify_jwt = false
+
+[functions.create-site-order]
+verify_jwt = false
