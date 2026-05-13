@@ -104,7 +104,16 @@ export function Footer() {
         <div className="border-t border-background/20 mt-8 pt-6 text-center text-xs text-background/50 space-y-1">
           <p>© {year} {business.name} — Todos os direitos reservados.</p>
           <p>Criado por{" "}
-            <a href="https://nextassessoria.com/" target="_blank" rel="noopener noreferrer" className="hover:text-background/80 transition-colors underline">
+            <a
+              href="https://nextassessoria.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-background/80 transition-colors underline"
+              onClick={(e) => {
+                e.preventDefault();
+                window.open("https://nextassessoria.com/", "_blank", "noopener,noreferrer");
+              }}
+            >
               Next Assessoria
             </a>
           </p>
