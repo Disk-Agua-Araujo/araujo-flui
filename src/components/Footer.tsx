@@ -105,7 +105,7 @@ export function Footer() {
           <p>© {year} {business.name} — Todos os direitos reservados.</p>
           <p>Criado por{" "}
             <a
-              href="https://nextassessoria.com/"
+              href="https://nextassessoria.com"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-background/80 transition-colors underline cursor-pointer"
