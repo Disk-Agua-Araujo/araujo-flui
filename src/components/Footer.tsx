@@ -108,11 +108,7 @@ export function Footer() {
               href="https://nextassessoria.com/"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-background/80 transition-colors underline"
-              onClick={(e) => {
-                e.preventDefault();
-                window.open("https://nextassessoria.com/", "_blank", "noopener,noreferrer");
-              }}
+              className="hover:text-background/80 transition-colors underline cursor-pointer"
             >
               Next Assessoria
             </a>
