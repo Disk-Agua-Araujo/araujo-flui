@@ -1404,6 +1404,20 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      className="data-[state=checked]:bg-[#033D7B] data-[state=checked]:border-[#033D7B]"
+                      checked={paginatedOrders.length > 0 && paginatedOrders.every((o) => selectedIds.has(o.id))}
+                      onCheckedChange={(v) => {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          if (v) paginatedOrders.forEach((o) => next.add(o.id));
+                          else paginatedOrders.forEach((o) => next.delete(o.id));
+                          return next;
+                        });
+                      }}
+                    />
+                  </TableHead>
                   <TableHead>ID</TableHead>
                   <TableHead>Endereço</TableHead>
                   <TableHead>Tipo</TableHead>
@@ -1430,12 +1444,20 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={10 + riders.length} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11 + riders.length} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
                 ) : paginatedOrders.length === 0 ? (
-                  <TableRow><TableCell colSpan={10 + riders.length} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11 + riders.length} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
                 ) : (
                   paginatedOrders.map((o) => (
-                    <TableRow key={o.id}>
+                    <TableRow key={o.id} className={selectedIds.has(o.id) ? "bg-blue-50" : ""}>
+                      <TableCell>
+                        <Checkbox
+                          className="data-[state=checked]:bg-[#033D7B] data-[state=checked]:border-[#033D7B]"
+                          checked={selectedIds.has(o.id)}
+                          onCheckedChange={() => toggleSelect(o.id)}
+                        />
+                      </TableCell>
+
                       <TableCell className="font-mono text-xs">{o.id.slice(0, 8)}</TableCell>
                       <TableCell className="text-sm">
                         {o.addresses
