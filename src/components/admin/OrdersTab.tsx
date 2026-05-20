@@ -1379,22 +1379,33 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
             <p className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</p>
           ) : (
             paginatedOrders.map((o) => (
-              <OrderCard
-                key={o.id}
-                o={o}
-                riders={riders}
-                statusLabels={statusLabels}
-                statusColors={statusColors}
-                paymentLabels={paymentLabels}
-                onView={() => setSelectedOrder(o)}
-                onEdit={() => setEditOrder(o)}
-                onLabel={() => handleLabel(o)}
-                onWhatsApp={() => handleWhatsApp(o)}
-                onStatusChange={(v) => updateStatus(o.id, v)}
-                onRiderToggle={(rid) => toggleRider(o.id, rid, o.rider_id)}
-                onPixToggle={() => togglePixPaid(o.id)}
-              />
+              <div key={o.id} className={`relative ${selectedIds.has(o.id) ? "ring-2 ring-[#033D7B] rounded-lg" : ""}`}>
+                <div className="absolute top-2 left-2 z-10 bg-white rounded p-0.5 shadow-sm border">
+                  <Checkbox
+                    className="data-[state=checked]:bg-[#033D7B] data-[state=checked]:border-[#033D7B]"
+                    checked={selectedIds.has(o.id)}
+                    onCheckedChange={() => toggleSelect(o.id)}
+                  />
+                </div>
+                <div className={selectedIds.has(o.id) ? "[&_.p-3]:pl-10" : "[&_.p-3]:pl-10"}>
+                  <OrderCard
+                    o={o}
+                    riders={riders}
+                    statusLabels={statusLabels}
+                    statusColors={statusColors}
+                    paymentLabels={paymentLabels}
+                    onView={() => setSelectedOrder(o)}
+                    onEdit={() => setEditOrder(o)}
+                    onLabel={() => handleLabel(o)}
+                    onWhatsApp={() => handleWhatsApp(o)}
+                    onStatusChange={(v) => updateStatus(o.id, v)}
+                    onRiderToggle={(rid) => toggleRider(o.id, rid, o.rider_id)}
+                    onPixToggle={() => togglePixPaid(o.id)}
+                  />
+                </div>
+              </div>
             ))
+
           )}
         </div>
       ) : (
