@@ -1078,7 +1078,7 @@ serve(async (req) => {
         const { error } = await adminClient.from("orders").delete().in("id", deletable);
         if (error) throw error;
       }
-      return json({ ok: true, deleted: deletable.length, skipped });
+      return json({ data: { ok: true, deleted: deletable.length, skipped } });
     }
 
     return json({ error: "Ação inválida" }, 400);
