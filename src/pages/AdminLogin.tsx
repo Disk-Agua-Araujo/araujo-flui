@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { useEffect } from "react";
+import { Seo } from "@/components/Seo";
 
 export default function AdminLogin() {
   const { isAdmin, loading: authLoading, signIn } = useAuth();
@@ -40,6 +41,7 @@ export default function AdminLogin() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Seo title={"Admin | Disk Água Araujo"} description={"Área administrativa."} path={"/admin/login"} noindex />
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <img src={logo} alt="Disk Água Araujo" className="h-12 mx-auto mb-2" />
