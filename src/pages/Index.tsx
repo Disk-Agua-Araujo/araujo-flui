@@ -26,6 +26,11 @@ const Index = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <Seo
+        title="Disk Água Araujo | Entrega de Água Mineral em Santo André"
+        description="Entrega rápida de galões de água mineral 20L em Santo André. Peça pelo WhatsApp e receba em casa ou na empresa."
+        path="/"
+      />
       <Header />
       <main className="flex-1">
         <Hero />
