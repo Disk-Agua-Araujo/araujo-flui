@@ -1175,7 +1175,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     }
   };
 
-
+  const handleLabel = (o: AdminOrderRow) => {
     setLabelData({
       pedidoId: o.id.slice(0, 8).toUpperCase(),
       cliente: o.customers?.name ?? "Retirada / Sem cadastro",
