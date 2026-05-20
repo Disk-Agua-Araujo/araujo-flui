@@ -1693,6 +1693,41 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
           }
         }}
       />
+
+      <AlertDialog open={!!confirmAction} onOpenChange={(o) => { if (!o && !bulkBusy) setConfirmAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction?.type === "status" && `Alterar status de ${selectedIds.size} pedido${selectedIds.size !== 1 ? "s" : ""}?`}
+              {confirmAction?.type === "rider" && `Atribuir ${confirmAction.label} a ${selectedIds.size} pedido${selectedIds.size !== 1 ? "s" : ""}?`}
+              {confirmAction?.type === "payment" && `Alterar forma de pagamento de ${selectedIds.size} pedido${selectedIds.size !== 1 ? "s" : ""}?`}
+              {confirmAction?.type === "delete" && `Excluir ${selectedIds.size} pedido${selectedIds.size !== 1 ? "s" : ""} permanentemente?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction?.type === "status" && `Novo status: "${statusLabels[(confirmAction as { value: string }).value] ?? ""}". Esta ação não pode ser desfeita em lote.`}
+              {confirmAction?.type === "payment" && `Nova forma: "${paymentLabels[(confirmAction as { value: string }).value] ?? ""}". Esta ação não pode ser desfeita em lote.`}
+              {confirmAction?.type === "rider" && "Esta ação substituirá o motoboy atualmente atribuído."}
+              {confirmAction?.type === "delete" && (() => {
+                const delivered = orders.filter((o) => selectedIds.has(o.id) && o.status === "entregue").length;
+                return delivered > 0
+                  ? `⚠️ Esta ação não pode ser desfeita. ${delivered} pedido${delivered !== 1 ? "s" : ""} entregue${delivered !== 1 ? "s" : ""} será ignorado${delivered !== 1 ? "s" : ""}.`
+                  : "⚠️ Esta ação não pode ser desfeita.";
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkBusy}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={bulkBusy}
+              onClick={(e) => { e.preventDefault(); runBulkAction(); }}
+              className={confirmAction?.type === "delete" ? "bg-destructive hover:bg-destructive/90" : ""}
+            >
+              {bulkBusy && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              {confirmAction?.type === "delete" ? "Excluir" : "Confirmar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
