@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StoreProductCard } from "@/components/loja/StoreProductCard";
 import { CartSummary } from "@/components/loja/CartSummary";
 import { CheckoutForm } from "@/components/loja/CheckoutForm";
+import { Seo } from "@/components/Seo";
 
 type View = "shop" | "checkout";
 
@@ -99,7 +100,8 @@ export default function Loja() {
   if (orderSummary) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
-        <Header />
+        <Seo title={"Loja Online | Disk Água Araujo"} description={"Loja de água mineral para residências em Santo André. Adicione ao carrinho e finalize pelo WhatsApp."} path={"/loja"} />
+      <Header />
         <main className="flex-1 container py-8 max-w-lg">
           <Card>
             <CardHeader>

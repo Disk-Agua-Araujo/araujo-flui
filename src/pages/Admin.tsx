@@ -12,6 +12,7 @@ import { ReportsTab } from "@/components/admin/ReportsTab";
 import { CustomersTab } from "@/components/admin/CustomersTab";
 import { LogOut, Package, ClipboardList, PlusCircle, BarChart3, Users } from "lucide-react";
 import logo from "@/assets/logo.png";
+import { Seo } from "@/components/Seo";
 
 const TAB_VALUES = ["orders", "new-order", "customers", "products", "reports"] as const;
 
@@ -64,6 +65,7 @@ export default function Admin() {
   if (loading || !isAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
+      <Seo title={"Admin | Disk Água Araujo"} description={"Área administrativa."} path={"/admin"} noindex />
         <p className="text-muted-foreground">Carregando...</p>
       </div>
     );

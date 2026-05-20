@@ -1,9 +1,11 @@
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { Seo } from "@/components/Seo";
 
 export default function Privacidade() {
   return (
     <div className="min-h-screen flex flex-col">
+      <Seo title={"Política de Privacidade | Disk Água Araujo"} description={"Política de privacidade e tratamento de dados pessoais da Disk Água Araujo, em conformidade com a LGPD."} path={"/privacidade"} />
       <Header />
       <main className="flex-1 py-12">
         <div className="container max-w-3xl">

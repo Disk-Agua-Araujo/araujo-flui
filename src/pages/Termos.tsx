@@ -1,9 +1,11 @@
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { Seo } from "@/components/Seo";
 
 export default function Termos() {
   return (
     <div className="min-h-screen flex flex-col">
+      <Seo title={"Termos de Uso | Disk Água Araujo"} description={"Termos e condições de uso do site e dos serviços de entrega da Disk Água Araujo."} path={"/termos"} />
       <Header />
       <main className="flex-1 py-12">
         <div className="container max-w-3xl">
