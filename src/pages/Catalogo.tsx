@@ -14,7 +14,6 @@ import { ScrollReveal } from "@/components/ScrollReveal";
 import { ProductSearchBar } from "@/components/ProductSearchBar";
 import { ProductCard } from "@/components/ProductCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Seo } from "@/components/Seo";
 
 export default function Catalogo() {
   const { data: products = [], isLoading } = useProducts();
@@ -63,7 +62,6 @@ export default function Catalogo() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <Seo title={"Catálogo de Produtos | Disk Água Araujo"} description={"Confira o catálogo completo de águas minerais, galões 20L e acessórios da Disk Água Araujo."} path={"/catalogo"} />
       <Header />
       <main className="flex-1 container py-8">
         <h1 className="text-3xl font-bold mb-2">Catálogo de Produtos</h1>

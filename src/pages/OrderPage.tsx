@@ -17,7 +17,6 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { normalize } from "@/lib/normalize";
 import { ProductSearchBar } from "@/components/ProductSearchBar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Seo } from "@/components/Seo";
 
 export default function OrderPage() {
   const { toast } = useToast();
@@ -145,8 +144,7 @@ export default function OrderPage() {
   if (sent) {
     return (
       <div className="min-h-screen flex flex-col">
-        <Seo title={"Pedido Rápido | Disk Água Araujo"} description={"Faça seu pedido de água mineral em galões 20L pelo formulário rápido. Entrega ágil em Santo André."} path={"/pedido"} />
-      <Header />
+        <Header />
         <main className="flex-1 py-12">
           <div className="container max-w-lg">
             <Card className="shadow-lg border-primary/20">

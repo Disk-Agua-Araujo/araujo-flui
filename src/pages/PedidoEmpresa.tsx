@@ -30,7 +30,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useDebounce } from "@/hooks/use-debounce";
 import { normalize } from "@/lib/normalize";
 import { getMinDeliveryDate, isDeliveryDateDisabled } from "@/lib/deliveryRules";
-import { Seo } from "@/components/Seo";
 
 const horarios = [
   "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
@@ -211,8 +210,7 @@ export default function PedidoEmpresa() {
   if (submitted && orderSummary) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
-        <Seo title={"Pedido para Empresas | Disk Água Araujo"} description={"Canal corporativo para pedidos de água mineral. Atendimento PJ com agendamento e nota fiscal."} path={"/pedido-empresa"} />
-      <Header />
+        <Header />
         <main className="flex-1 container py-8 max-w-lg">
           <Card>
             <CardHeader>
