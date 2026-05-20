@@ -12,6 +12,7 @@ import { Contact } from "@/components/Contact";
 import { Footer } from "@/components/Footer";
 import { MobileBottomBar } from "@/components/MobileBottomBar";
 import { SectionDivider } from "@/components/SectionDivider";
+import { Seo } from "@/components/Seo";
 
 const Index = () => {
   useEffect(() => {
