@@ -35,7 +35,7 @@ export function Footer() {
                 className="h-10 w-auto object-contain brightness-0 invert"
               />
             </Link>
-            <p className="text-sm text-background/70">
+            <p className="text-sm text-background/85">
               Entrega de água mineral de qualidade em Santo André e região.
             </p>
             <div className="flex gap-3 mt-4">
@@ -44,7 +44,7 @@ export function Footer() {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Instagram"
-                className="text-background/70 hover:text-accent transition-colors"
+                className="text-background/85 hover:text-accent transition-colors"
               >
                 <Instagram className="h-5 w-5" />
               </a>
@@ -57,23 +57,23 @@ export function Footer() {
               {quickLinks.map((l) => (
                 <li key={l.label}>
                   {l.to ? (
-                    <Link to={l.to} className="text-sm text-background/70 hover:text-background transition-colors">{l.label}</Link>
+                    <Link to={l.to} className="text-sm text-background/85 hover:text-background transition-colors">{l.label}</Link>
                   ) : (
-                    <a href={l.href} className="text-sm text-background/70 hover:text-background transition-colors">{l.label}</a>
+                    <a href={l.href} className="text-sm text-background/85 hover:text-background transition-colors">{l.label}</a>
                   )}
                 </li>
               ))}
-              <li><Link to="/privacidade" className="text-sm text-background/70 hover:text-background transition-colors">Privacidade</Link></li>
-              <li><Link to="/termos" className="text-sm text-background/70 hover:text-background transition-colors">Termos de uso</Link></li>
+              <li><Link to="/privacidade" className="text-sm text-background/85 hover:text-background transition-colors">Privacidade</Link></li>
+              <li><Link to="/termos" className="text-sm text-background/85 hover:text-background transition-colors">Termos de uso</Link></li>
             </ul>
           </div>
 
           <div>
             <h4 className="font-semibold mb-3 text-sm uppercase tracking-wider">Contato</h4>
-            <p className="text-sm text-background/70 mb-1">{business.address.full}</p>
+            <p className="text-sm text-background/85 mb-1">{business.address.full}</p>
             <a
               href={business.telLink}
-              className="text-sm text-background/70 hover:text-background transition-colors block"
+              className="text-sm text-background/85 hover:text-background transition-colors block"
               onClick={() => trackEvent("call_click")}
             >
               📞 {business.phone}
@@ -82,7 +82,7 @@ export function Footer() {
               href={business.waLink(business.waDefaultMessage)}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-background/70 hover:text-background transition-colors block mt-1"
+              className="text-sm text-background/85 hover:text-background transition-colors block mt-1"
               onClick={() => trackEvent("whatsapp_click", { source: "footer" })}
             >
               💬 {business.waPhone}
@@ -101,7 +101,7 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-background/20 mt-8 pt-6 text-center text-xs text-background/50 space-y-1">
+        <div className="border-t border-background/20 mt-8 pt-6 text-center text-xs text-background/80 space-y-1">
           <p>© {year} {business.name} — Todos os direitos reservados.</p>
           <p>Criado por{" "}
             <a
