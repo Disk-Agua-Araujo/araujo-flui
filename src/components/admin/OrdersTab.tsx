@@ -1384,8 +1384,14 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
       {isMobile ? (
         <div>
           {loading ? (
-            <p className="text-center py-8 text-muted-foreground">Carregando...</p>
+            <div className="space-y-2 px-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="animate-pulse h-24 bg-muted rounded-lg" />
+              ))}
+            </div>
           ) : paginatedOrders.length === 0 ? (
+            <p className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</p>
+          ) : (
             <p className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</p>
           ) : (
             paginatedOrders.map((o) => (
