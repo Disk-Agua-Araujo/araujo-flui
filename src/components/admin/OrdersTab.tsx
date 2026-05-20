@@ -930,6 +930,35 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const [reminderOpen, setReminderOpen] = useState(false);
   const [reminderChecked, setReminderChecked] = useState(false);
 
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<
+    | { type: "status"; value: string }
+    | { type: "rider"; value: string | null; label: string }
+    | { type: "payment"; value: string }
+    | { type: "delete" }
+    | null
+  >(null);
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && selectedIds.size > 0) clearSelection();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedIds.size, clearSelection]);
+
   const fetchOrders = async () => {
     setLoading(true);
     try {
