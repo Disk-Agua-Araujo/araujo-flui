@@ -1143,7 +1143,39 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     }
   };
 
-  const handleLabel = (o: AdminOrderRow) => {
+  const runBulkAction = async () => {
+    if (!confirmAction) return;
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) { setConfirmAction(null); return; }
+    setBulkBusy(true);
+    try {
+      if (confirmAction.type === "status") {
+        await adminApi.bulkUpdateOrders(ids, { status: confirmAction.value });
+        toast({ title: `${ids.length} pedido${ids.length !== 1 ? "s" : ""} atualizado${ids.length !== 1 ? "s" : ""} para "${statusLabels[confirmAction.value] ?? confirmAction.value}".` });
+      } else if (confirmAction.type === "rider") {
+        await adminApi.bulkUpdateOrders(ids, { rider_id: confirmAction.value });
+        toast({ title: `${ids.length} pedido${ids.length !== 1 ? "s" : ""} atribuído${ids.length !== 1 ? "s" : ""} a ${confirmAction.label}.` });
+      } else if (confirmAction.type === "payment") {
+        await adminApi.bulkUpdateOrders(ids, { payment_method: confirmAction.value });
+        toast({ title: `Forma de pagamento atualizada em ${ids.length} pedido${ids.length !== 1 ? "s" : ""}.` });
+      } else if (confirmAction.type === "delete") {
+        const res = await adminApi.bulkDeleteOrders(ids);
+        const msg = res.skipped > 0
+          ? `${res.deleted} excluído${res.deleted !== 1 ? "s" : ""}. ${res.skipped} pedido${res.skipped !== 1 ? "s" : ""} entregue${res.skipped !== 1 ? "s" : ""} ignorado${res.skipped !== 1 ? "s" : ""}.`
+          : `${res.deleted} pedido${res.deleted !== 1 ? "s" : ""} excluído${res.deleted !== 1 ? "s" : ""}.`;
+        toast({ title: msg });
+      }
+      clearSelection();
+      setConfirmAction(null);
+      fetchOrders();
+    } catch (err) {
+      toast({ title: "Erro na ação em massa", description: err instanceof Error ? err.message : "Erro", variant: "destructive" });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+
     setLabelData({
       pedidoId: o.id.slice(0, 8).toUpperCase(),
       cliente: o.customers?.name ?? "Retirada / Sem cadastro",
