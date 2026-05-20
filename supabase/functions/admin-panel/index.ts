@@ -1058,7 +1058,7 @@ serve(async (req) => {
         .update(allowed)
         .in("id", orderIds);
       if (error) throw error;
-      return json({ ok: true, count: orderIds.length });
+      return json({ data: { ok: true, count: orderIds.length } });
     }
 
     if (action === "orders.bulkDelete") {
