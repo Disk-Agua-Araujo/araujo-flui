@@ -1469,7 +1469,13 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={11 + riders.length} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                  Array.from({ length: 8 }).map((_, i) => (
+                    <TableRow key={`sk-${i}`}>
+                      <TableCell colSpan={11 + riders.length} className="py-2">
+                        <div className="animate-pulse h-8 bg-muted rounded" />
+                      </TableCell>
+                    </TableRow>
+                  ))
                 ) : paginatedOrders.length === 0 ? (
                   <TableRow><TableCell colSpan={11 + riders.length} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
                 ) : (
