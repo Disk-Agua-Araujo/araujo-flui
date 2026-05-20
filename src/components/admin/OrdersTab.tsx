@@ -3,14 +3,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Switch } from "@/components/ui/switch";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { openWhatsApp, buildOrderMessage } from "@/services/whatsapp";
-import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2, Trash2, Pencil, CalendarClock, Bell } from "lucide-react";
+import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2, Trash2, Pencil, CalendarClock, Bell, X } from "lucide-react";
 import { PaymentIcon, PAYMENT_LABELS } from "@/components/PaymentIcon";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -925,6 +930,35 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const [reminderOpen, setReminderOpen] = useState(false);
   const [reminderChecked, setReminderChecked] = useState(false);
 
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<
+    | { type: "status"; value: string }
+    | { type: "rider"; value: string | null; label: string }
+    | { type: "payment"; value: string }
+    | { type: "delete" }
+    | null
+  >(null);
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && selectedIds.size > 0) clearSelection();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedIds.size, clearSelection]);
+
   const fetchOrders = async () => {
     setLoading(true);
     try {
@@ -1064,6 +1098,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
 
   useEffect(() => {
     setCurrentPage(1);
+    setSelectedIds(new Set());
   }, [search, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -1105,6 +1140,38 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     } catch {
       toast({ title: "Erro ao atualizar pagamento PIX", variant: "destructive" });
       fetchOrders();
+    }
+  };
+
+  const runBulkAction = async () => {
+    if (!confirmAction) return;
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) { setConfirmAction(null); return; }
+    setBulkBusy(true);
+    try {
+      if (confirmAction.type === "status") {
+        await adminApi.bulkUpdateOrders(ids, { status: confirmAction.value });
+        toast({ title: `${ids.length} pedido${ids.length !== 1 ? "s" : ""} atualizado${ids.length !== 1 ? "s" : ""} para "${statusLabels[confirmAction.value] ?? confirmAction.value}".` });
+      } else if (confirmAction.type === "rider") {
+        await adminApi.bulkUpdateOrders(ids, { rider_id: confirmAction.value });
+        toast({ title: `${ids.length} pedido${ids.length !== 1 ? "s" : ""} atribuído${ids.length !== 1 ? "s" : ""} a ${confirmAction.label}.` });
+      } else if (confirmAction.type === "payment") {
+        await adminApi.bulkUpdateOrders(ids, { payment_method: confirmAction.value });
+        toast({ title: `Forma de pagamento atualizada em ${ids.length} pedido${ids.length !== 1 ? "s" : ""}.` });
+      } else if (confirmAction.type === "delete") {
+        const res = await adminApi.bulkDeleteOrders(ids);
+        const msg = res.skipped > 0
+          ? `${res.deleted} excluído${res.deleted !== 1 ? "s" : ""}. ${res.skipped} pedido${res.skipped !== 1 ? "s" : ""} entregue${res.skipped !== 1 ? "s" : ""} ignorado${res.skipped !== 1 ? "s" : ""}.`
+          : `${res.deleted} pedido${res.deleted !== 1 ? "s" : ""} excluído${res.deleted !== 1 ? "s" : ""}.`;
+        toast({ title: msg });
+      }
+      clearSelection();
+      setConfirmAction(null);
+      fetchOrders();
+    } catch (err) {
+      toast({ title: "Erro na ação em massa", description: err instanceof Error ? err.message : "Erro", variant: "destructive" });
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -1239,6 +1306,70 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
         <p className="text-sm text-muted-foreground">{filtered.length} pedido{filtered.length !== 1 ? "s" : ""} encontrado{filtered.length !== 1 ? "s" : ""}</p>
       </div>
 
+      {selectedIds.size > 0 && (() => {
+        const selectedOrders = orders.filter((o) => selectedIds.has(o.id));
+        const deliveredCount = selectedOrders.filter((o) => o.status === "entregue").length;
+        const pageAllSelected = paginatedOrders.length > 0 && paginatedOrders.every((o) => selectedIds.has(o.id));
+        const canSelectAllFiltered = pageAllSelected && filtered.length > paginatedOrders.length && selectedIds.size < filtered.length;
+        return (
+          <div className={`sticky top-14 z-30 rounded-lg border-2 border-[#033D7B] bg-[#033D7B] text-white shadow-lg p-3 ${isMobile ? "fixed bottom-16 left-2 right-2 top-auto" : ""}`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold text-sm">
+                ✓ {selectedIds.size} pedido{selectedIds.size !== 1 ? "s" : ""} selecionado{selectedIds.size !== 1 ? "s" : ""}
+              </span>
+              {canSelectAllFiltered && (
+                <Button size="sm" variant="secondary" className="h-7 text-xs"
+                  onClick={() => setSelectedIds(new Set(filtered.map((o) => o.id)))}>
+                  Selecionar todos os {filtered.length} filtrados
+                </Button>
+              )}
+              <div className="flex-1" />
+              <Select value="" onValueChange={(v) => setConfirmAction({ type: "status", value: v })}>
+                <SelectTrigger className="h-8 w-[150px] bg-white text-foreground"><SelectValue placeholder="Alterar status" /></SelectTrigger>
+                <SelectContent>
+                  {Constants.public.Enums.order_status.map((s) => (
+                    <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value="" onValueChange={(v) => {
+                if (v === "__none__") { setConfirmAction({ type: "rider", value: null, label: "Sem motoboy" }); return; }
+                const r = riders.find((x) => x.id === v);
+                setConfirmAction({ type: "rider", value: v, label: r ? `${r.label} — ${r.name}` : "Motoboy" });
+              }}>
+                <SelectTrigger className="h-8 w-[160px] bg-white text-foreground"><SelectValue placeholder="Atribuir motoboy" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Remover motoboy</SelectItem>
+                  {riders.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>{r.label} — {r.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value="" onValueChange={(v) => setConfirmAction({ type: "payment", value: v })}>
+                <SelectTrigger className="h-8 w-[150px] bg-white text-foreground"><SelectValue placeholder="Pagamento" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Dinheiro</SelectItem>
+                  <SelectItem value="pix">PIX</SelectItem>
+                  <SelectItem value="card">Cartão</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" variant="destructive" className="h-8" onClick={() => setConfirmAction({ type: "delete" })}>
+                <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8 text-white hover:bg-white/20 hover:text-white" onClick={clearSelection}>
+                <X className="h-4 w-4 mr-1" /> Limpar
+              </Button>
+            </div>
+            {deliveredCount > 0 && (
+              <p className="text-xs mt-1 opacity-90">
+                ⚠️ {deliveredCount} pedido{deliveredCount !== 1 ? "s" : ""} entregue{deliveredCount !== 1 ? "s" : ""} não pode{deliveredCount !== 1 ? "m" : ""} ser excluído{deliveredCount !== 1 ? "s" : ""} em lote.
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
+
       {/* MOBILE: Card layout */}
       {isMobile ? (
         <div>
@@ -1248,22 +1379,33 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
             <p className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</p>
           ) : (
             paginatedOrders.map((o) => (
-              <OrderCard
-                key={o.id}
-                o={o}
-                riders={riders}
-                statusLabels={statusLabels}
-                statusColors={statusColors}
-                paymentLabels={paymentLabels}
-                onView={() => setSelectedOrder(o)}
-                onEdit={() => setEditOrder(o)}
-                onLabel={() => handleLabel(o)}
-                onWhatsApp={() => handleWhatsApp(o)}
-                onStatusChange={(v) => updateStatus(o.id, v)}
-                onRiderToggle={(rid) => toggleRider(o.id, rid, o.rider_id)}
-                onPixToggle={() => togglePixPaid(o.id)}
-              />
+              <div key={o.id} className={`relative ${selectedIds.has(o.id) ? "ring-2 ring-[#033D7B] rounded-lg" : ""}`}>
+                <div className="absolute top-2 left-2 z-10 bg-white rounded p-0.5 shadow-sm border">
+                  <Checkbox
+                    className="data-[state=checked]:bg-[#033D7B] data-[state=checked]:border-[#033D7B]"
+                    checked={selectedIds.has(o.id)}
+                    onCheckedChange={() => toggleSelect(o.id)}
+                  />
+                </div>
+                <div className={selectedIds.has(o.id) ? "[&_.p-3]:pl-10" : "[&_.p-3]:pl-10"}>
+                  <OrderCard
+                    o={o}
+                    riders={riders}
+                    statusLabels={statusLabels}
+                    statusColors={statusColors}
+                    paymentLabels={paymentLabels}
+                    onView={() => setSelectedOrder(o)}
+                    onEdit={() => setEditOrder(o)}
+                    onLabel={() => handleLabel(o)}
+                    onWhatsApp={() => handleWhatsApp(o)}
+                    onStatusChange={(v) => updateStatus(o.id, v)}
+                    onRiderToggle={(rid) => toggleRider(o.id, rid, o.rider_id)}
+                    onPixToggle={() => togglePixPaid(o.id)}
+                  />
+                </div>
+              </div>
             ))
+
           )}
         </div>
       ) : (
@@ -1273,6 +1415,20 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      className="data-[state=checked]:bg-[#033D7B] data-[state=checked]:border-[#033D7B]"
+                      checked={paginatedOrders.length > 0 && paginatedOrders.every((o) => selectedIds.has(o.id))}
+                      onCheckedChange={(v) => {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          if (v) paginatedOrders.forEach((o) => next.add(o.id));
+                          else paginatedOrders.forEach((o) => next.delete(o.id));
+                          return next;
+                        });
+                      }}
+                    />
+                  </TableHead>
                   <TableHead>ID</TableHead>
                   <TableHead>Endereço</TableHead>
                   <TableHead>Tipo</TableHead>
@@ -1299,12 +1455,20 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={10 + riders.length} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11 + riders.length} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
                 ) : paginatedOrders.length === 0 ? (
-                  <TableRow><TableCell colSpan={10 + riders.length} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11 + riders.length} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
                 ) : (
                   paginatedOrders.map((o) => (
-                    <TableRow key={o.id}>
+                    <TableRow key={o.id} className={selectedIds.has(o.id) ? "bg-blue-50" : ""}>
+                      <TableCell>
+                        <Checkbox
+                          className="data-[state=checked]:bg-[#033D7B] data-[state=checked]:border-[#033D7B]"
+                          checked={selectedIds.has(o.id)}
+                          onCheckedChange={() => toggleSelect(o.id)}
+                        />
+                      </TableCell>
+
                       <TableCell className="font-mono text-xs">{o.id.slice(0, 8)}</TableCell>
                       <TableCell className="text-sm">
                         {o.addresses
@@ -1529,6 +1693,41 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
           }
         }}
       />
+
+      <AlertDialog open={!!confirmAction} onOpenChange={(o) => { if (!o && !bulkBusy) setConfirmAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction?.type === "status" && `Alterar status de ${selectedIds.size} pedido${selectedIds.size !== 1 ? "s" : ""}?`}
+              {confirmAction?.type === "rider" && `Atribuir ${confirmAction.label} a ${selectedIds.size} pedido${selectedIds.size !== 1 ? "s" : ""}?`}
+              {confirmAction?.type === "payment" && `Alterar forma de pagamento de ${selectedIds.size} pedido${selectedIds.size !== 1 ? "s" : ""}?`}
+              {confirmAction?.type === "delete" && `Excluir ${selectedIds.size} pedido${selectedIds.size !== 1 ? "s" : ""} permanentemente?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction?.type === "status" && `Novo status: "${statusLabels[(confirmAction as { value: string }).value] ?? ""}". Esta ação não pode ser desfeita em lote.`}
+              {confirmAction?.type === "payment" && `Nova forma: "${paymentLabels[(confirmAction as { value: string }).value] ?? ""}". Esta ação não pode ser desfeita em lote.`}
+              {confirmAction?.type === "rider" && "Esta ação substituirá o motoboy atualmente atribuído."}
+              {confirmAction?.type === "delete" && (() => {
+                const delivered = orders.filter((o) => selectedIds.has(o.id) && o.status === "entregue").length;
+                return delivered > 0
+                  ? `⚠️ Esta ação não pode ser desfeita. ${delivered} pedido${delivered !== 1 ? "s" : ""} entregue${delivered !== 1 ? "s" : ""} será ignorado${delivered !== 1 ? "s" : ""}.`
+                  : "⚠️ Esta ação não pode ser desfeita.";
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkBusy}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={bulkBusy}
+              onClick={(e) => { e.preventDefault(); runBulkAction(); }}
+              className={confirmAction?.type === "delete" ? "bg-destructive hover:bg-destructive/90" : ""}
+            >
+              {bulkBusy && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              {confirmAction?.type === "delete" ? "Excluir" : "Confirmar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

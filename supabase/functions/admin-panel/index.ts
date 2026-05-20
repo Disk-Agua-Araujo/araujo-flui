@@ -1025,6 +1025,62 @@ serve(async (req) => {
       return json({ ok: true });
     }
 
+    if (action === "orders.bulkUpdate") {
+      const orderIds = (payload?.orderIds || []) as string[];
+      const updates = (payload?.updates || {}) as Record<string, unknown>;
+      if (!Array.isArray(orderIds) || orderIds.length === 0) throw new Error("Nenhum pedido selecionado");
+      if (orderIds.length > 500) throw new Error("Máximo de 500 pedidos por operação");
+
+      const allowed: Record<string, unknown> = {};
+      if (typeof updates.status === "string") allowed.status = updates.status;
+      if (updates.rider_id === null || typeof updates.rider_id === "string") allowed.rider_id = updates.rider_id;
+      if (updates.payment_method === null || typeof updates.payment_method === "string") allowed.payment_method = updates.payment_method;
+
+      if (Object.keys(allowed).length === 0) throw new Error("Nenhum campo válido para atualizar");
+
+      if (allowed.status === "em_rota") {
+        const { data: rows } = await adminClient
+          .from("orders")
+          .select("id,status")
+          .in("id", orderIds);
+        const toDeduct = (rows ?? []).filter((r) => r.status !== "em_rota").map((r) => r.id);
+        for (const id of toDeduct) {
+          const { error: stockError } = await adminClient.rpc("deduct_stock_for_order", {
+            p_order_id: id,
+            p_created_by: admin.username,
+          });
+          if (stockError) throw stockError;
+        }
+      }
+
+      const { error } = await adminClient
+        .from("orders")
+        .update(allowed)
+        .in("id", orderIds);
+      if (error) throw error;
+      return json({ ok: true, count: orderIds.length });
+    }
+
+    if (action === "orders.bulkDelete") {
+      const orderIds = (payload?.orderIds || []) as string[];
+      if (!Array.isArray(orderIds) || orderIds.length === 0) throw new Error("Nenhum pedido selecionado");
+      if (orderIds.length > 500) throw new Error("Máximo de 500 pedidos por operação");
+
+      const { data: rows } = await adminClient
+        .from("orders")
+        .select("id,status")
+        .in("id", orderIds);
+      const deletable = (rows ?? []).filter((r) => r.status !== "entregue").map((r) => r.id);
+      const skipped = orderIds.length - deletable.length;
+
+      if (deletable.length > 0) {
+        await adminClient.from("order_items").delete().in("order_id", deletable);
+        const { error } = await adminClient.from("orders").delete().in("id", deletable);
+        if (error) throw error;
+      }
+      return json({ ok: true, deleted: deletable.length, skipped });
+    }
+
     return json({ error: "Ação inválida" }, 400);
   } catch (error) {
     console.error("admin-panel error", error);
