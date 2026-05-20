@@ -1306,6 +1306,70 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
         <p className="text-sm text-muted-foreground">{filtered.length} pedido{filtered.length !== 1 ? "s" : ""} encontrado{filtered.length !== 1 ? "s" : ""}</p>
       </div>
 
+      {selectedIds.size > 0 && (() => {
+        const selectedOrders = orders.filter((o) => selectedIds.has(o.id));
+        const deliveredCount = selectedOrders.filter((o) => o.status === "entregue").length;
+        const pageAllSelected = paginatedOrders.length > 0 && paginatedOrders.every((o) => selectedIds.has(o.id));
+        const canSelectAllFiltered = pageAllSelected && filtered.length > paginatedOrders.length && selectedIds.size < filtered.length;
+        return (
+          <div className={`sticky top-14 z-30 rounded-lg border-2 border-[#033D7B] bg-[#033D7B] text-white shadow-lg p-3 ${isMobile ? "fixed bottom-16 left-2 right-2 top-auto" : ""}`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold text-sm">
+                ✓ {selectedIds.size} pedido{selectedIds.size !== 1 ? "s" : ""} selecionado{selectedIds.size !== 1 ? "s" : ""}
+              </span>
+              {canSelectAllFiltered && (
+                <Button size="sm" variant="secondary" className="h-7 text-xs"
+                  onClick={() => setSelectedIds(new Set(filtered.map((o) => o.id)))}>
+                  Selecionar todos os {filtered.length} filtrados
+                </Button>
+              )}
+              <div className="flex-1" />
+              <Select value="" onValueChange={(v) => setConfirmAction({ type: "status", value: v })}>
+                <SelectTrigger className="h-8 w-[150px] bg-white text-foreground"><SelectValue placeholder="Alterar status" /></SelectTrigger>
+                <SelectContent>
+                  {Constants.public.Enums.order_status.map((s) => (
+                    <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value="" onValueChange={(v) => {
+                if (v === "__none__") { setConfirmAction({ type: "rider", value: null, label: "Sem motoboy" }); return; }
+                const r = riders.find((x) => x.id === v);
+                setConfirmAction({ type: "rider", value: v, label: r ? `${r.label} — ${r.name}` : "Motoboy" });
+              }}>
+                <SelectTrigger className="h-8 w-[160px] bg-white text-foreground"><SelectValue placeholder="Atribuir motoboy" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Remover motoboy</SelectItem>
+                  {riders.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>{r.label} — {r.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value="" onValueChange={(v) => setConfirmAction({ type: "payment", value: v })}>
+                <SelectTrigger className="h-8 w-[150px] bg-white text-foreground"><SelectValue placeholder="Pagamento" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Dinheiro</SelectItem>
+                  <SelectItem value="pix">PIX</SelectItem>
+                  <SelectItem value="card">Cartão</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" variant="destructive" className="h-8" onClick={() => setConfirmAction({ type: "delete" })}>
+                <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8 text-white hover:bg-white/20 hover:text-white" onClick={clearSelection}>
+                <X className="h-4 w-4 mr-1" /> Limpar
+              </Button>
+            </div>
+            {deliveredCount > 0 && (
+              <p className="text-xs mt-1 opacity-90">
+                ⚠️ {deliveredCount} pedido{deliveredCount !== 1 ? "s" : ""} entregue{deliveredCount !== 1 ? "s" : ""} não pode{deliveredCount !== 1 ? "m" : ""} ser excluído{deliveredCount !== 1 ? "s" : ""} em lote.
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
+
       {/* MOBILE: Card layout */}
       {isMobile ? (
         <div>
