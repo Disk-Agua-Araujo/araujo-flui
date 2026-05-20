@@ -1145,29 +1145,39 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
 
   const runBulkAction = async () => {
     if (!confirmAction) return;
-    const ids = Array.from(selectedIds);
+    const ids = Array.from(selectedIds ?? []);
     if (ids.length === 0) { setConfirmAction(null); return; }
     setBulkBusy(true);
     try {
       if (confirmAction.type === "status") {
         await adminApi.bulkUpdateOrders(ids, { status: confirmAction.value });
+        const idSet = new Set(ids);
+        setOrders((prev) => prev.map((o) => idSet.has(o.id) ? { ...o, status: confirmAction.value } : o));
         toast({ title: `${ids.length} pedido${ids.length !== 1 ? "s" : ""} atualizado${ids.length !== 1 ? "s" : ""} para "${statusLabels[confirmAction.value] ?? confirmAction.value}".` });
       } else if (confirmAction.type === "rider") {
         await adminApi.bulkUpdateOrders(ids, { rider_id: confirmAction.value });
+        const idSet = new Set(ids);
+        setOrders((prev) => prev.map((o) => idSet.has(o.id) ? { ...o, rider_id: confirmAction.value } : o));
         toast({ title: `${ids.length} pedido${ids.length !== 1 ? "s" : ""} atribuído${ids.length !== 1 ? "s" : ""} a ${confirmAction.label}.` });
       } else if (confirmAction.type === "payment") {
         await adminApi.bulkUpdateOrders(ids, { payment_method: confirmAction.value });
+        const idSet = new Set(ids);
+        setOrders((prev) => prev.map((o) => idSet.has(o.id) ? { ...o, payment_method: confirmAction.value } : o));
         toast({ title: `Forma de pagamento atualizada em ${ids.length} pedido${ids.length !== 1 ? "s" : ""}.` });
       } else if (confirmAction.type === "delete") {
-        const res = await adminApi.bulkDeleteOrders(ids);
-        const msg = res.skipped > 0
-          ? `${res.deleted} excluído${res.deleted !== 1 ? "s" : ""}. ${res.skipped} pedido${res.skipped !== 1 ? "s" : ""} entregue${res.skipped !== 1 ? "s" : ""} ignorado${res.skipped !== 1 ? "s" : ""}.`
-          : `${res.deleted} pedido${res.deleted !== 1 ? "s" : ""} excluído${res.deleted !== 1 ? "s" : ""}.`;
+        const res = (await adminApi.bulkDeleteOrders(ids)) ?? { deleted: 0, skipped: 0 };
+        const deleted = res.deleted ?? 0;
+        const skipped = res.skipped ?? 0;
+        // Local state update: remove non-delivered orders that were selected
+        const idSet = new Set(ids);
+        setOrders((prev) => prev.filter((o) => !(idSet.has(o.id) && o.status !== "entregue")));
+        const msg = skipped > 0
+          ? `${deleted} excluído${deleted !== 1 ? "s" : ""}. ${skipped} pedido${skipped !== 1 ? "s" : ""} entregue${skipped !== 1 ? "s" : ""} ignorado${skipped !== 1 ? "s" : ""}.`
+          : `${deleted} pedido${deleted !== 1 ? "s" : ""} excluído${deleted !== 1 ? "s" : ""}.`;
         toast({ title: msg });
       }
       clearSelection();
       setConfirmAction(null);
-      fetchOrders();
     } catch (err) {
       toast({ title: "Erro na ação em massa", description: err instanceof Error ? err.message : "Erro", variant: "destructive" });
     } finally {
@@ -1374,7 +1384,11 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
       {isMobile ? (
         <div>
           {loading ? (
-            <p className="text-center py-8 text-muted-foreground">Carregando...</p>
+            <div className="space-y-2 px-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="animate-pulse h-24 bg-muted rounded-lg" />
+              ))}
+            </div>
           ) : paginatedOrders.length === 0 ? (
             <p className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</p>
           ) : (
@@ -1455,7 +1469,13 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={11 + riders.length} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                  Array.from({ length: 8 }).map((_, i) => (
+                    <TableRow key={`sk-${i}`}>
+                      <TableCell colSpan={11 + riders.length} className="py-2">
+                        <div className="animate-pulse h-8 bg-muted rounded" />
+                      </TableCell>
+                    </TableRow>
+                  ))
                 ) : paginatedOrders.length === 0 ? (
                   <TableRow><TableCell colSpan={11 + riders.length} className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</TableCell></TableRow>
                 ) : (
