@@ -1392,8 +1392,6 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
           ) : paginatedOrders.length === 0 ? (
             <p className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</p>
           ) : (
-            <p className="text-center py-8 text-muted-foreground">Nenhum pedido encontrado.</p>
-          ) : (
             paginatedOrders.map((o) => (
               <div key={o.id} className={`relative ${selectedIds.has(o.id) ? "ring-2 ring-[#033D7B] rounded-lg" : ""}`}>
                 <div className="absolute top-2 left-2 z-10 bg-white rounded p-0.5 shadow-sm border">
