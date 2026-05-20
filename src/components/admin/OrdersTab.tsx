@@ -1098,6 +1098,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
 
   useEffect(() => {
     setCurrentPage(1);
+    setSelectedIds(new Set());
   }, [search, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
