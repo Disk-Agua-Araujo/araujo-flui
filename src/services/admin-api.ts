@@ -297,4 +297,10 @@ export const adminApi = {
 
   dismissReminders: (orderIds: string[]) =>
     callAdminApi<{ ok: boolean }>("orders.dismissReminders", { orderIds }),
+
+  bulkUpdateOrders: (orderIds: string[], updates: { status?: string; rider_id?: string | null; payment_method?: string | null }) =>
+    callAdminApi<{ ok: boolean; count: number }>("orders.bulkUpdate", { orderIds, updates }),
+
+  bulkDeleteOrders: (orderIds: string[]) =>
+    callAdminApi<{ ok: boolean; deleted: number; skipped: number }>("orders.bulkDelete", { orderIds }),
 };
