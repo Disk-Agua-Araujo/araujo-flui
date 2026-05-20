@@ -101,7 +101,7 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-background/20 mt-8 pt-6 text-center text-xs text-background/50 space-y-1">
+        <div className="border-t border-background/20 mt-8 pt-6 text-center text-xs text-background/80 space-y-1">
           <p>© {year} {business.name} — Todos os direitos reservados.</p>
           <p>Criado por{" "}
             <a
