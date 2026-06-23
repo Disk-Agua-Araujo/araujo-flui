@@ -18,6 +18,7 @@ import { openWhatsApp, buildOrderMessage } from "@/services/whatsapp";
 import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2, Trash2, Pencil, CalendarClock, Bell, X } from "lucide-react";
 import { PaymentIcon, PAYMENT_LABELS } from "@/components/PaymentIcon";
 import { Textarea } from "@/components/ui/textarea";
+import { QuantityInput } from "@/components/ui/quantity-input";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
