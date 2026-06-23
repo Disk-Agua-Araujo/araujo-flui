@@ -200,23 +200,12 @@ export function QuickOrder() {
                             <ProductImage imageUrl={p.image_url} productName={p.name} size="sm" className="h-10 w-10" />
                             <span className="text-sm font-medium truncate">{p.name}</span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => updateQty(p.id, -1)}
-                              className="h-7 w-7 rounded-full border flex items-center justify-center hover:bg-muted transition-colors"
-                              aria-label={`Diminuir ${p.name}`}
-                            >
-                              <Minus className="h-3 w-3" />
-                            </button>
-                            <span className="w-6 text-center text-sm font-semibold">{quantities[p.id] || 0}</span>
-                            <button
-                              onClick={() => updateQty(p.id, 1)}
-                              className="h-7 w-7 rounded-full border flex items-center justify-center hover:bg-muted transition-colors"
-                              aria-label={`Aumentar ${p.name}`}
-                            >
-                              <Plus className="h-3 w-3" />
-                            </button>
-                          </div>
+                          <QuantityInput
+                            size="sm"
+                            value={quantities[p.id] || 0}
+                            onChange={(n) => setQuantities((prev) => ({ ...prev, [p.id]: n }))}
+                            ariaLabel={`Quantidade de ${p.name}`}
+                          />
                         </div>
                       ))}
                     </div>
