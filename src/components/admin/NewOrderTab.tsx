@@ -13,7 +13,8 @@ import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { FulfillmentToggle } from "@/components/FulfillmentToggle";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, Minus, Plus, Save, Search, X, Loader2 } from "lucide-react";
+import { CalendarIcon, Save, Search, X, Loader2 } from "lucide-react";
+import { QuantityInput } from "@/components/ui/quantity-input";
 import { PaymentIcon } from "@/components/PaymentIcon";
 import { SplitPaymentSection, emptySplitPayment, validateSplitPayment, splitPaymentToPayload, type SplitPaymentValue } from "@/components/admin/SplitPaymentSection";
 import { cn } from "@/lib/utils";
@@ -541,15 +542,11 @@ export function NewOrderTab() {
                   <p className="font-medium text-sm">{p.name}</p>
                   <p className="text-xs text-muted-foreground">{p.price_text}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => updateQty(p.id, -1)}>
-                    <Minus className="h-3 w-3" />
-                  </Button>
-                  <span className="w-8 text-center font-medium">{qtys[p.id] || 0}</span>
-                  <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => updateQty(p.id, 1)}>
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                </div>
+                <QuantityInput
+                  value={qtys[p.id] || 0}
+                  onChange={(n) => setQtys((prev) => ({ ...prev, [p.id]: n }))}
+                  ariaLabel={`Quantidade de ${p.name}`}
+                />
               </div>
             ))
           )}

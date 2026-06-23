@@ -18,6 +18,7 @@ import { openWhatsApp, buildOrderMessage } from "@/services/whatsapp";
 import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2, Trash2, Pencil, CalendarClock, Bell, X } from "lucide-react";
 import { PaymentIcon, PAYMENT_LABELS } from "@/components/PaymentIcon";
 import { Textarea } from "@/components/ui/textarea";
+import { QuantityInput } from "@/components/ui/quantity-input";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
@@ -762,8 +763,11 @@ function EditOrderModal({
                       {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Input type="number" min={1} className="w-16" value={item.qty}
-                    onChange={(e) => setItems((prev) => prev.map((it, i) => i === idx ? { ...it, qty: parseInt(e.target.value) || 1 } : it))} />
+                  <QuantityInput
+                    value={item.qty}
+                    min={1}
+                    onChange={(n) => setItems((prev) => prev.map((it, i) => i === idx ? { ...it, qty: Math.max(1, n) } : it))}
+                  />
                   <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeItem(idx)}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
