@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { MessageCircle, Plus, Minus, Copy, Check, Loader2, ShoppingCart } from "lucide-react";
+import { MessageCircle, Copy, Check, Loader2, ShoppingCart } from "lucide-react";
+import { QuantityInput } from "@/components/ui/quantity-input";
 import { PaymentIcon } from "@/components/PaymentIcon";
 import { ProductImage } from "@/components/ProductImage";
 import { Button } from "@/components/ui/button";
