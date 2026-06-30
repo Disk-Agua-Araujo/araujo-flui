@@ -1586,8 +1586,8 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                         </TableCell>
                       ))}
                       <TableCell>
-                        <Select value={o.status} onValueChange={(v) => updateStatus(o.id, v)}>
-                          <SelectTrigger className="h-7 text-xs w-[110px]">
+                        <Select value={o.status} onValueChange={(v) => updateStatus(o.id, v)} disabled={updatingStatusIds.has(o.id)}>
+                          <SelectTrigger className="h-7 text-xs w-[110px]" disabled={updatingStatusIds.has(o.id)}>
                             <Badge className={`${statusColors[o.status]} text-xs`}>{statusLabels[o.status]}</Badge>
                           </SelectTrigger>
                           <SelectContent>
