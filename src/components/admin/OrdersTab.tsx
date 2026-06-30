@@ -936,6 +936,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
 
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [updatingStatusIds, setUpdatingStatusIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [confirmAction, setConfirmAction] = useState<
     | { type: "status"; value: string }
