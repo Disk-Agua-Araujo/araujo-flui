@@ -1110,14 +1110,56 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const paginatedOrders = filtered.slice(pageStart, pageStart + PAGE_SIZE);
 
   const updateStatus = async (orderId: string, newStatus: string) => {
-    try {
-      await adminApi.updateOrderStatus(orderId, newStatus);
-      toast({ title: "Status atualizado" });
-      fetchOrders();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao atualizar status";
-      toast({ title: "Não foi possível atualizar", description: message, variant: "destructive" });
+    if (updatingStatusIds.has(orderId)) return;
+    const previous = orders.find((o) => o.id === orderId)?.status;
+    if (previous === newStatus) return;
+
+    // Optimistic update
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
+    setUpdatingStatusIds((prev) => {
+      const next = new Set(prev);
+      next.add(orderId);
+      return next;
+    });
+
+    const maxRetries = 3;
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await adminApi.updateOrderStatus(orderId, newStatus);
+        toast({ title: "Status atualizado" });
+        setUpdatingStatusIds((prev) => {
+          const next = new Set(prev);
+          next.delete(orderId);
+          return next;
+        });
+        return;
+      } catch (err) {
+        lastError = err;
+        console.warn(`[updateStatus] tentativa ${attempt} falhou`, err);
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, attempt * 500));
+        }
+      }
     }
+
+    // All retries failed — revert
+    console.error("[updateStatus] falha após retries", lastError);
+    setOrders((prev) => prev.map((o) => (o.id === orderId && previous !== undefined ? { ...o, status: previous } : o)));
+    setUpdatingStatusIds((prev) => {
+      const next = new Set(prev);
+      next.delete(orderId);
+      return next;
+    });
+    const technical = lastError instanceof Error ? lastError.message : "";
+    const isNetwork = /network|fetch|timeout|conexão|failed to fetch/i.test(technical);
+    toast({
+      title: "Não foi possível atualizar o status",
+      description: isNetwork
+        ? "Falha de conexão. Verifique sua internet e tente novamente."
+        : "Tente novamente em instantes. Se persistir, recarregue a página.",
+      variant: "destructive",
+    });
   };
 
   const toggleRider = async (orderId: string, riderId: string, currentRiderId: string | null) => {
