@@ -261,6 +261,7 @@ export type Database = {
           customer_id: string | null
           delivery_date: string | null
           delivery_time: string | null
+          em_rota_at: string | null
           fulfillment_type: string
           id: string
           is_split_payment: boolean
@@ -291,6 +292,7 @@ export type Database = {
           customer_id?: string | null
           delivery_date?: string | null
           delivery_time?: string | null
+          em_rota_at?: string | null
           fulfillment_type?: string
           id?: string
           is_split_payment?: boolean
@@ -321,6 +323,7 @@ export type Database = {
           customer_id?: string | null
           delivery_date?: string | null
           delivery_time?: string | null
+          em_rota_at?: string | null
           fulfillment_type?: string
           id?: string
           is_split_payment?: boolean
@@ -639,6 +642,10 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_admin_owner: { Args: never; Returns: boolean }
+      mark_orders_em_rota: {
+        Args: { p_created_by?: string; p_order_ids: string[] }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin_owner" | "admin_manager"
