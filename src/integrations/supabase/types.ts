@@ -642,6 +642,10 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_admin_owner: { Args: never; Returns: boolean }
+      mark_orders_em_rota: {
+        Args: { p_created_by?: string; p_order_ids: string[] }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin_owner" | "admin_manager"
