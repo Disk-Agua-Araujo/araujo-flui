@@ -190,7 +190,7 @@ serve(async (req) => {
       const { data, error, count } = await adminClient
         .from("orders")
         .select(`
-          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
+          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, em_rota_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
           customers(id, name, phone, cnpj, type),
           addresses(street, number, neighborhood, city, complement, reference),
           order_items(qty, product_id, products(name))
@@ -215,20 +215,15 @@ serve(async (req) => {
       const newStatus = payload?.status as string;
       if (!orderId || !newStatus) throw new Error("Pedido/status inválido");
 
-      const { data: currentOrder, error: currentError } = await adminClient
-        .from("orders")
-        .select("status")
-        .eq("id", orderId)
-        .single();
-
-      if (currentError) throw currentError;
-
-      if (newStatus === "em_rota" && currentOrder.status !== "em_rota") {
-        const { error: stockError } = await adminClient.rpc("deduct_stock_for_order", {
-          p_order_id: orderId,
+      if (newStatus === "em_rota") {
+        const { data: results, error: rotaError } = await adminClient.rpc("mark_orders_em_rota", {
+          p_order_ids: [orderId],
           p_created_by: admin.username,
         });
-        if (stockError) throw stockError;
+        if (rotaError) throw rotaError;
+        const result = (results as { ok: boolean; error?: string }[] | null)?.[0];
+        if (result && !result.ok) throw new Error(result.error || "Não foi possível colocar o pedido em rota.");
+        return json({ ok: true });
       }
 
       const { error } = await adminClient
@@ -662,7 +657,7 @@ serve(async (req) => {
         let q = adminClient
           .from("orders")
           .select(`
-            id, channel, status, delivery_date, delivery_time, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, notes, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
+            id, channel, status, delivery_date, delivery_time, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, em_rota_at, notes, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
             customers(id, name, phone, cnpj, type),
             addresses(street, number, neighborhood, city, complement, reference),
             order_items(qty, product_id, products(name))
@@ -707,16 +702,16 @@ serve(async (req) => {
         if (key in orderData) updateFields[key] = orderData[key];
       }
 
-      // Stock deduction check for status change to em_rota
+      // Status change to em_rota: atomic stock deduction + status via RPC
       if (orderData.status === "em_rota") {
-        const { data: currentOrder } = await adminClient.from("orders").select("status").eq("id", orderId).single();
-        if (currentOrder && currentOrder.status !== "em_rota") {
-          const { error: stockError } = await adminClient.rpc("deduct_stock_for_order", {
-            p_order_id: orderId,
-            p_created_by: admin.username,
-          });
-          if (stockError) throw stockError;
-        }
+        const { data: results, error: rotaError } = await adminClient.rpc("mark_orders_em_rota", {
+          p_order_ids: [orderId],
+          p_created_by: admin.username,
+        });
+        if (rotaError) throw rotaError;
+        const result = (results as { ok: boolean; error?: string }[] | null)?.[0];
+        if (result && !result.ok) throw new Error(result.error || "Não foi possível colocar o pedido em rota.");
+        delete updateFields.status;
       }
 
       const { error: updateErr } = await adminClient.from("orders").update(updateFields).eq("id", orderId);
@@ -1039,18 +1034,22 @@ serve(async (req) => {
       if (Object.keys(allowed).length === 0) throw new Error("Nenhum campo válido para atualizar");
 
       if (allowed.status === "em_rota") {
-        const { data: rows } = await adminClient
-          .from("orders")
-          .select("id,status")
-          .in("id", orderIds);
-        const toDeduct = (rows ?? []).filter((r) => r.status !== "em_rota").map((r) => r.id);
-        for (const id of toDeduct) {
-          const { error: stockError } = await adminClient.rpc("deduct_stock_for_order", {
-            p_order_id: id,
-            p_created_by: admin.username,
-          });
-          if (stockError) throw stockError;
+        // Atomic per order: stock deduction + status together; one failure
+        // does not block the rest of the batch
+        const { data: results, error: rotaError } = await adminClient.rpc("mark_orders_em_rota", {
+          p_order_ids: orderIds,
+          p_created_by: admin.username,
+        });
+        if (rotaError) throw rotaError;
+        const failed = ((results as { order_id: string; ok: boolean; error?: string }[] | null) ?? [])
+          .filter((r) => !r.ok)
+          .map((r) => ({ id: r.order_id, error: r.error || "Erro desconhecido" }));
+        delete allowed.status;
+        if (Object.keys(allowed).length > 0) {
+          const { error } = await adminClient.from("orders").update(allowed).in("id", orderIds);
+          if (error) throw error;
         }
+        return json({ data: { ok: failed.length === 0, count: orderIds.length - failed.length, failed } });
       }
 
       const { error } = await adminClient
@@ -1085,9 +1084,12 @@ serve(async (req) => {
   } catch (error) {
     console.error("admin-panel error", error);
 
+    // P0001 = RAISE EXCEPTION nas funções do banco: mensagens de negócio
+    // escritas para o usuário (ex.: estoque insuficiente), não vazam internals
+    const errorCode = (error as { code?: string })?.code;
     const isAppError =
       error instanceof Error &&
-      !(error as any).code &&
+      (!errorCode || errorCode === "P0001") &&
       !error.message.includes("violates") &&
       !error.message.includes("constraint");
 

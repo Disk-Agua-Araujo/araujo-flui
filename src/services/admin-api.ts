@@ -60,6 +60,7 @@ export type AdminOrderRow = {
   rider_id: string | null;
   pix_paid: boolean | null;
   pix_paid_at: string | null;
+  em_rota_at: string | null;
   updated_at: string | null;
   updated_by: string | null;
   scheduled_date: string | null;
@@ -299,7 +300,7 @@ export const adminApi = {
     callAdminApi<{ ok: boolean }>("orders.dismissReminders", { orderIds }),
 
   bulkUpdateOrders: (orderIds: string[], updates: { status?: string; rider_id?: string | null; payment_method?: string | null }) =>
-    callAdminApi<{ ok: boolean; count: number }>("orders.bulkUpdate", { orderIds, updates }),
+    callAdminApi<{ ok: boolean; count: number; failed?: { id: string; error: string }[] }>("orders.bulkUpdate", { orderIds, updates }),
 
   bulkDeleteOrders: (orderIds: string[]) =>
     callAdminApi<{ ok: boolean; deleted: number; skipped: number }>("orders.bulkDelete", { orderIds }),

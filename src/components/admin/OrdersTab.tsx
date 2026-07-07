@@ -582,6 +582,11 @@ function OrderCard({
 
           {o.payment_method && <PaymentBadge method={o.payment_method} />}
           <PixBadge order={o} onToggle={onPixToggle} />
+          {o.status === "em_rota" && o.em_rota_at && (
+            <span className="text-[10px] text-muted-foreground">
+              saiu às {format(new Date(o.em_rota_at), "HH:mm")}
+            </span>
+          )}
         </div>
 
         {/* Rider toggles - mobile */}
@@ -1129,6 +1134,9 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
       try {
         await adminApi.updateOrderStatus(orderId, newStatus);
         toast({ title: "Status atualizado" });
+        setOrders((prev) => prev.map((o) =>
+          o.id === orderId && newStatus === "em_rota" ? { ...o, em_rota_at: new Date().toISOString() } : o
+        ));
         setUpdatingStatusIds((prev) => {
           const next = new Set(prev);
           next.delete(orderId);
@@ -1138,14 +1146,18 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
       } catch (err) {
         lastError = err;
         console.warn(`[updateStatus] tentativa ${attempt} falhou`, err);
+        const message = err instanceof Error ? err.message : "";
+        const retriable = /network|fetch|timeout|conexão|failed to fetch/i.test(message);
+        // Erro de negócio (ex.: estoque insuficiente): repetir não resolve
+        if (!retriable) break;
         if (attempt < maxRetries) {
           await new Promise((r) => setTimeout(r, attempt * 500));
         }
       }
     }
 
-    // All retries failed — revert
-    console.error("[updateStatus] falha após retries", lastError);
+    // Failed — revert
+    console.error("[updateStatus] falha", lastError);
     setOrders((prev) => prev.map((o) => (o.id === orderId && previous !== undefined ? { ...o, status: previous } : o)));
     setUpdatingStatusIds((prev) => {
       const next = new Set(prev);
@@ -1158,7 +1170,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
       title: "Não foi possível atualizar o status",
       description: isNetwork
         ? "Falha de conexão. Verifique sua internet e tente novamente."
-        : "Tente novamente em instantes. Se persistir, recarregue a página.",
+        : technical || "Tente novamente em instantes. Se persistir, recarregue a página.",
       variant: "destructive",
     });
   };
@@ -1197,10 +1209,26 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     setBulkBusy(true);
     try {
       if (confirmAction.type === "status") {
-        await adminApi.bulkUpdateOrders(ids, { status: confirmAction.value });
+        const res = await adminApi.bulkUpdateOrders(ids, { status: confirmAction.value });
+        const failed = res?.failed ?? [];
+        const failedIds = new Set(failed.map((f) => f.id));
+        const nowIso = new Date().toISOString();
         const idSet = new Set(ids);
-        setOrders((prev) => prev.map((o) => idSet.has(o.id) ? { ...o, status: confirmAction.value } : o));
-        toast({ title: `${ids.length} pedido${ids.length !== 1 ? "s" : ""} atualizado${ids.length !== 1 ? "s" : ""} para "${statusLabels[confirmAction.value] ?? confirmAction.value}".` });
+        setOrders((prev) => prev.map((o) =>
+          idSet.has(o.id) && !failedIds.has(o.id)
+            ? { ...o, status: confirmAction.value, em_rota_at: confirmAction.value === "em_rota" ? nowIso : o.em_rota_at }
+            : o
+        ));
+        const okCount = ids.length - failed.length;
+        if (failed.length > 0) {
+          toast({
+            title: `${okCount} pedido${okCount !== 1 ? "s" : ""} atualizado${okCount !== 1 ? "s" : ""}, ${failed.length} com erro`,
+            description: failed[0].error + (failed.length > 1 ? ` (e mais ${failed.length - 1})` : ""),
+            variant: "destructive",
+          });
+        } else {
+          toast({ title: `${ids.length} pedido${ids.length !== 1 ? "s" : ""} atualizado${ids.length !== 1 ? "s" : ""} para "${statusLabels[confirmAction.value] ?? confirmAction.value}".` });
+        }
       } else if (confirmAction.type === "rider") {
         await adminApi.bulkUpdateOrders(ids, { rider_id: confirmAction.value });
         const idSet = new Set(ids);
@@ -1596,6 +1624,11 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                             ))}
                           </SelectContent>
                         </Select>
+                        {o.status === "em_rota" && o.em_rota_at && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            saiu às {format(new Date(o.em_rota_at), "HH:mm")}
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
@@ -1680,6 +1713,9 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                 return r ? `${r.label} — ${r.name}` : "Não atribuído";
               })()}</p>
               <p><strong>Criado em:</strong> {format(new Date(selectedOrder.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+              {selectedOrder.em_rota_at && (
+                <p><strong>Saiu para rota:</strong> {format(new Date(selectedOrder.em_rota_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+              )}
               {selectedOrder.updated_at && (
                 <p className="text-xs text-muted-foreground">
                   Última edição: {format(new Date(selectedOrder.updated_at), "dd/MM/yyyy 'às' HH:mm")}
