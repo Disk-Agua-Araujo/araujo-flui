@@ -1,16 +1,27 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, lazy, Suspense } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { usePrefetchTabs } from "@/hooks/use-prefetch-tabs";
 
-import { OrdersTab } from "@/components/admin/OrdersTab";
-import { NewOrderTab } from "@/components/admin/NewOrderTab";
-import { ProductsTab } from "@/components/admin/ProductsTab";
-import { ReportsTab } from "@/components/admin/ReportsTab";
-import { CustomersTab } from "@/components/admin/CustomersTab";
-import { LogOut, Package, ClipboardList, PlusCircle, BarChart3, Users } from "lucide-react";
+const OrdersTab = lazy(() =>
+  import("@/components/admin/OrdersTab").then((m) => ({ default: m.OrdersTab }))
+);
+const NewOrderTab = lazy(() =>
+  import("@/components/admin/NewOrderTab").then((m) => ({ default: m.NewOrderTab }))
+);
+const ProductsTab = lazy(() =>
+  import("@/components/admin/ProductsTab").then((m) => ({ default: m.ProductsTab }))
+);
+const ReportsTab = lazy(() =>
+  import("@/components/admin/ReportsTab").then((m) => ({ default: m.ReportsTab }))
+);
+const CustomersTab = lazy(() =>
+  import("@/components/admin/CustomersTab").then((m) => ({ default: m.CustomersTab }))
+);
+import { LogOut, Package, ClipboardList, PlusCircle, BarChart3, Users, Loader2 } from "lucide-react";
 import logo from "@/assets/logo.png";
 
 const TAB_VALUES = ["orders", "new-order", "customers", "products", "reports"] as const;
@@ -37,10 +48,23 @@ export default function Admin() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabValue>("orders");
+  const { prefetchOrders, prefetchCustomers, prefetchProducts } = usePrefetchTabs();
 
   const handleScheduledCount = useCallback((count: number) => {
     setScheduledCount(count);
   }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (activeTab === "orders") {
+        prefetchCustomers();
+        prefetchProducts();
+      } else {
+        prefetchOrders();
+      }
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [activeTab, prefetchOrders, prefetchCustomers, prefetchProducts]);
 
   useEffect(() => {
     if (!loading && !isAdmin) {
@@ -118,11 +142,20 @@ export default function Admin() {
             </TabsList>
           )}
 
-          <TabsContent value="orders"><OrdersTab onScheduledCount={handleScheduledCount} /></TabsContent>
-          <TabsContent value="new-order"><NewOrderTab /></TabsContent>
-          <TabsContent value="customers"><CustomersTab /></TabsContent>
-          <TabsContent value="products"><ProductsTab /></TabsContent>
-          {isOwner && <TabsContent value="reports"><ReportsTab /></TabsContent>}
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center py-12 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                Carregando...
+              </div>
+            }
+          >
+            <TabsContent value="orders"><OrdersTab onScheduledCount={handleScheduledCount} /></TabsContent>
+            <TabsContent value="new-order"><NewOrderTab /></TabsContent>
+            <TabsContent value="customers"><CustomersTab /></TabsContent>
+            <TabsContent value="products"><ProductsTab /></TabsContent>
+            {isOwner && <TabsContent value="reports"><ReportsTab /></TabsContent>}
+          </Suspense>
         </Tabs>
       </main>
 
