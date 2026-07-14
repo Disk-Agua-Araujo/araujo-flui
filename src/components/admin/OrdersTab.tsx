@@ -691,6 +691,16 @@ function EditOrderModal({
 
   const handleSave = async () => {
     if (!order) return;
+    if (fulfillmentType === "delivery") {
+      if (!street.trim() || !number.trim() || !neighborhood.trim() || !city.trim()) {
+        toast({
+          title: "Endereço incompleto",
+          description: "Preencha Rua, Número, Bairro e Cidade para entrega.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
     setSaving(true);
     try {
       await adminApi.updateOrder({
