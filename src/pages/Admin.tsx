@@ -48,10 +48,25 @@ export default function Admin() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabValue>("orders");
+  const { prefetchOrders, prefetchCustomers, prefetchProducts } = usePrefetchTabs();
 
   const handleScheduledCount = useCallback((count: number) => {
     setScheduledCount(count);
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "orders") {
+      const t = setTimeout(() => {
+        prefetchCustomers();
+        prefetchProducts();
+      }, 2000);
+      return () => clearTimeout(t);
+    }
+    if (activeTab !== "orders") {
+      const t = setTimeout(() => prefetchOrders(), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [activeTab, prefetchOrders, prefetchCustomers, prefetchProducts]);
 
   useEffect(() => {
     if (!loading && !isAdmin) {
@@ -129,11 +144,20 @@ export default function Admin() {
             </TabsList>
           )}
 
-          <TabsContent value="orders"><OrdersTab onScheduledCount={handleScheduledCount} /></TabsContent>
-          <TabsContent value="new-order"><NewOrderTab /></TabsContent>
-          <TabsContent value="customers"><CustomersTab /></TabsContent>
-          <TabsContent value="products"><ProductsTab /></TabsContent>
-          {isOwner && <TabsContent value="reports"><ReportsTab /></TabsContent>}
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center py-12 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                Carregando...
+              </div>
+            }
+          >
+            <TabsContent value="orders"><OrdersTab onScheduledCount={handleScheduledCount} /></TabsContent>
+            <TabsContent value="new-order"><NewOrderTab /></TabsContent>
+            <TabsContent value="customers"><CustomersTab /></TabsContent>
+            <TabsContent value="products"><ProductsTab /></TabsContent>
+            {isOwner && <TabsContent value="reports"><ReportsTab /></TabsContent>}
+          </Suspense>
         </Tabs>
       </main>
 
