@@ -1692,10 +1692,18 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedOrder(o)} title="Detalhes"><Eye className="h-3.5 w-3.5" /></Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditOrder(o)} title="Editar"><Pencil className="h-3.5 w-3.5" /></Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleLabel(o)} title="Etiqueta"><Printer className="h-3.5 w-3.5" /></Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleWhatsApp(o)} title="WhatsApp"><MessageCircle className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => runAction(o.id, "view", () => setSelectedOrder(o))} disabled={isActionLoading(o.id, "view")} title="Detalhes">
+                            {isActionLoading(o.id, "view") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => runAction(o.id, "edit", () => setEditOrder(o))} disabled={isActionLoading(o.id, "edit")} title="Editar">
+                            {isActionLoading(o.id, "edit") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pencil className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => runAction(o.id, "label", () => handleLabel(o))} disabled={isActionLoading(o.id, "label")} title="Etiqueta">
+                            {isActionLoading(o.id, "label") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => runAction(o.id, "wa", () => handleWhatsApp(o))} disabled={isActionLoading(o.id, "wa")} title="WhatsApp">
+                            {isActionLoading(o.id, "wa") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
