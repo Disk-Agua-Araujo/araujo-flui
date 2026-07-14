@@ -1116,7 +1116,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     }
 
     return result;
-  }, [orders, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter, search, tickNow]);
+  }, [orders, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter, debouncedSearch, tickNow]);
 
   useEffect(() => {
     setCurrentPage(1);
