@@ -530,6 +530,7 @@ function ReminderModal({
 function OrderCard({
   o, riders, statusLabels, statusColors, paymentLabels,
   onView, onEdit, onLabel, onWhatsApp, onStatusChange, onRiderToggle, onPixToggle,
+  loadingAction,
 }: {
   o: AdminOrderRow;
   riders: DeliveryRider[];
@@ -543,6 +544,7 @@ function OrderCard({
   onStatusChange: (status: string) => void;
   onRiderToggle: (riderId: string) => void;
   onPixToggle: () => void;
+  loadingAction?: string | null;
 }) {
   return (
     <Card className="mb-3">
@@ -613,10 +615,18 @@ function OrderCard({
         )}
 
         <div className="flex gap-1 justify-end pt-1 border-t">
-          <Button variant="ghost" size="sm" className="h-7" onClick={onView}><Eye className="h-3.5 w-3.5 mr-1" /> Ver</Button>
-          <Button variant="ghost" size="sm" className="h-7" onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></Button>
-          <Button variant="ghost" size="sm" className="h-7" onClick={onLabel}><Printer className="h-3.5 w-3.5" /></Button>
-          <Button variant="ghost" size="sm" className="h-7" onClick={onWhatsApp}><MessageCircle className="h-3.5 w-3.5" /></Button>
+          <Button variant="ghost" size="sm" className="h-7" onClick={onView} disabled={loadingAction === "view"}>
+            {loadingAction === "view" ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Eye className="h-3.5 w-3.5 mr-1" />} Ver
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7" onClick={onEdit} disabled={loadingAction === "edit"}>
+            {loadingAction === "edit" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pencil className="h-3.5 w-3.5" />}
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7" onClick={onLabel} disabled={loadingAction === "label"}>
+            {loadingAction === "label" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7" onClick={onWhatsApp} disabled={loadingAction === "wa"}>
+            {loadingAction === "wa" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -937,6 +947,25 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const [pixSubFilter, setPixSubFilter] = useState("all");
   const [scheduleFilter, setScheduleFilter] = useState("all");
 
+  // Debounce dropdown filters (300ms) — UI updates instantly, list refiltra depois
+  const filterKey = `${statusFilter}|${periodFilter}|${paymentFilter}|${pixSubFilter}|${scheduleFilter}`;
+  const debouncedFilterKey = useDebounce(filterKey, 300);
+  const [dStatus, dPeriod, dPayment, dPix, dSchedule] = debouncedFilterKey.split("|");
+  const isFiltering = filterKey !== debouncedFilterKey || search !== debouncedSearch;
+
+  // Action button loading state (Editar / Imprimir / WhatsApp)
+  const [actionLoading, setActionLoading] = useState<{ id: string; action: string } | null>(null);
+  const runAction = useCallback((id: string, action: string, fn: () => void) => {
+    setActionLoading({ id, action });
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        try { fn(); } finally { setActionLoading(null); }
+      }, 0);
+    });
+  }, []);
+  const isActionLoading = (id: string, action: string) =>
+    actionLoading?.id === id && actionLoading?.action === action;
+
   // Riders
   const [riders, setRiders] = useState<DeliveryRider[]>([]);
   const [riderModalOpen, setRiderModalOpen] = useState(false);
@@ -1058,36 +1087,36 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
 
   const filtered = useMemo(() => {
     let result = orders;
-    if (statusFilter !== "all") result = result.filter((o) => o.status === statusFilter);
+    if (dStatus !== "all") result = result.filter((o) => o.status === dStatus);
 
-    if (periodFilter !== "all") {
+    if (dPeriod !== "all") {
       const now = new Date();
       let cutoff: Date;
-      if (periodFilter === "today") cutoff = startOfDay(now);
-      else if (periodFilter === "week") cutoff = startOfWeek(now, { weekStartsOn: 1 });
+      if (dPeriod === "today") cutoff = startOfDay(now);
+      else if (dPeriod === "week") cutoff = startOfWeek(now, { weekStartsOn: 1 });
       else cutoff = startOfMonth(now);
       result = result.filter((o) => new Date(o.created_at) >= cutoff);
     }
 
-    if (paymentFilter !== "all") {
-      result = result.filter((o) => o.payment_method === paymentFilter);
-      if (paymentFilter === "pix" && pixSubFilter !== "all") {
+    if (dPayment !== "all") {
+      result = result.filter((o) => o.payment_method === dPayment);
+      if (dPayment === "pix" && dPix !== "all") {
         result = result.filter((o) =>
-          pixSubFilter === "paid" ? !!o.pix_paid : !o.pix_paid
+          dPix === "paid" ? !!o.pix_paid : !o.pix_paid
         );
       }
     }
 
     // Schedule filter — timezone-aware using schedulingRules
-    if (scheduleFilter === "today") {
+    if (dSchedule === "today") {
       result = result.filter((o) => o.scheduled_date && isScheduledToday(o.scheduled_date, tickNow));
-    } else if (scheduleFilter === "scheduled") {
+    } else if (dSchedule === "scheduled") {
       result = result.filter((o) =>
         o.scheduled_date &&
         isScheduledFuture(o.scheduled_date, o.scheduled_time, tickNow) &&
         o.status !== "cancelado"
       );
-    } else if (scheduleFilter === "overdue") {
+    } else if (dSchedule === "overdue") {
       result = result.filter((o) =>
         o.scheduled_date &&
         isScheduledLate(o.scheduled_date, o.scheduled_time, o.status, tickNow)
@@ -1107,7 +1136,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     }
 
     // Sort by scheduled_date ASC when schedule filter is active
-    if (scheduleFilter !== "all") {
+    if (dSchedule !== "all") {
       result = [...result].sort((a, b) => {
         const dateA = a.scheduled_date || "9999-12-31";
         const dateB = b.scheduled_date || "9999-12-31";
@@ -1116,12 +1145,29 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     }
 
     return result;
-  }, [orders, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter, debouncedSearch, tickNow]);
+  }, [orders, dStatus, dPeriod, dPayment, dPix, dSchedule, debouncedSearch, tickNow]);
 
   useEffect(() => {
     setCurrentPage(1);
     setSelectedIds(new Set());
-  }, [search, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter]);
+  }, [debouncedSearch, debouncedFilterKey]);
+
+  const hasActiveFilters =
+    !!search ||
+    statusFilter !== "all" ||
+    periodFilter !== "all" ||
+    paymentFilter !== "all" ||
+    pixSubFilter !== "all" ||
+    scheduleFilter !== "all";
+
+  const clearFilters = () => {
+    setSearch("");
+    setStatusFilter("all");
+    setPeriodFilter("all");
+    setPaymentFilter("all");
+    setPixSubFilter("all");
+    setScheduleFilter("all");
+  };
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageStart = (currentPage - 1) * PAGE_SIZE;
@@ -1399,8 +1445,20 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <p className="text-sm text-muted-foreground">{filtered.length} pedido{filtered.length !== 1 ? "s" : ""} encontrado{filtered.length !== 1 ? "s" : ""}</p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <p className="text-sm text-muted-foreground">
+          {filtered.length} pedido{filtered.length !== 1 ? "s" : ""} encontrado{filtered.length !== 1 ? "s" : ""}
+        </p>
+        {isFiltering && (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" /> Filtrando...
+          </span>
+        )}
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={clearFilters}>
+            <X className="h-3 w-3 mr-1" /> Limpar filtros
+          </Button>
+        )}
       </div>
 
       {selectedIds.size > 0 && (() => {
@@ -1495,10 +1553,11 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                     statusLabels={statusLabels}
                     statusColors={statusColors}
                     paymentLabels={paymentLabels}
-                    onView={() => setSelectedOrder(o)}
-                    onEdit={() => setEditOrder(o)}
-                    onLabel={() => handleLabel(o)}
-                    onWhatsApp={() => handleWhatsApp(o)}
+                    onView={() => runAction(o.id, "view", () => setSelectedOrder(o))}
+                    onEdit={() => runAction(o.id, "edit", () => setEditOrder(o))}
+                    onLabel={() => runAction(o.id, "label", () => handleLabel(o))}
+                    onWhatsApp={() => runAction(o.id, "wa", () => handleWhatsApp(o))}
+                    loadingAction={actionLoading?.id === o.id ? actionLoading.action : null}
                     onStatusChange={(v) => updateStatus(o.id, v)}
                     onRiderToggle={(rid) => toggleRider(o.id, rid, o.rider_id)}
                     onPixToggle={() => togglePixPaid(o.id)}
@@ -1644,10 +1703,18 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedOrder(o)} title="Detalhes"><Eye className="h-3.5 w-3.5" /></Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditOrder(o)} title="Editar"><Pencil className="h-3.5 w-3.5" /></Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleLabel(o)} title="Etiqueta"><Printer className="h-3.5 w-3.5" /></Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleWhatsApp(o)} title="WhatsApp"><MessageCircle className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => runAction(o.id, "view", () => setSelectedOrder(o))} disabled={isActionLoading(o.id, "view")} title="Detalhes">
+                            {isActionLoading(o.id, "view") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => runAction(o.id, "edit", () => setEditOrder(o))} disabled={isActionLoading(o.id, "edit")} title="Editar">
+                            {isActionLoading(o.id, "edit") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pencil className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => runAction(o.id, "label", () => handleLabel(o))} disabled={isActionLoading(o.id, "label")} title="Etiqueta">
+                            {isActionLoading(o.id, "label") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => runAction(o.id, "wa", () => handleWhatsApp(o))} disabled={isActionLoading(o.id, "wa")} title="WhatsApp">
+                            {isActionLoading(o.id, "wa") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1659,17 +1726,21 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
         </Card>
       )}
 
-      {filtered.length > PAGE_SIZE && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">Página {currentPage} de {totalPages}</p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}>
-              <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>
-              Próxima <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          </div>
+      {filtered.length > 0 && (
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <p className="text-sm text-muted-foreground">
+            Página {currentPage} de {totalPages} · Total {filtered.length} pedido{filtered.length !== 1 ? "s" : ""}
+          </p>
+          {totalPages > 1 && (
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}>
+                <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>
+                Próxima <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
