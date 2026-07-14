@@ -1435,8 +1435,20 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <p className="text-sm text-muted-foreground">{filtered.length} pedido{filtered.length !== 1 ? "s" : ""} encontrado{filtered.length !== 1 ? "s" : ""}</p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <p className="text-sm text-muted-foreground">
+          {filtered.length} pedido{filtered.length !== 1 ? "s" : ""} encontrado{filtered.length !== 1 ? "s" : ""}
+        </p>
+        {isFiltering && (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" /> Filtrando...
+          </span>
+        )}
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={clearFilters}>
+            <X className="h-3 w-3 mr-1" /> Limpar filtros
+          </Button>
+        )}
       </div>
 
       {selectedIds.size > 0 && (() => {
