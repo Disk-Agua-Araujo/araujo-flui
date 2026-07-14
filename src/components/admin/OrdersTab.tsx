@@ -530,6 +530,7 @@ function ReminderModal({
 function OrderCard({
   o, riders, statusLabels, statusColors, paymentLabels,
   onView, onEdit, onLabel, onWhatsApp, onStatusChange, onRiderToggle, onPixToggle,
+  loadingAction,
 }: {
   o: AdminOrderRow;
   riders: DeliveryRider[];
@@ -543,6 +544,7 @@ function OrderCard({
   onStatusChange: (status: string) => void;
   onRiderToggle: (riderId: string) => void;
   onPixToggle: () => void;
+  loadingAction?: string | null;
 }) {
   return (
     <Card className="mb-3">
