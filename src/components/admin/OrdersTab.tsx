@@ -1543,10 +1543,11 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                     statusLabels={statusLabels}
                     statusColors={statusColors}
                     paymentLabels={paymentLabels}
-                    onView={() => setSelectedOrder(o)}
-                    onEdit={() => setEditOrder(o)}
-                    onLabel={() => handleLabel(o)}
-                    onWhatsApp={() => handleWhatsApp(o)}
+                    onView={() => runAction(o.id, "view", () => setSelectedOrder(o))}
+                    onEdit={() => runAction(o.id, "edit", () => setEditOrder(o))}
+                    onLabel={() => runAction(o.id, "label", () => handleLabel(o))}
+                    onWhatsApp={() => runAction(o.id, "wa", () => handleWhatsApp(o))}
+                    loadingAction={actionLoading?.id === o.id ? actionLoading.action : null}
                     onStatusChange={(v) => updateStatus(o.id, v)}
                     onRiderToggle={(rid) => toggleRider(o.id, rid, o.rider_id)}
                     onPixToggle={() => togglePixPaid(o.id)}
