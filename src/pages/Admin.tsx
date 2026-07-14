@@ -55,17 +55,15 @@ export default function Admin() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "orders") {
-      const t = setTimeout(() => {
+    const t = setTimeout(() => {
+      if (activeTab === "orders") {
         prefetchCustomers();
         prefetchProducts();
-      }, 2000);
-      return () => clearTimeout(t);
-    }
-    if (activeTab !== "orders") {
-      const t = setTimeout(() => prefetchOrders(), 1500);
-      return () => clearTimeout(t);
-    }
+      } else {
+        prefetchOrders();
+      }
+    }, 1500);
+    return () => clearTimeout(t);
   }, [activeTab, prefetchOrders, prefetchCustomers, prefetchProducts]);
 
   useEffect(() => {
