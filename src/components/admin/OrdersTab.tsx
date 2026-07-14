@@ -615,10 +615,18 @@ function OrderCard({
         )}
 
         <div className="flex gap-1 justify-end pt-1 border-t">
-          <Button variant="ghost" size="sm" className="h-7" onClick={onView}><Eye className="h-3.5 w-3.5 mr-1" /> Ver</Button>
-          <Button variant="ghost" size="sm" className="h-7" onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></Button>
-          <Button variant="ghost" size="sm" className="h-7" onClick={onLabel}><Printer className="h-3.5 w-3.5" /></Button>
-          <Button variant="ghost" size="sm" className="h-7" onClick={onWhatsApp}><MessageCircle className="h-3.5 w-3.5" /></Button>
+          <Button variant="ghost" size="sm" className="h-7" onClick={onView} disabled={loadingAction === "view"}>
+            {loadingAction === "view" ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Eye className="h-3.5 w-3.5 mr-1" />} Ver
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7" onClick={onEdit} disabled={loadingAction === "edit"}>
+            {loadingAction === "edit" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pencil className="h-3.5 w-3.5" />}
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7" onClick={onLabel} disabled={loadingAction === "label"}>
+            {loadingAction === "label" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7" onClick={onWhatsApp} disabled={loadingAction === "wa"}>
+            {loadingAction === "wa" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+          </Button>
         </div>
       </CardContent>
     </Card>
