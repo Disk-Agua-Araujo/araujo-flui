@@ -937,6 +937,25 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const [pixSubFilter, setPixSubFilter] = useState("all");
   const [scheduleFilter, setScheduleFilter] = useState("all");
 
+  // Debounce dropdown filters (300ms) — UI updates instantly, list refiltra depois
+  const filterKey = `${statusFilter}|${periodFilter}|${paymentFilter}|${pixSubFilter}|${scheduleFilter}`;
+  const debouncedFilterKey = useDebounce(filterKey, 300);
+  const [dStatus, dPeriod, dPayment, dPix, dSchedule] = debouncedFilterKey.split("|");
+  const isFiltering = filterKey !== debouncedFilterKey || search !== debouncedSearch;
+
+  // Action button loading state (Editar / Imprimir / WhatsApp)
+  const [actionLoading, setActionLoading] = useState<{ id: string; action: string } | null>(null);
+  const runAction = useCallback((id: string, action: string, fn: () => void) => {
+    setActionLoading({ id, action });
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        try { fn(); } finally { setActionLoading(null); }
+      }, 0);
+    });
+  }, []);
+  const isActionLoading = (id: string, action: string) =>
+    actionLoading?.id === id && actionLoading?.action === action;
+
   // Riders
   const [riders, setRiders] = useState<DeliveryRider[]>([]);
   const [riderModalOpen, setRiderModalOpen] = useState(false);
