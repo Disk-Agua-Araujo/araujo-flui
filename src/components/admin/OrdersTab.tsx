@@ -927,6 +927,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const [orders, setOrders] = useState<AdminOrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
   const [statusFilter, setStatusFilter] = useState("all");
   const [periodFilter, setPeriodFilter] = useState("all");
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
