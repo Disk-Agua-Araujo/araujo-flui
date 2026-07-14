@@ -1077,36 +1077,36 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
 
   const filtered = useMemo(() => {
     let result = orders;
-    if (statusFilter !== "all") result = result.filter((o) => o.status === statusFilter);
+    if (dStatus !== "all") result = result.filter((o) => o.status === dStatus);
 
-    if (periodFilter !== "all") {
+    if (dPeriod !== "all") {
       const now = new Date();
       let cutoff: Date;
-      if (periodFilter === "today") cutoff = startOfDay(now);
-      else if (periodFilter === "week") cutoff = startOfWeek(now, { weekStartsOn: 1 });
+      if (dPeriod === "today") cutoff = startOfDay(now);
+      else if (dPeriod === "week") cutoff = startOfWeek(now, { weekStartsOn: 1 });
       else cutoff = startOfMonth(now);
       result = result.filter((o) => new Date(o.created_at) >= cutoff);
     }
 
-    if (paymentFilter !== "all") {
-      result = result.filter((o) => o.payment_method === paymentFilter);
-      if (paymentFilter === "pix" && pixSubFilter !== "all") {
+    if (dPayment !== "all") {
+      result = result.filter((o) => o.payment_method === dPayment);
+      if (dPayment === "pix" && dPix !== "all") {
         result = result.filter((o) =>
-          pixSubFilter === "paid" ? !!o.pix_paid : !o.pix_paid
+          dPix === "paid" ? !!o.pix_paid : !o.pix_paid
         );
       }
     }
 
     // Schedule filter — timezone-aware using schedulingRules
-    if (scheduleFilter === "today") {
+    if (dSchedule === "today") {
       result = result.filter((o) => o.scheduled_date && isScheduledToday(o.scheduled_date, tickNow));
-    } else if (scheduleFilter === "scheduled") {
+    } else if (dSchedule === "scheduled") {
       result = result.filter((o) =>
         o.scheduled_date &&
         isScheduledFuture(o.scheduled_date, o.scheduled_time, tickNow) &&
         o.status !== "cancelado"
       );
-    } else if (scheduleFilter === "overdue") {
+    } else if (dSchedule === "overdue") {
       result = result.filter((o) =>
         o.scheduled_date &&
         isScheduledLate(o.scheduled_date, o.scheduled_time, o.status, tickNow)
@@ -1126,7 +1126,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     }
 
     // Sort by scheduled_date ASC when schedule filter is active
-    if (scheduleFilter !== "all") {
+    if (dSchedule !== "all") {
       result = [...result].sort((a, b) => {
         const dateA = a.scheduled_date || "9999-12-31";
         const dateB = b.scheduled_date || "9999-12-31";
@@ -1135,12 +1135,29 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     }
 
     return result;
-  }, [orders, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter, debouncedSearch, tickNow]);
+  }, [orders, dStatus, dPeriod, dPayment, dPix, dSchedule, debouncedSearch, tickNow]);
 
   useEffect(() => {
     setCurrentPage(1);
     setSelectedIds(new Set());
-  }, [search, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter]);
+  }, [debouncedSearch, debouncedFilterKey]);
+
+  const hasActiveFilters =
+    !!search ||
+    statusFilter !== "all" ||
+    periodFilter !== "all" ||
+    paymentFilter !== "all" ||
+    pixSubFilter !== "all" ||
+    scheduleFilter !== "all";
+
+  const clearFilters = () => {
+    setSearch("");
+    setStatusFilter("all");
+    setPeriodFilter("all");
+    setPaymentFilter("all");
+    setPixSubFilter("all");
+    setScheduleFilter("all");
+  };
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageStart = (currentPage - 1) * PAGE_SIZE;
