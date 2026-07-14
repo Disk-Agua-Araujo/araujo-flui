@@ -1094,8 +1094,8 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
       );
     }
 
-    if (search) {
-      const s = search.toLowerCase();
+    if (debouncedSearch) {
+      const s = debouncedSearch.toLowerCase();
       result = result.filter(
         (o) =>
           o.customers?.name?.toLowerCase().includes(s) ||
