@@ -24,6 +24,7 @@ import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
 import { adminApi, type AdminOrderRow, type DeliveryRider, type AdminProductRow } from "@/services/admin-api";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useDebounce } from "@/hooks/use-debounce";
 import {
   isScheduledToday, isScheduledFuture, isScheduledLate,
   getScheduleLabel, getScheduleBadgeType, formatTimeValue,
@@ -691,6 +692,16 @@ function EditOrderModal({
 
   const handleSave = async () => {
     if (!order) return;
+    if (fulfillmentType === "delivery") {
+      if (!street.trim() || !number.trim() || !neighborhood.trim() || !city.trim()) {
+        toast({
+          title: "Endereço incompleto",
+          description: "Preencha Rua, Número, Bairro e Cidade para entrega.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
     setSaving(true);
     try {
       await adminApi.updateOrder({
@@ -916,6 +927,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const [orders, setOrders] = useState<AdminOrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
   const [statusFilter, setStatusFilter] = useState("all");
   const [periodFilter, setPeriodFilter] = useState("all");
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
@@ -1082,8 +1094,8 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
       );
     }
 
-    if (search) {
-      const s = search.toLowerCase();
+    if (debouncedSearch) {
+      const s = debouncedSearch.toLowerCase();
       result = result.filter(
         (o) =>
           o.customers?.name?.toLowerCase().includes(s) ||
@@ -1104,7 +1116,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     }
 
     return result;
-  }, [orders, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter, search, tickNow]);
+  }, [orders, statusFilter, periodFilter, paymentFilter, pixSubFilter, scheduleFilter, debouncedSearch, tickNow]);
 
   useEffect(() => {
     setCurrentPage(1);

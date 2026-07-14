@@ -727,9 +727,12 @@ serve(async (req) => {
         if (insErr) throw insErr;
       }
 
-      // Update address
+      // Update address (or create + link if the order didn't have one, e.g. was pickup)
       if (address) {
-        const { data: order } = await adminClient.from("orders").select("address_id").eq("id", orderId).single();
+        if (!address.street || !address.number || !address.neighborhood) {
+          throw new Error("Endereço incompleto: rua, número e bairro são obrigatórios para entrega.");
+        }
+        const { data: order } = await adminClient.from("orders").select("address_id, customer_id").eq("id", orderId).single();
         if (order?.address_id) {
           const { error: addrErr } = await adminClient.from("addresses").update({
             street: address.street,
@@ -740,6 +743,20 @@ serve(async (req) => {
             reference: address.reference || null,
           }).eq("id", order.address_id);
           if (addrErr) throw addrErr;
+        } else if (order?.customer_id) {
+          const { data: newAddr, error: insAddrErr } = await adminClient.from("addresses").insert({
+            customer_id: order.customer_id,
+            street: address.street,
+            number: address.number,
+            neighborhood: address.neighborhood,
+            city: address.city || "Santo André",
+            state: "SP",
+            complement: address.complement || null,
+            reference: address.reference || null,
+          }).select("id").single();
+          if (insAddrErr) throw insAddrErr;
+          const { error: linkErr } = await adminClient.from("orders").update({ address_id: newAddr.id }).eq("id", orderId);
+          if (linkErr) throw linkErr;
         }
       }
 
