@@ -24,6 +24,7 @@ import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
 import { adminApi, type AdminOrderRow, type DeliveryRider, type AdminProductRow } from "@/services/admin-api";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useDebounce } from "@/hooks/use-debounce";
 import {
   isScheduledToday, isScheduledFuture, isScheduledLate,
   getScheduleLabel, getScheduleBadgeType, formatTimeValue,
