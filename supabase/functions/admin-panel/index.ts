@@ -727,35 +727,58 @@ serve(async (req) => {
         if (insErr) throw insErr;
       }
 
-      // Update address (or create + link if the order didn't have one, e.g. was pickup)
-      if (address) {
-        if (!address.street || !address.number || !address.neighborhood) {
-          throw new Error("Endereço incompleto: rua, número e bairro são obrigatórios para entrega.");
-        }
-        const { data: order } = await adminClient.from("orders").select("address_id, customer_id").eq("id", orderId).single();
+      // Update / create address conforme o tipo de atendimento
+      const fulfillmentType = orderData.fulfillment_type;
+
+      if (fulfillmentType === "pickup") {
+        // Virou Retirada: desvincula o endereço do pedido (não apaga o registro,
+        // que pode estar ligado a um cliente cadastrado)
+        const { error: unlinkErr } = await adminClient
+          .from("orders")
+          .update({ address_id: null })
+          .eq("id", orderId);
+        if (unlinkErr) throw unlinkErr;
+      } else if (address && address.street && address.number) {
+        // Entrega com endereço válido preenchido
+        const { data: order } = await adminClient
+          .from("orders")
+          .select("address_id, customer_id")
+          .eq("id", orderId)
+          .single();
+
         if (order?.address_id) {
+          // Pedido já possuía endereço: atualiza o registro existente
           const { error: addrErr } = await adminClient.from("addresses").update({
             street: address.street,
             number: address.number,
-            neighborhood: address.neighborhood,
+            neighborhood: address.neighborhood || "—",
             city: address.city || "Santo André",
             complement: address.complement || null,
             reference: address.reference || null,
           }).eq("id", order.address_id);
           if (addrErr) throw addrErr;
-        } else if (order?.customer_id) {
-          const { data: newAddr, error: insAddrErr } = await adminClient.from("addresses").insert({
-            customer_id: order.customer_id,
-            street: address.street,
-            number: address.number,
-            neighborhood: address.neighborhood,
-            city: address.city || "Santo André",
-            state: "SP",
-            complement: address.complement || null,
-            reference: address.reference || null,
-          }).select("id").single();
-          if (insAddrErr) throw insAddrErr;
-          const { error: linkErr } = await adminClient.from("orders").update({ address_id: newAddr.id }).eq("id", orderId);
+        } else {
+          // Pedido não possuía endereço (era Retirada): cria um novo e vincula ao pedido
+          const { data: newAddress, error: insertErr } = await adminClient
+            .from("addresses")
+            .insert({
+              customer_id: order?.customer_id ?? null,
+              street: address.street,
+              number: address.number,
+              neighborhood: address.neighborhood || "—",
+              city: address.city || "Santo André",
+              state: "SP",
+              complement: address.complement || null,
+              reference: address.reference || null,
+            })
+            .select("id")
+            .single();
+          if (insertErr) throw insertErr;
+
+          const { error: linkErr } = await adminClient
+            .from("orders")
+            .update({ address_id: newAddress.id })
+            .eq("id", orderId);
           if (linkErr) throw linkErr;
         }
       }
