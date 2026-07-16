@@ -1120,6 +1120,32 @@ serve(async (req) => {
       return json({ data: { ok: true, deleted: deletable.length, skipped } });
     }
 
+    if (action === "export.table") {
+      if (admin.role !== "admin_owner") {
+        return json({ error: "Acesso negado." }, 403);
+      }
+      const allowedTables = [
+        "addresses","admin_users","customers","delivery_riders","order_items",
+        "orders","product_categories","products","stock_movements","user_roles",
+        "wholesale_price_tiers",
+      ];
+      const table = payload?.table as string;
+      if (!table || !allowedTables.includes(table)) {
+        return json({ error: "Tabela inválida" }, 400);
+      }
+      const from = typeof payload?.from === "number" ? payload.from : 0;
+      const rawLimit = typeof payload?.limit === "number" ? payload.limit : 1000;
+      const limit = Math.min(Math.max(rawLimit, 1), 1000);
+      const orderBy = typeof payload?.orderBy === "string" && payload.orderBy ? payload.orderBy : "id";
+      const { data, error, count } = await adminClient
+        .from(table)
+        .select("*", { count: "exact" })
+        .order(orderBy, { ascending: true })
+        .range(from, from + limit - 1);
+      if (error) throw error;
+      return json({ data: { rows: data, total: count } });
+    }
+
     return json({ error: "Ação inválida" }, 400);
   } catch (error) {
     console.error("admin-panel error", error);
