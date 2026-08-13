@@ -13,7 +13,7 @@ import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { FulfillmentToggle } from "@/components/FulfillmentToggle";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, Save, Search, X, Loader2 } from "lucide-react";
+import { CalendarIcon, Save, Search, X, Loader2, Flame } from "lucide-react";
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { PaymentIcon } from "@/components/PaymentIcon";
 import { SplitPaymentSection, emptySplitPayment, validateSplitPayment, splitPaymentToPayload, type SplitPaymentValue } from "@/components/admin/SplitPaymentSection";
@@ -34,6 +34,12 @@ const canais = [
 ] as const;
 
 const PREFILL_KEY = "admin-new-order-customer";
+
+// Produtos de giro alto que ganham um bloco fixo no topo do card Produtos.
+// O casamento é pelo nome do produto, já normalizado (sem acento, minúsculo),
+// então produto novo com "carvão" no nome entra sozinho, sem mexer no código.
+// Para incluir outra família de produto, basta acrescentar o termo aqui.
+const TERMOS_ACESSO_RAPIDO = ["carvao"];
 
 type CustomerAddress = NonNullable<AdminCustomerRow["addresses"]>[number];
 
@@ -81,8 +87,32 @@ export function NewOrderTab() {
   const debouncedProductSearch = useDebounce(productSearch, 250);
   const [payment, setPayment] = useState<SplitPaymentValue>(emptySplitPayment());
 
+  const isAcessoRapido = (p: AdminProductRow) => {
+    const nome = normalize(p.name);
+    return TERMOS_ACESSO_RAPIDO.some((termo) => nome.includes(termo));
+  };
+
+  // Varejo antes do atacado, do menor para o maior peso.
+  const acessoRapidoProducts = useMemo(() => {
+    const pesoKg = (nome: string) => {
+      const match = normalize(nome).match(/(\d+)\s*kg/);
+      return match ? parseInt(match[1], 10) : 0;
+    };
+    return products
+      .filter(isAcessoRapido)
+      .sort((a, b) => {
+        const atacadoA = normalize(a.name).includes("atacado") ? 1 : 0;
+        const atacadoB = normalize(b.name).includes("atacado") ? 1 : 0;
+        if (atacadoA !== atacadoB) return atacadoA - atacadoB;
+        return pesoKg(a.name) - pesoKg(b.name);
+      });
+  }, [products]);
+
+  const showAcessoRapido = acessoRapidoProducts.length > 0 && !debouncedProductSearch;
+
   const filteredProducts = useMemo(() => {
-    if (!debouncedProductSearch) return products;
+    // Sem busca, os itens do acesso rápido saem da lista de baixo para não duplicar.
+    if (!debouncedProductSearch) return products.filter((p) => !isAcessoRapido(p));
     const q = normalize(debouncedProductSearch);
     return products.filter((p) => normalize(p.name).includes(q));
   }, [products, debouncedProductSearch]);
@@ -216,6 +246,20 @@ export function NewOrderTab() {
   const updateQty = (id: string, delta: number) => {
     setQtys((prev) => ({ ...prev, [id]: Math.max(0, (prev[id] || 0) + delta) }));
   };
+
+  const renderProductRow = (p: AdminProductRow, className?: string) => (
+    <div key={p.id} className={cn("flex items-center justify-between border rounded-md p-3", className)}>
+      <div>
+        <p className="font-medium text-sm">{p.name}</p>
+        <p className="text-xs text-muted-foreground">{p.price_text}</p>
+      </div>
+      <QuantityInput
+        value={qtys[p.id] || 0}
+        onChange={(n) => setQtys((prev) => ({ ...prev, [p.id]: n }))}
+        ariaLabel={`Quantidade de ${p.name}`}
+      />
+    </div>
+  );
 
   const selectedItems = Object.entries(qtys)
     .filter(([, q]) => q > 0)
@@ -517,6 +561,15 @@ export function NewOrderTab() {
       <Card>
         <CardHeader><CardTitle className="text-lg">Produtos</CardTitle></CardHeader>
         <CardContent className="space-y-3">
+          {showAcessoRapido && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Flame className="h-4 w-4 text-primary" />
+                <p className="text-sm font-semibold text-primary">Carvão (acesso rápido)</p>
+              </div>
+              {acessoRapidoProducts.map((p) => renderProductRow(p, "bg-card"))}
+            </div>
+          )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -531,24 +584,15 @@ export function NewOrderTab() {
               </button>
             )}
           </div>
+          {showAcessoRapido && filteredProducts.length > 0 && (
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Demais produtos</p>
+          )}
           {products.length === 0 ? (
             <p className="text-muted-foreground text-sm">Nenhum produto cadastrado.</p>
-          ) : filteredProducts.length === 0 ? (
+          ) : filteredProducts.length === 0 && !showAcessoRapido ? (
             <p className="text-muted-foreground text-sm">Nenhum produto encontrado.</p>
           ) : (
-            filteredProducts.map((p) => (
-              <div key={p.id} className="flex items-center justify-between border rounded-md p-3">
-                <div>
-                  <p className="font-medium text-sm">{p.name}</p>
-                  <p className="text-xs text-muted-foreground">{p.price_text}</p>
-                </div>
-                <QuantityInput
-                  value={qtys[p.id] || 0}
-                  onChange={(n) => setQtys((prev) => ({ ...prev, [p.id]: n }))}
-                  ariaLabel={`Quantidade de ${p.name}`}
-                />
-              </div>
-            ))
+            filteredProducts.map((p) => renderProductRow(p))
           )}
         </CardContent>
       </Card>
