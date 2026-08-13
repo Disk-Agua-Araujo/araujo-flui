@@ -35,12 +35,9 @@ const canais = [
 
 const PREFILL_KEY = "admin-new-order-customer";
 
-// Filtro de carvão no card Produtos. Os carvões não têm categoria no cadastro,
-// então o filtro casa pelo nome do produto já normalizado (sem acento, em
-// minúsculo). Carvão novo cadastrado na aba Produtos entra sozinho no filtro,
-// sem mexer no código.
-const FILTRO_CARVAO = "filtro-carvao";
-const TERMOS_CARVAO = ["carvao"];
+// Dentro da categoria Carvão a ordem útil na hora de separar o pedido é varejo
+// antes do atacado e do menor para o maior peso, não a ordem de cadastro.
+const SLUG_CARVAO = "carvao";
 
 type CustomerAddress = NonNullable<AdminCustomerRow["addresses"]>[number];
 
@@ -90,38 +87,30 @@ export function NewOrderTab() {
   const debouncedProductSearch = useDebounce(productSearch, 250);
   const [payment, setPayment] = useState<SplitPaymentValue>(emptySplitPayment());
 
-  const isCarvao = (p: AdminProductRow) => {
-    const nome = normalize(p.name);
-    return TERMOS_CARVAO.some((termo) => nome.includes(termo));
-  };
-
-  // Botões de filtro: Todos, Carvão e as categorias que têm produto cadastrado.
+  // Botões de filtro: Todos e as categorias que têm produto cadastrado.
   const productFilters = useMemo(() => {
-    const filtros = [{ id: "all", label: "Todos" }];
-    if (products.some(isCarvao)) filtros.push({ id: FILTRO_CARVAO, label: "Carvão" });
-    categories.forEach((c) => {
-      if (products.some((p) => p.category_id === c.id)) filtros.push({ id: c.id, label: c.name });
-    });
-    return filtros;
+    const comProduto = categories.filter((c) => products.some((p) => p.category_id === c.id));
+    return [{ id: "all", label: "Todos" }, ...comProduto.map((c) => ({ id: c.id, label: c.name }))];
   }, [products, categories]);
 
   const filteredProducts = useMemo(() => {
     let result = products;
 
-    if (categoryFilter === FILTRO_CARVAO) {
-      // No filtro de carvão, varejo antes do atacado e do menor para o maior peso.
-      const pesoKg = (nome: string) => {
-        const match = normalize(nome).match(/(\d+)\s*kg/);
-        return match ? parseInt(match[1], 10) : 0;
-      };
-      result = result.filter(isCarvao).sort((a, b) => {
-        const atacadoA = normalize(a.name).includes("atacado") ? 1 : 0;
-        const atacadoB = normalize(b.name).includes("atacado") ? 1 : 0;
-        if (atacadoA !== atacadoB) return atacadoA - atacadoB;
-        return pesoKg(a.name) - pesoKg(b.name);
-      });
-    } else if (categoryFilter !== "all") {
+    if (categoryFilter !== "all") {
       result = result.filter((p) => p.category_id === categoryFilter);
+
+      if (categories.find((c) => c.id === categoryFilter)?.slug === SLUG_CARVAO) {
+        const pesoKg = (nome: string) => {
+          const match = normalize(nome).match(/(\d+)\s*kg/);
+          return match ? parseInt(match[1], 10) : 0;
+        };
+        result.sort((a, b) => {
+          const atacadoA = normalize(a.name).includes("atacado") ? 1 : 0;
+          const atacadoB = normalize(b.name).includes("atacado") ? 1 : 0;
+          if (atacadoA !== atacadoB) return atacadoA - atacadoB;
+          return pesoKg(a.name) - pesoKg(b.name);
+        });
+      }
     }
 
     if (debouncedProductSearch) {
@@ -130,7 +119,7 @@ export function NewOrderTab() {
     }
 
     return result;
-  }, [products, categoryFilter, debouncedProductSearch]);
+  }, [products, categories, categoryFilter, debouncedProductSearch]);
 
   const isEnterprise = tipo === "PJ";
 
