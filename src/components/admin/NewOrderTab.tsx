@@ -13,7 +13,7 @@ import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { FulfillmentToggle } from "@/components/FulfillmentToggle";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, Save, Search, X, Loader2, Flame } from "lucide-react";
+import { CalendarIcon, Save, Search, X, Loader2 } from "lucide-react";
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { PaymentIcon } from "@/components/PaymentIcon";
 import { SplitPaymentSection, emptySplitPayment, validateSplitPayment, splitPaymentToPayload, type SplitPaymentValue } from "@/components/admin/SplitPaymentSection";
@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
 import { useToast } from "@/hooks/use-toast";
 import { trackEvent } from "@/hooks/use-analytics";
-import { adminApi, type AdminProductRow, type AdminCustomerRow } from "@/services/admin-api";
+import { adminApi, type AdminProductRow, type AdminCustomerRow, type AdminCategoryRow } from "@/services/admin-api";
 import { useDebounce } from "@/hooks/use-debounce";
 import { getMinDeliveryDate, isDeliveryDateDisabled } from "@/lib/deliveryRules";
 import { normalize } from "@/lib/normalize";
@@ -35,11 +35,12 @@ const canais = [
 
 const PREFILL_KEY = "admin-new-order-customer";
 
-// Produtos de giro alto que ganham um bloco fixo no topo do card Produtos.
-// O casamento é pelo nome do produto, já normalizado (sem acento, minúsculo),
-// então produto novo com "carvão" no nome entra sozinho, sem mexer no código.
-// Para incluir outra família de produto, basta acrescentar o termo aqui.
-const TERMOS_ACESSO_RAPIDO = ["carvao"];
+// Filtro de carvão no card Produtos. Os carvões não têm categoria no cadastro,
+// então o filtro casa pelo nome do produto já normalizado (sem acento, em
+// minúsculo). Carvão novo cadastrado na aba Produtos entra sozinho no filtro,
+// sem mexer no código.
+const FILTRO_CARVAO = "filtro-carvao";
+const TERMOS_CARVAO = ["carvao"];
 
 type CustomerAddress = NonNullable<AdminCustomerRow["addresses"]>[number];
 
@@ -52,6 +53,7 @@ export function NewOrderTab() {
   const [searchParams] = useSearchParams();
 
   const [products, setProducts] = useState<AdminProductRow[]>([]);
+  const [categories, setCategories] = useState<AdminCategoryRow[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [labelData, setLabelData] = useState<LabelData | null>(null);
   const [saving, setSaving] = useState(false);
@@ -84,38 +86,51 @@ export function NewOrderTab() {
   const [hora, setHora] = useState("");
   const [qtys, setQtys] = useState<Record<string, number>>({});
   const [productSearch, setProductSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const debouncedProductSearch = useDebounce(productSearch, 250);
   const [payment, setPayment] = useState<SplitPaymentValue>(emptySplitPayment());
 
-  const isAcessoRapido = (p: AdminProductRow) => {
+  const isCarvao = (p: AdminProductRow) => {
     const nome = normalize(p.name);
-    return TERMOS_ACESSO_RAPIDO.some((termo) => nome.includes(termo));
+    return TERMOS_CARVAO.some((termo) => nome.includes(termo));
   };
 
-  // Varejo antes do atacado, do menor para o maior peso.
-  const acessoRapidoProducts = useMemo(() => {
-    const pesoKg = (nome: string) => {
-      const match = normalize(nome).match(/(\d+)\s*kg/);
-      return match ? parseInt(match[1], 10) : 0;
-    };
-    return products
-      .filter(isAcessoRapido)
-      .sort((a, b) => {
+  // Botões de filtro: Todos, Carvão e as categorias que têm produto cadastrado.
+  const productFilters = useMemo(() => {
+    const filtros = [{ id: "all", label: "Todos" }];
+    if (products.some(isCarvao)) filtros.push({ id: FILTRO_CARVAO, label: "Carvão" });
+    categories.forEach((c) => {
+      if (products.some((p) => p.category_id === c.id)) filtros.push({ id: c.id, label: c.name });
+    });
+    return filtros;
+  }, [products, categories]);
+
+  const filteredProducts = useMemo(() => {
+    let result = products;
+
+    if (categoryFilter === FILTRO_CARVAO) {
+      // No filtro de carvão, varejo antes do atacado e do menor para o maior peso.
+      const pesoKg = (nome: string) => {
+        const match = normalize(nome).match(/(\d+)\s*kg/);
+        return match ? parseInt(match[1], 10) : 0;
+      };
+      result = result.filter(isCarvao).sort((a, b) => {
         const atacadoA = normalize(a.name).includes("atacado") ? 1 : 0;
         const atacadoB = normalize(b.name).includes("atacado") ? 1 : 0;
         if (atacadoA !== atacadoB) return atacadoA - atacadoB;
         return pesoKg(a.name) - pesoKg(b.name);
       });
-  }, [products]);
+    } else if (categoryFilter !== "all") {
+      result = result.filter((p) => p.category_id === categoryFilter);
+    }
 
-  const showAcessoRapido = acessoRapidoProducts.length > 0 && !debouncedProductSearch;
+    if (debouncedProductSearch) {
+      const q = normalize(debouncedProductSearch);
+      result = result.filter((p) => normalize(p.name).includes(q));
+    }
 
-  const filteredProducts = useMemo(() => {
-    // Sem busca, os itens do acesso rápido saem da lista de baixo para não duplicar.
-    if (!debouncedProductSearch) return products.filter((p) => !isAcessoRapido(p));
-    const q = normalize(debouncedProductSearch);
-    return products.filter((p) => normalize(p.name).includes(q));
-  }, [products, debouncedProductSearch]);
+    return result;
+  }, [products, categoryFilter, debouncedProductSearch]);
 
   const isEnterprise = tipo === "PJ";
 
@@ -123,8 +138,9 @@ export function NewOrderTab() {
 
   const fetchProducts = async () => {
     try {
-      const { products } = await adminApi.listProducts();
+      const { products, categories } = await adminApi.listProducts();
       setProducts((products || []).filter((p) => p.active));
+      setCategories(categories || []);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro ao carregar produtos";
       toast({ title: "Erro ao carregar produtos", description: message, variant: "destructive" });
@@ -246,20 +262,6 @@ export function NewOrderTab() {
   const updateQty = (id: string, delta: number) => {
     setQtys((prev) => ({ ...prev, [id]: Math.max(0, (prev[id] || 0) + delta) }));
   };
-
-  const renderProductRow = (p: AdminProductRow, className?: string) => (
-    <div key={p.id} className={cn("flex items-center justify-between border rounded-md p-3", className)}>
-      <div>
-        <p className="font-medium text-sm">{p.name}</p>
-        <p className="text-xs text-muted-foreground">{p.price_text}</p>
-      </div>
-      <QuantityInput
-        value={qtys[p.id] || 0}
-        onChange={(n) => setQtys((prev) => ({ ...prev, [p.id]: n }))}
-        ariaLabel={`Quantidade de ${p.name}`}
-      />
-    </div>
-  );
 
   const selectedItems = Object.entries(qtys)
     .filter(([, q]) => q > 0)
@@ -561,15 +563,6 @@ export function NewOrderTab() {
       <Card>
         <CardHeader><CardTitle className="text-lg">Produtos</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          {showAcessoRapido && (
-            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <Flame className="h-4 w-4 text-primary" />
-                <p className="text-sm font-semibold text-primary">Carvão (acesso rápido)</p>
-              </div>
-              {acessoRapidoProducts.map((p) => renderProductRow(p, "bg-card"))}
-            </div>
-          )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -584,15 +577,39 @@ export function NewOrderTab() {
               </button>
             )}
           </div>
-          {showAcessoRapido && filteredProducts.length > 0 && (
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Demais produtos</p>
+          {productFilters.length > 1 && (
+            <div className="flex gap-2 flex-wrap">
+              {productFilters.map((f) => (
+                <Button
+                  key={f.id}
+                  type="button"
+                  variant={categoryFilter === f.id ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setCategoryFilter(f.id)}
+                >
+                  {f.label}
+                </Button>
+              ))}
+            </div>
           )}
           {products.length === 0 ? (
             <p className="text-muted-foreground text-sm">Nenhum produto cadastrado.</p>
-          ) : filteredProducts.length === 0 && !showAcessoRapido ? (
+          ) : filteredProducts.length === 0 ? (
             <p className="text-muted-foreground text-sm">Nenhum produto encontrado.</p>
           ) : (
-            filteredProducts.map((p) => renderProductRow(p))
+            filteredProducts.map((p) => (
+              <div key={p.id} className="flex items-center justify-between border rounded-md p-3">
+                <div>
+                  <p className="font-medium text-sm">{p.name}</p>
+                  <p className="text-xs text-muted-foreground">{p.price_text}</p>
+                </div>
+                <QuantityInput
+                  value={qtys[p.id] || 0}
+                  onChange={(n) => setQtys((prev) => ({ ...prev, [p.id]: n }))}
+                  ariaLabel={`Quantidade de ${p.name}`}
+                />
+              </div>
+            ))
           )}
         </CardContent>
       </Card>
