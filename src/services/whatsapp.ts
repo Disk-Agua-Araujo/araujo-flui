@@ -91,3 +91,70 @@ export async function sendOrderToDiskWhatsApp(
   openWhatsApp(message);
   return { sent: false, fallback: true, message };
 }
+
+// ---- Cobrança de contas a receber ----
+
+export interface ReceivableMessageData {
+  cliente: string;
+  pedidoId: string;
+  valor: number;
+  /** Vencimento já formatado em dd/MM/aaaa. */
+  vencimento: string;
+  situacao: "vencido" | "hoje" | "a_vencer";
+  diasAtraso?: number;
+}
+
+export function buildReceivableMessage(data: ReceivableMessageData): string {
+  const nome = data.cliente?.trim() || "tudo bem";
+  const valor = `R$ ${data.valor.toFixed(2).replace(".", ",")}`;
+  const pedido = `pedido ${data.pedidoId}`;
+
+  if (data.situacao === "hoje") {
+    return [
+      `Olá, ${nome}! Aqui é da ${business.name}.`,
+      "",
+      `Passando para lembrar que o pagamento do ${pedido}, no valor de ${valor}, vence hoje (${data.vencimento}).`,
+      "",
+      "Qualquer dúvida, é só chamar por aqui. Obrigado!",
+    ].join("\n");
+  }
+
+  if (data.situacao === "vencido") {
+    const atraso = data.diasAtraso && data.diasAtraso > 0
+      ? ` (${data.diasAtraso} dia${data.diasAtraso > 1 ? "s" : ""} de atraso)`
+      : "";
+    return [
+      `Olá, ${nome}! Aqui é da ${business.name}.`,
+      "",
+      `O pagamento do ${pedido}, no valor de ${valor}, venceu em ${data.vencimento}${atraso} e ainda consta em aberto.`,
+      "",
+      "Pode nos confirmar quando o pagamento será feito? Se já tiver sido pago, é só desconsiderar esta mensagem.",
+    ].join("\n");
+  }
+
+  return [
+    `Olá, ${nome}! Aqui é da ${business.name}.`,
+    "",
+    `O pagamento do ${pedido}, no valor de ${valor}, vence em ${data.vencimento}.`,
+    "",
+    "Qualquer dúvida, é só chamar por aqui. Obrigado!",
+  ].join("\n");
+}
+
+/**
+ * Abre a conversa do cliente no WhatsApp com a mensagem pronta.
+ * Retorna false quando o cliente não tem telefone cadastrado.
+ */
+export function openCustomerWhatsApp(phone: string | null | undefined, message: string): boolean {
+  const digits = (phone || "").replace(/\D/g, "");
+  if (digits.length < 10) return false;
+
+  const withCountry = digits.startsWith("55") && digits.length >= 12 ? digits : `55${digits}`;
+  trackEvent("whatsapp_cobranca_opened", { message_length: message.length });
+  window.open(
+    `https://wa.me/${withCountry}?text=${encodeURIComponent(message)}`,
+    "_blank",
+    "noopener,noreferrer",
+  );
+  return true;
+}

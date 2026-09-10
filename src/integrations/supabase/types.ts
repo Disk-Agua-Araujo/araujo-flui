@@ -266,8 +266,11 @@ export type Database = {
           id: string
           is_split_payment: boolean
           notes: string | null
+          paid_at: string | null
+          paid_by: string | null
           payment_amount_1: number | null
           payment_amount_2: number | null
+          payment_due_date: string | null
           payment_method: string | null
           payment_method_2: string | null
           pix_paid: boolean | null
@@ -297,8 +300,11 @@ export type Database = {
           id?: string
           is_split_payment?: boolean
           notes?: string | null
+          paid_at?: string | null
+          paid_by?: string | null
           payment_amount_1?: number | null
           payment_amount_2?: number | null
+          payment_due_date?: string | null
           payment_method?: string | null
           payment_method_2?: string | null
           pix_paid?: boolean | null
@@ -328,8 +334,11 @@ export type Database = {
           id?: string
           is_split_payment?: boolean
           notes?: string | null
+          paid_at?: string | null
+          paid_by?: string | null
           payment_amount_1?: number | null
           payment_amount_2?: number | null
+          payment_due_date?: string | null
           payment_method?: string | null
           payment_method_2?: string | null
           pix_paid?: boolean | null

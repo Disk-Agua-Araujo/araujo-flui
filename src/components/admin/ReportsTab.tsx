@@ -3,15 +3,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Download, Package, ClipboardList, TrendingUp, CalendarIcon, Loader2 } from "lucide-react";
+import { Download, Package, ClipboardList, TrendingUp, CalendarIcon, Wallet, Loader2 } from "lucide-react";
 import { PaymentIcon } from "@/components/PaymentIcon";
 import { format, startOfMonth, startOfWeek, startOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { adminApi, type AdminOrderRow, type ReportsSummary } from "@/services/admin-api";
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from "recharts";
+import { CashReport } from "@/components/admin/CashReport";
 
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -40,7 +42,7 @@ function fmtDate(d: Date) {
   return format(d, "yyyy-MM-dd");
 }
 
-export function ReportsTab() {
+function SalesReport() {
   const { toast } = useToast();
   const [period, setPeriod] = useState<PeriodKey>("month");
 
@@ -224,7 +226,7 @@ export function ReportsTab() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold">Relatórios</h2>
+        <h2 className="text-xl font-bold">Vendas por pedido</h2>
         <div className="flex gap-2">
           <Select value={period} onValueChange={(v) => setPeriod(v as PeriodKey)}>
             <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
@@ -409,5 +411,27 @@ export function ReportsTab() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/**
+ * Relatórios em duas visões: por pedido (competência, conta na data do
+ * pedido) e caixa (conta na data em que o dinheiro entrou).
+ */
+export function ReportsTab() {
+  return (
+    <Tabs defaultValue="por-pedido" className="space-y-4">
+      <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsTrigger value="por-pedido" className="gap-1">
+          <ClipboardList className="h-4 w-4" /> Por pedido
+        </TabsTrigger>
+        <TabsTrigger value="caixa" className="gap-1">
+          <Wallet className="h-4 w-4" /> Caixa
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="por-pedido"><SalesReport /></TabsContent>
+      <TabsContent value="caixa"><CashReport /></TabsContent>
+    </Tabs>
   );
 }

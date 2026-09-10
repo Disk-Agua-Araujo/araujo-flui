@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
@@ -43,6 +44,17 @@ type CustomerAddress = NonNullable<AdminCustomerRow["addresses"]>[number];
 
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+/** Data local no formato aaaa-mm-dd, sem passar por UTC. */
+function toISODate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function addDaysISO(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return toISODate(d);
 }
 
 export function NewOrderTab() {
@@ -86,6 +98,8 @@ export function NewOrderTab() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const debouncedProductSearch = useDebounce(productSearch, 250);
   const [payment, setPayment] = useState<SplitPaymentValue>(emptySplitPayment());
+  const [aPrazo, setAPrazo] = useState(false);
+  const [dueDate, setDueDate] = useState("");
 
   // Botões de filtro: Todos e as categorias que têm produto cadastrado.
   const productFilters = useMemo(() => {
@@ -283,6 +297,8 @@ export function NewOrderTab() {
     setSearchQuery("");
     setSearchResults([]);
     setPayment(emptySplitPayment());
+    setAPrazo(false);
+    setDueDate("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -296,6 +312,16 @@ export function NewOrderTab() {
     const splitErr = validateSplitPayment(payment);
     if (splitErr) {
       toast({ title: splitErr, variant: "destructive" });
+      return;
+    }
+
+    if (aPrazo && !dueDate) {
+      toast({ title: "Informe o vencimento", description: "Pedido a prazo precisa de uma data de vencimento.", variant: "destructive" });
+      return;
+    }
+
+    if (aPrazo && totalAmountNum <= 0) {
+      toast({ title: "Informe o valor total", description: "Sem valor o pedido não entra nas contas a receber.", variant: "destructive" });
       return;
     }
 
@@ -341,6 +367,7 @@ export function NewOrderTab() {
         delivery_time: hora || undefined,
         fulfillment_type: fulfillmentType,
         ...splitPaymentToPayload(payment),
+        payment_due_date: aPrazo ? dueDate : null,
       });
 
       const pedidoId = result.order_id.slice(0, 8).toUpperCase();
@@ -647,6 +674,49 @@ export function NewOrderTab() {
         <CardContent className="space-y-4">
           <SplitPaymentSection value={payment} onChange={setPayment} />
           <p className="text-xs text-muted-foreground">Opcional — selecione se o cliente informou.</p>
+
+          <div className="border-t pt-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <Label className="text-sm">Pagamento a prazo</Label>
+                <p className="text-xs text-muted-foreground">
+                  O cliente recebe agora e paga numa data combinada.
+                </p>
+              </div>
+              <Switch
+                checked={aPrazo}
+                onCheckedChange={(v) => { setAPrazo(v); if (!v) setDueDate(""); }}
+              />
+            </div>
+
+            {aPrazo && (
+              <div>
+                <Label>Vencimento</Label>
+                <Input
+                  type="date"
+                  value={dueDate}
+                  min={toISODate(new Date())}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+                <div className="flex gap-2 mt-2">
+                  {[7, 15, 30].map((d) => (
+                    <Button
+                      key={d}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDueDate(addDaysISO(d))}
+                    >
+                      {d} dias
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  O pedido entra na aba Receber. O valor só vai para o caixa no dia em que a baixa for registrada.
+                </p>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 

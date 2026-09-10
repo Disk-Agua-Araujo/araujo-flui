@@ -21,10 +21,13 @@ const ReportsTab = lazy(() =>
 const CustomersTab = lazy(() =>
   import("@/components/admin/CustomersTab").then((m) => ({ default: m.CustomersTab }))
 );
-import { LogOut, Package, ClipboardList, PlusCircle, BarChart3, Users, Loader2 } from "lucide-react";
+const ReceivablesTab = lazy(() =>
+  import("@/components/admin/ReceivablesTab").then((m) => ({ default: m.ReceivablesTab }))
+);
+import { LogOut, Package, ClipboardList, PlusCircle, BarChart3, Users, HandCoins, Loader2 } from "lucide-react";
 import logo from "@/assets/logo.png";
 
-const TAB_VALUES = ["orders", "new-order", "customers", "products", "reports"] as const;
+const TAB_VALUES = ["orders", "new-order", "customers", "receivables", "products", "reports"] as const;
 
 type TabValue = (typeof TAB_VALUES)[number];
 
@@ -36,6 +39,7 @@ const tabConfig = [
   { value: "orders" as const, label: "Pedidos", icon: ClipboardList },
   { value: "new-order" as const, label: "Novo", icon: PlusCircle },
   { value: "customers" as const, label: "Clientes", icon: Users },
+  { value: "receivables" as const, label: "Receber", icon: HandCoins },
   { value: "products" as const, label: "Produtos", icon: Package },
   { value: "reports" as const, label: "Relatórios", icon: BarChart3, ownerOnly: true },
 ];
@@ -127,7 +131,10 @@ export default function Admin() {
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           {/* Desktop tabs */}
           {!isMobile && (
-            <TabsList className="grid w-full grid-cols-5 mb-6">
+            <TabsList
+              className="grid w-full mb-6"
+              style={{ gridTemplateColumns: `repeat(${visibleTabs.length}, minmax(0, 1fr))` }}
+            >
               {visibleTabs.map((t) => (
                 <TabsTrigger key={t.value} value={t.value} className="gap-1 relative">
                   <t.icon className="h-4 w-4" />
@@ -153,6 +160,7 @@ export default function Admin() {
             <TabsContent value="orders"><OrdersTab onScheduledCount={handleScheduledCount} /></TabsContent>
             <TabsContent value="new-order"><NewOrderTab /></TabsContent>
             <TabsContent value="customers"><CustomersTab /></TabsContent>
+            <TabsContent value="receivables"><ReceivablesTab /></TabsContent>
             <TabsContent value="products"><ProductsTab /></TabsContent>
             {isOwner && <TabsContent value="reports"><ReportsTab /></TabsContent>}
           </Suspense>

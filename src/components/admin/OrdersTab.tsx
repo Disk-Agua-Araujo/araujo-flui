@@ -84,6 +84,12 @@ function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+/** Formata "aaaa-mm-dd" sem passar por Date, que interpretaria como UTC. */
+function formatDateBR(iso: string) {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
 // ---- Rider Management Modal ----
 type DailyStats = { dia: string; total_galoes: number; total_pedidos: number };
 type RiderDailyStats = Record<string, DailyStats[]>;
@@ -656,6 +662,7 @@ function EditOrderModal({
   const [paymentMethod, setPaymentMethod] = useState("");
   const [totalAmount, setTotalAmount] = useState("");
   const [changeFor, setChangeFor] = useState("");
+  const [paymentDueDate, setPaymentDueDate] = useState("");
   const [riderId, setRiderId] = useState<string | null>(null);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
@@ -681,6 +688,7 @@ function EditOrderModal({
     setPaymentMethod(order.payment_method || "");
     setTotalAmount(order.total_amount != null ? String(order.total_amount) : "");
     setChangeFor(order.change_for != null ? String(order.change_for) : "");
+    setPaymentDueDate(order.payment_due_date || "");
     setRiderId(order.rider_id);
     setScheduledDate(order.scheduled_date || "");
     setScheduledTime(formatTimeValue(order.scheduled_time || ""));
@@ -725,6 +733,7 @@ function EditOrderModal({
           payment_method: paymentMethod || null,
           total_amount: totalAmount ? parseFloat(totalAmount) : null,
           change_for: changeFor ? parseFloat(changeFor) : null,
+          payment_due_date: paymentDueDate || null,
           rider_id: riderId,
           scheduled_date: scheduleEnabled ? (scheduledDate || deliveryDate || null) : null,
           scheduled_time: scheduleEnabled ? (scheduledTime || deliveryTime || null) : null,
@@ -899,6 +908,17 @@ function EditOrderModal({
               <Input type="number" step="0.01" value={changeFor} onChange={(e) => setChangeFor(e.target.value)} placeholder="0,00" />
             </div>
           )}
+
+          {/* Pagamento a prazo: com vencimento, o pedido aparece na aba Receber */}
+          <div>
+            <label className="text-xs font-medium">Vencimento (pagamento a prazo)</label>
+            <Input type="date" value={paymentDueDate} onChange={(e) => setPaymentDueDate(e.target.value)} />
+            <p className="text-xs text-muted-foreground mt-1">
+              {order.paid_at
+                ? `Recebido em ${formatDateBR(order.paid_at)}. Para estornar, use a aba Receber.`
+                : "Deixe vazio para pagamento à vista."}
+            </p>
+          </div>
 
           {/* Rider */}
           <div>
@@ -1769,6 +1789,14 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
               <div className="flex items-center gap-2"><strong>Pagamento:</strong> {selectedOrder.payment_method ? <PaymentBadge method={selectedOrder.payment_method} /> : "—"}</div>
               {selectedOrder.total_amount != null && (
                 <p><strong>Total:</strong> {formatCurrency(selectedOrder.total_amount)}</p>
+              )}
+              {selectedOrder.payment_due_date && (
+                <p>
+                  <strong>A prazo:</strong>{" "}
+                  {selectedOrder.paid_at
+                    ? `recebido em ${formatDateBR(selectedOrder.paid_at)}`
+                    : `vence em ${formatDateBR(selectedOrder.payment_due_date)}`}
+                </p>
               )}
               {selectedOrder.payment_method === "cash" && selectedOrder.change_for != null && (
                 <p><strong>Troco para:</strong> {formatCurrency(selectedOrder.change_for)}

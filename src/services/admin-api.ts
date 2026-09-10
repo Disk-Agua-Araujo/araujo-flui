@@ -67,6 +67,9 @@ export type AdminOrderRow = {
   scheduled_time: string | null;
   reminder_enabled: boolean;
   reminder_dismissed: boolean;
+  payment_due_date: string | null;
+  paid_at: string | null;
+  paid_by: string | null;
   customers: { id: string; name: string; phone: string | null; cnpj: string | null; type?: string } | null;
   addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null; reference?: string | null } | null;
   order_items: { qty: number; product_id?: string; products: { name: string } | null }[];
@@ -162,6 +165,72 @@ export type ReportsSummary = {
   products: { product_name: string; qty: number }[];
 };
 
+export type ReceivableRow = {
+  id: string;
+  status: string;
+  channel: string;
+  created_at: string;
+  delivery_date: string | null;
+  total_amount: number | null;
+  payment_method: string | null;
+  payment_due_date: string;
+  paid_at: string | null;
+  paid_by: string | null;
+  notes: string | null;
+  customers: { id: string; name: string; phone: string | null; cnpj: string | null; type?: string } | null;
+  order_items: { qty: number; products: { name: string } | null }[];
+};
+
+export type ReceivablesSummary = {
+  open_total: number;
+  open_count: number;
+  due_today_total: number;
+  due_today_count: number;
+  late_total: number;
+  late_count: number;
+  received_total: number;
+  received_count: number;
+};
+
+export type ReceivablesListResult = {
+  rows: ReceivableRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  /** Data de hoje em São Paulo, calculada no servidor. */
+  today: string;
+  summary: ReceivablesSummary;
+};
+
+export type CashByMethodRow = {
+  payment_method: string;
+  a_prazo: boolean;
+  total: number;
+  order_count: number;
+};
+
+export type CashEntryRow = {
+  order_id: string;
+  /** Dia em que o dinheiro entrou no caixa. */
+  cash_date: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  payment_method: string | null;
+  payment_method_2: string | null;
+  is_split: boolean;
+  total_amount: number;
+  a_prazo: boolean;
+  due_date: string | null;
+};
+
+export type CashReportResult = {
+  byMethod: CashByMethodRow[];
+  entries: CashEntryRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
 export const adminApi = {
   listOrders: (payload?: OrdersListPayload) =>
     callAdminApi<OrdersListResult>("orders.list", payload ?? {}),
@@ -187,6 +256,7 @@ export const adminApi = {
     change_for_2?: number | null;
     scheduled_date?: string | null;
     scheduled_time?: string | null;
+    payment_due_date?: string | null;
   }) => callAdminApi<{ order_id: string; customer_id: string }>("orders.createAdmin", payload),
 
   listCustomers: () => callAdminApi<AdminCustomerRow[]>("customers.list"),
@@ -265,6 +335,7 @@ export const adminApi = {
       scheduled_time?: string | null;
       reminder_enabled?: boolean;
       reminder_dismissed?: boolean;
+      payment_due_date?: string | null;
     };
     items?: { product_id: string; qty: number }[];
     address?: {
@@ -301,6 +372,29 @@ export const adminApi = {
 
   bulkUpdateOrders: (orderIds: string[], updates: { status?: string; rider_id?: string | null; payment_method?: string | null }) =>
     callAdminApi<{ ok: boolean; count: number; failed?: { id: string; error: string }[] }>("orders.bulkUpdate", { orderIds, updates }),
+
+  listReceivables: (payload?: {
+    view?: "open" | "paid";
+    dateStart?: string;
+    dateEnd?: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }) => callAdminApi<ReceivablesListResult>("receivables.list", payload ?? {}),
+
+  getCashReport: (payload: {
+    dateStart: string;
+    dateEnd: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }) => callAdminApi<CashReportResult>("reports.cash", payload),
+
+  markReceivablePaid: (payload: { orderId: string; paidAt: string; paymentMethod?: string | null }) =>
+    callAdminApi<{ ok: boolean; paid_at: string }>("receivables.markPaid", payload),
+
+  undoReceivablePaid: (orderId: string) =>
+    callAdminApi<{ ok: boolean }>("receivables.undoPaid", { orderId }),
 
   bulkDeleteOrders: (orderIds: string[]) =>
     callAdminApi<{ ok: boolean; deleted: number; skipped: number }>("orders.bulkDelete", { orderIds }),

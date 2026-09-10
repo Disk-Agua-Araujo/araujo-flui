@@ -43,6 +43,22 @@ function normalizeSearch(str: string): string {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
+// A function roda em UTC. Vencimento e recebimento são sempre no dia de São Paulo.
+function todayInSaoPaulo(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
+
+function isValidDate(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+// Vírgula e parênteses quebram a sintaxe do or() do PostgREST.
+function sanitizeSearch(input: unknown): string {
+  return typeof input === "string"
+    ? input.replace(/[,()*%]/g, " ").trim().slice(0, 60)
+    : "";
+}
+
 async function verifyJWT(token: string, secret: string): Promise<AdminPayload | null> {
   try {
     const [header, payload, signature] = token.split(".");
@@ -190,7 +206,7 @@ serve(async (req) => {
       const { data, error, count } = await adminClient
         .from("orders")
         .select(`
-          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, em_rota_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
+          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, em_rota_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed, payment_due_date, paid_at, paid_by,
           customers(id, name, phone, cnpj, type),
           addresses(street, number, neighborhood, city, complement, reference),
           order_items(qty, product_id, products(name))
@@ -249,6 +265,11 @@ serve(async (req) => {
       const totalAmount = payload?.total_amount ?? null;
       const changeFor = payload?.change_for ?? null;
       const changeFor2 = payload?.change_for_2 ?? null;
+      const paymentDueDate = payload?.payment_due_date || null;
+
+      if (paymentDueDate && !isValidDate(paymentDueDate)) {
+        throw new Error("Data de vencimento inválida.");
+      }
 
       if (!Array.isArray(items) || items.length === 0) {
         throw new Error("Selecione ao menos um produto.");
@@ -334,6 +355,7 @@ serve(async (req) => {
           change_for_2: changeFor2,
           scheduled_date: scheduledDate,
           scheduled_time: scheduledTime,
+          payment_due_date: paymentDueDate,
         })
         .select("id")
         .single();
@@ -351,6 +373,138 @@ serve(async (req) => {
       if (itemsError) throw itemsError;
 
       return json({ data: { order_id: order.id, customer_id: customerId } });
+    }
+
+    // ---- Contas a receber ----
+    // Conta a receber = pedido com vencimento definido e ainda não recebido.
+    // O pedido segue seu fluxo normal de entrega; só o dinheiro fica pendente.
+
+    if (action === "receivables.list") {
+      const view = payload?.view === "paid" ? "paid" : "open";
+      const page = Math.max(0, Number(payload?.page ?? 0) | 0);
+      const pageSize = Math.min(200, Math.max(1, Number(payload?.pageSize ?? 50) | 0));
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+      const today = todayInSaoPaulo();
+
+      const dateStart = isValidDate(payload?.dateStart) ? payload.dateStart : null;
+      const dateEnd = isValidDate(payload?.dateEnd) ? payload.dateEnd : null;
+      const search = sanitizeSearch(payload?.search);
+
+      // Com busca o join precisa ser inner, senão o pedido entra na lista
+      // mesmo quando o cliente não bate com o termo.
+      const customersEmbed = search
+        ? "customers!inner(id, name, phone, cnpj, type)"
+        : "customers(id, name, phone, cnpj, type)";
+
+      let query = adminClient
+        .from("orders")
+        .select(`
+          id, status, channel, created_at, delivery_date, total_amount, payment_method,
+          payment_due_date, paid_at, paid_by, notes,
+          ${customersEmbed},
+          order_items(qty, products(name))
+        `, { count: "exact" })
+        .neq("status", "cancelado")
+        .not("payment_due_date", "is", null);
+
+      if (search) {
+        const digits = search.replace(/\D/g, "");
+        const terms = [`name.ilike.%${search}%`];
+        terms.push(digits.length >= 3 ? `phone.ilike.%${digits}%` : `phone.ilike.%${search}%`);
+        query = query.or(terms.join(","), { foreignTable: "customers" });
+      }
+
+      if (view === "paid") {
+        query = query.not("paid_at", "is", null).order("paid_at", { ascending: false });
+        if (dateStart) query = query.gte("paid_at", dateStart);
+        if (dateEnd) query = query.lte("paid_at", dateEnd);
+      } else {
+        query = query.is("paid_at", null).order("payment_due_date", { ascending: true });
+      }
+
+      const { data, error, count } = await query.range(from, to);
+      if (error) throw error;
+
+      const { data: summaryRows, error: summaryError } = await adminClient.rpc("get_receivables_summary", {
+        date_start: dateStart,
+        date_end: dateEnd,
+        search: search || null,
+      });
+      if (summaryError) throw summaryError;
+
+      const raw = (summaryRows as any[] | null)?.[0] ?? {};
+      const summary = {
+        open_total: Number(raw.open_total ?? 0),
+        open_count: Number(raw.open_count ?? 0),
+        due_today_total: Number(raw.due_today_total ?? 0),
+        due_today_count: Number(raw.due_today_count ?? 0),
+        late_total: Number(raw.late_total ?? 0),
+        late_count: Number(raw.late_count ?? 0),
+        received_total: Number(raw.received_total ?? 0),
+        received_count: Number(raw.received_count ?? 0),
+      };
+
+      return json({ data: { rows: data || [], total: count ?? 0, page, pageSize, today, summary } });
+    }
+
+    if (action === "receivables.markPaid") {
+      const orderId = payload?.orderId as string;
+      if (!orderId) throw new Error("Pedido inválido.");
+
+      const paidAt = payload?.paidAt || todayInSaoPaulo();
+      if (!isValidDate(paidAt)) throw new Error("Data do recebimento inválida.");
+
+      const { data: order, error: fetchError } = await adminClient
+        .from("orders")
+        .select("id, status, total_amount, payment_due_date, paid_at")
+        .eq("id", orderId)
+        .maybeSingle();
+      if (fetchError) throw fetchError;
+
+      if (!order) throw new Error("Pedido não encontrado.");
+      if (order.status === "cancelado") throw new Error("Pedido cancelado não pode ser recebido.");
+      if (!order.payment_due_date) throw new Error("Este pedido não é a prazo. Defina o vencimento antes de dar baixa.");
+      if (order.paid_at) throw new Error("Este pedido já foi recebido.");
+      if (order.total_amount == null || Number(order.total_amount) <= 0) {
+        throw new Error("Preencha o valor total do pedido antes de dar baixa.");
+      }
+
+      const updateFields: Record<string, unknown> = {
+        paid_at: paidAt,
+        paid_by: admin.username,
+        updated_at: new Date().toISOString(),
+        updated_by: admin.username,
+      };
+
+      const method = payload?.paymentMethod as string | undefined;
+      if (method) {
+        if (!["cash", "pix", "card"].includes(method)) throw new Error("Forma de pagamento inválida.");
+        updateFields.payment_method = method;
+      }
+
+      const { error } = await adminClient.from("orders").update(updateFields).eq("id", orderId);
+      if (error) throw error;
+
+      return json({ data: { ok: true, paid_at: paidAt } });
+    }
+
+    if (action === "receivables.undoPaid") {
+      const orderId = payload?.orderId as string;
+      if (!orderId) throw new Error("Pedido inválido.");
+
+      const { error } = await adminClient
+        .from("orders")
+        .update({
+          paid_at: null,
+          paid_by: null,
+          updated_at: new Date().toISOString(),
+          updated_by: admin.username,
+        })
+        .eq("id", orderId);
+      if (error) throw error;
+
+      return json({ data: { ok: true } });
     }
 
     if (action === "customers.list") {
@@ -640,6 +794,62 @@ serve(async (req) => {
       });
     }
 
+    if (action === "reports.cash") {
+      if (admin.role !== "admin_owner") {
+        return json({ error: "Acesso negado. Apenas o proprietário pode acessar relatórios." }, 403);
+      }
+
+      const dateStart = payload?.dateStart as string;
+      const dateEnd = payload?.dateEnd as string;
+      if (!isValidDate(dateStart) || !isValidDate(dateEnd)) throw new Error("Período inválido.");
+
+      const search = sanitizeSearch(payload?.search);
+      const page = Math.max(0, Number(payload?.page ?? 0) | 0);
+      const pageSize = Math.min(200, Math.max(1, Number(payload?.pageSize ?? 50) | 0));
+
+      const [methodsRes, entriesRes] = await Promise.all([
+        adminClient.rpc("get_cash_by_payment_method", { date_start: dateStart, date_end: dateEnd }),
+        adminClient.rpc("get_cash_entries", {
+          date_start: dateStart,
+          date_end: dateEnd,
+          search: search || null,
+          row_limit: pageSize,
+          row_offset: page * pageSize,
+        }),
+      ]);
+
+      if (methodsRes.error) throw methodsRes.error;
+      if (entriesRes.error) throw entriesRes.error;
+
+      const entries = (entriesRes.data || []) as any[];
+
+      return json({
+        data: {
+          byMethod: ((methodsRes.data || []) as any[]).map((r) => ({
+            payment_method: r.payment_method,
+            a_prazo: !!r.a_prazo,
+            total: Number(r.total ?? 0),
+            order_count: Number(r.order_count ?? 0),
+          })),
+          entries: entries.map((r) => ({
+            order_id: r.order_id,
+            cash_date: r.cash_date,
+            customer_name: r.customer_name,
+            customer_phone: r.customer_phone,
+            payment_method: r.payment_method,
+            payment_method_2: r.payment_method_2,
+            is_split: !!r.is_split,
+            total_amount: Number(r.total_amount ?? 0),
+            a_prazo: !!r.a_prazo,
+            due_date: r.due_date,
+          })),
+          total: Number(entries[0]?.total_count ?? 0),
+          page,
+          pageSize,
+        },
+      });
+    }
+
     if (action === "reports.orders") {
       if (admin.role !== "admin_owner") {
         return json({ error: "Acesso negado. Apenas o proprietário pode acessar relatórios." }, 403);
@@ -657,7 +867,7 @@ serve(async (req) => {
         let q = adminClient
           .from("orders")
           .select(`
-            id, channel, status, delivery_date, delivery_time, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, em_rota_at, notes, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed,
+            id, channel, status, delivery_date, delivery_time, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, em_rota_at, notes, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed, payment_due_date, paid_at, paid_by,
             customers(id, name, phone, cnpj, type),
             addresses(street, number, neighborhood, city, complement, reference),
             order_items(qty, product_id, products(name))
@@ -697,9 +907,15 @@ serve(async (req) => {
 
       // Update order fields
       const updateFields: any = { updated_at: new Date().toISOString(), updated_by: admin.username };
-      const allowedFields = ["status", "notes", "delivery_date", "delivery_time", "fulfillment_type", "payment_method", "payment_method_2", "payment_amount_1", "payment_amount_2", "is_split_payment", "total_amount", "change_for", "change_for_2", "rider_id", "scheduled_date", "scheduled_time", "reminder_enabled", "reminder_dismissed"];
+      const allowedFields = ["status", "notes", "delivery_date", "delivery_time", "fulfillment_type", "payment_method", "payment_method_2", "payment_amount_1", "payment_amount_2", "is_split_payment", "total_amount", "change_for", "change_for_2", "rider_id", "scheduled_date", "scheduled_time", "reminder_enabled", "reminder_dismissed", "payment_due_date"];
       for (const key of allowedFields) {
         if (key in orderData) updateFields[key] = orderData[key];
+      }
+
+      if ("payment_due_date" in updateFields) {
+        const due = updateFields.payment_due_date;
+        if (!due) updateFields.payment_due_date = null;
+        else if (!isValidDate(due)) throw new Error("Data de vencimento inválida.");
       }
 
       // Status change to em_rota: atomic stock deduction + status via RPC
