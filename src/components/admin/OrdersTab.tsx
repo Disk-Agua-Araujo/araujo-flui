@@ -22,7 +22,12 @@ import { QuantityInput } from "@/components/ui/quantity-input";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
-import { adminApi, type AdminOrderRow, type DeliveryRider, type AdminProductRow } from "@/services/admin-api";
+import { adminApi, type AdminOrderRow, type DeliveryRider, type AdminProductRow, type OrderPaymentPayload } from "@/services/admin-api";
+import {
+  SplitPaymentSection, emptySplitPayment, splitPaymentFromOrder,
+  splitPaymentToPayload, validateSplitPayment, type SplitPaymentValue,
+} from "@/components/admin/SplitPaymentSection";
+import { PaymentEditDialog } from "@/components/admin/PaymentEditDialog";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDebounce } from "@/hooks/use-debounce";
 import {
@@ -52,6 +57,32 @@ function PaymentBadge({ method, className }: { method: string | null | undefined
       <PaymentIcon method={method} size={12} />
       {label}
     </Badge>
+  );
+}
+
+/** Mostra as duas formas quando o pedido foi pago dividido. */
+function PaymentSummary({ o }: { o: AdminOrderRow }) {
+  if (!o.payment_method) return <span className="text-muted-foreground">—</span>;
+
+  if (!o.is_split_payment || !o.payment_method_2) {
+    return <PaymentBadge method={o.payment_method} />;
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5 items-start">
+      <span className="inline-flex items-center gap-1">
+        <PaymentBadge method={o.payment_method} />
+        {o.payment_amount_1 != null && (
+          <span className="text-[10px] text-muted-foreground">{formatCurrency(o.payment_amount_1)}</span>
+        )}
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <PaymentBadge method={o.payment_method_2} />
+        {o.payment_amount_2 != null && (
+          <span className="text-[10px] text-muted-foreground">{formatCurrency(o.payment_amount_2)}</span>
+        )}
+      </span>
+    </div>
   );
 }
 
@@ -535,7 +566,7 @@ function ReminderModal({
 
 function OrderCard({
   o, riders, statusLabels, statusColors, paymentLabels,
-  onView, onEdit, onLabel, onWhatsApp, onStatusChange, onRiderToggle, onPixToggle,
+  onView, onEdit, onLabel, onWhatsApp, onStatusChange, onRiderToggle, onPixToggle, onEditPayment,
   loadingAction,
 }: {
   o: AdminOrderRow;
@@ -550,6 +581,7 @@ function OrderCard({
   onStatusChange: (status: string) => void;
   onRiderToggle: (riderId: string) => void;
   onPixToggle: () => void;
+  onEditPayment: () => void;
   loadingAction?: string | null;
 }) {
   return (
@@ -589,7 +621,16 @@ function OrderCard({
             </SelectContent>
           </Select>
 
-          {o.payment_method && <PaymentBadge method={o.payment_method} />}
+          <button
+            type="button"
+            onClick={onEditPayment}
+            className="rounded-md hover:opacity-80 transition-opacity"
+            title="Alterar forma de pagamento"
+          >
+            {o.payment_method
+              ? <PaymentSummary o={o} />
+              : <Badge variant="outline" className="text-xs border-dashed">Definir pagamento</Badge>}
+          </button>
           <PixBadge order={o} onToggle={onPixToggle} />
           {o.status === "em_rota" && o.em_rota_at && (
             <span className="text-[10px] text-muted-foreground">
@@ -659,9 +700,7 @@ function EditOrderModal({
   const [deliveryDate, setDeliveryDate] = useState("");
   const [deliveryTime, setDeliveryTime] = useState("");
   const [fulfillmentType, setFulfillmentType] = useState("delivery");
-  const [paymentMethod, setPaymentMethod] = useState("");
-  const [totalAmount, setTotalAmount] = useState("");
-  const [changeFor, setChangeFor] = useState("");
+  const [payment, setPayment] = useState<SplitPaymentValue>(emptySplitPayment);
   const [paymentDueDate, setPaymentDueDate] = useState("");
   const [riderId, setRiderId] = useState<string | null>(null);
   const [scheduledDate, setScheduledDate] = useState("");
@@ -685,9 +724,7 @@ function EditOrderModal({
     setDeliveryDate(order.delivery_date || "");
     setDeliveryTime(formatTimeValue(order.delivery_time || ""));
     setFulfillmentType(order.fulfillment_type || "delivery");
-    setPaymentMethod(order.payment_method || "");
-    setTotalAmount(order.total_amount != null ? String(order.total_amount) : "");
-    setChangeFor(order.change_for != null ? String(order.change_for) : "");
+    setPayment(splitPaymentFromOrder(order));
     setPaymentDueDate(order.payment_due_date || "");
     setRiderId(order.rider_id);
     setScheduledDate(order.scheduled_date || "");
@@ -720,6 +757,11 @@ function EditOrderModal({
         return;
       }
     }
+    const splitError = validateSplitPayment(payment);
+    if (splitError) {
+      toast({ title: "Pagamento dividido incompleto", description: splitError, variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       await adminApi.updateOrder({
@@ -730,9 +772,7 @@ function EditOrderModal({
           delivery_date: deliveryDate || null,
           delivery_time: deliveryTime || null,
           fulfillment_type: fulfillmentType,
-          payment_method: paymentMethod || null,
-          total_amount: totalAmount ? parseFloat(totalAmount) : null,
-          change_for: changeFor ? parseFloat(changeFor) : null,
+          ...splitPaymentToPayload(payment),
           payment_due_date: paymentDueDate || null,
           rider_id: riderId,
           scheduled_date: scheduleEnabled ? (scheduledDate || deliveryDate || null) : null,
@@ -883,31 +923,11 @@ function EditOrderModal({
             )}
           </div>
 
-          {/* Payment */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs font-medium">Forma de pagamento</label>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash"><span className="inline-flex items-center gap-2"><PaymentIcon method="cash" size={14} /> Dinheiro</span></SelectItem>
-                  <SelectItem value="pix"><span className="inline-flex items-center gap-2"><PaymentIcon method="pix" size={14} /> PIX</span></SelectItem>
-                  <SelectItem value="card"><span className="inline-flex items-center gap-2"><PaymentIcon method="card" size={14} /> Cartão</span></SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs font-medium">Valor total</label>
-              <Input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} placeholder="0,00" />
-            </div>
+          {/* Pagamento — simples ou dividido entre duas formas */}
+          <div className="space-y-2 border rounded-md p-3">
+            <p className="text-xs font-medium">Pagamento</p>
+            <SplitPaymentSection value={payment} onChange={setPayment} compact />
           </div>
-
-          {paymentMethod === "cash" && (
-            <div>
-              <label className="text-xs font-medium">Troco para</label>
-              <Input type="number" step="0.01" value={changeFor} onChange={(e) => setChangeFor(e.target.value)} placeholder="0,00" />
-            </div>
-          )}
 
           {/* Pagamento a prazo: com vencimento, o pedido aparece na aba Receber */}
           <div>
@@ -995,6 +1015,21 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
 
   // Edit order
   const [editOrder, setEditOrder] = useState<AdminOrderRow | null>(null);
+
+  // Troca avulsa da forma de pagamento (serve para pedido já fechado)
+  const [paymentOrder, setPaymentOrder] = useState<AdminOrderRow | null>(null);
+
+  const handlePaymentSaved = useCallback((orderId: string, payment: OrderPaymentPayload) => {
+    const keepsPix = payment.payment_method === "pix" || payment.payment_method_2 === "pix";
+    const patch = (o: AdminOrderRow): AdminOrderRow => ({
+      ...o,
+      ...payment,
+      pix_paid: keepsPix ? o.pix_paid : false,
+      pix_paid_at: keepsPix ? o.pix_paid_at : null,
+    });
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? patch(o) : o)));
+    setSelectedOrder((prev) => (prev && prev.id === orderId ? patch(prev) : prev));
+  }, []);
 
   // Reminder
   const [reminderOpen, setReminderOpen] = useState(false);
@@ -1315,7 +1350,18 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
       } else if (confirmAction.type === "payment") {
         await adminApi.bulkUpdateOrders(ids, { payment_method: confirmAction.value });
         const idSet = new Set(ids);
-        setOrders((prev) => prev.map((o) => idSet.has(o.id) ? { ...o, payment_method: confirmAction.value } : o));
+        // Espelha o servidor: a troca em lote desfaz pagamento dividido.
+        setOrders((prev) => prev.map((o) => idSet.has(o.id) ? {
+          ...o,
+          payment_method: confirmAction.value,
+          payment_method_2: null,
+          payment_amount_1: null,
+          payment_amount_2: null,
+          change_for_2: null,
+          is_split_payment: false,
+          pix_paid: confirmAction.value === "pix" ? o.pix_paid : false,
+          pix_paid_at: confirmAction.value === "pix" ? o.pix_paid_at : null,
+        } : o));
         toast({ title: `Forma de pagamento atualizada em ${ids.length} pedido${ids.length !== 1 ? "s" : ""}.` });
       } else if (confirmAction.type === "delete") {
         const res = (await adminApi.bulkDeleteOrders(ids)) ?? { deleted: 0, skipped: 0 };
@@ -1581,6 +1627,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                     onStatusChange={(v) => updateStatus(o.id, v)}
                     onRiderToggle={(rid) => toggleRider(o.id, rid, o.rider_id)}
                     onPixToggle={() => togglePixPaid(o.id)}
+                    onEditPayment={() => setPaymentOrder(o)}
                   />
                 </div>
               </div>
@@ -1681,10 +1728,17 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                         {o.order_items.map((i) => `${i.products?.name ?? "?"} x${i.qty}`).join(", ")}
                       </TableCell>
                       <TableCell className="text-xs">
-                        <div className="flex flex-col gap-1">
-                          {o.payment_method ? (
-                            <PaymentBadge method={o.payment_method} />
-                          ) : "—"}
+                        <div className="flex flex-col gap-1 items-start">
+                          <button
+                            type="button"
+                            onClick={() => setPaymentOrder(o)}
+                            className="rounded-md text-left hover:opacity-80 transition-opacity"
+                            title="Alterar forma de pagamento"
+                          >
+                            {o.payment_method
+                              ? <PaymentSummary o={o} />
+                              : <Badge variant="outline" className="text-xs border-dashed">Definir</Badge>}
+                          </button>
                           <PixBadge order={o} onToggle={() => togglePixPaid(o.id)} />
                         </div>
                       </TableCell>
@@ -1786,7 +1840,13 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                   <ScheduledBadge order={selectedOrder} />
                 </div>
               )}
-              <div className="flex items-center gap-2"><strong>Pagamento:</strong> {selectedOrder.payment_method ? <PaymentBadge method={selectedOrder.payment_method} /> : "—"}</div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <strong>Pagamento:</strong>
+                <PaymentSummary o={selectedOrder} />
+                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => { setPaymentOrder(selectedOrder); setSelectedOrder(null); }}>
+                  <Pencil className="h-3 w-3 mr-1" /> Alterar
+                </Button>
+              </div>
               {selectedOrder.total_amount != null && (
                 <p><strong>Total:</strong> {formatCurrency(selectedOrder.total_amount)}</p>
               )}
@@ -1878,6 +1938,12 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
         onOpenChange={(o) => !o && setSaveCustomerOrder(null)}
         order={saveCustomerOrder}
         onSaved={handleCustomerSaved}
+      />
+
+      <PaymentEditDialog
+        order={paymentOrder}
+        onOpenChange={(o) => { if (!o) setPaymentOrder(null); }}
+        onSaved={(payment) => { if (paymentOrder) handlePaymentSaved(paymentOrder.id, payment); }}
       />
 
       <EditOrderModal

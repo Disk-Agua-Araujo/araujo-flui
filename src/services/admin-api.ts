@@ -171,14 +171,27 @@ export type ReceivableRow = {
   channel: string;
   created_at: string;
   delivery_date: string | null;
+  delivery_time: string | null;
+  fulfillment_type: string | null;
+  scheduled_date: string | null;
+  scheduled_time: string | null;
   total_amount: number | null;
   payment_method: string | null;
+  payment_method_2: string | null;
+  payment_amount_1: number | null;
+  payment_amount_2: number | null;
+  is_split_payment: boolean | null;
+  change_for: number | null;
+  change_for_2: number | null;
   payment_due_date: string;
   paid_at: string | null;
   paid_by: string | null;
   notes: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
   customers: { id: string; name: string; phone: string | null; cnpj: string | null; type?: string } | null;
-  order_items: { qty: number; products: { name: string } | null }[];
+  addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null; reference?: string | null } | null;
+  order_items: { qty: number; product_id?: string; products: { name: string } | null }[];
 };
 
 export type ReceivablesSummary = {
@@ -229,6 +242,17 @@ export type CashReportResult = {
   total: number;
   page: number;
   pageSize: number;
+};
+
+export type OrderPaymentPayload = {
+  payment_method: string | null;
+  payment_method_2: string | null;
+  payment_amount_1: number | null;
+  payment_amount_2: number | null;
+  total_amount: number | null;
+  change_for: number | null;
+  change_for_2: number | null;
+  is_split_payment: boolean;
 };
 
 export const adminApi = {
@@ -347,6 +371,10 @@ export const adminApi = {
       reference?: string | null;
     } | null;
   }) => callAdminApi<{ ok: boolean }>("orders.update", payload),
+
+  /** Troca só o bloco de pagamento — funciona em pedido de qualquer status. */
+  updateOrderPayment: (orderId: string, payment: OrderPaymentPayload) =>
+    callAdminApi<{ ok: boolean } & OrderPaymentPayload>("orders.updatePayment", { orderId, payment }),
 
   listRiders: () => callAdminApi<DeliveryRider[]>("riders.list"),
   saveRider: (rider: { id?: string; label: string; name: string; active?: boolean; sort_order?: number }) =>

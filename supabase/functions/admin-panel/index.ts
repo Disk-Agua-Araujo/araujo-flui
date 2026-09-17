@@ -59,6 +59,73 @@ function sanitizeSearch(input: unknown): string {
     : "";
 }
 
+const PAYMENT_METHODS = ["cash", "pix", "card"];
+
+function toAmount(value: unknown, label: string): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) throw new Error(`${label} inválido.`);
+  return n > 0 ? n : null;
+}
+
+// Normaliza o bloco de pagamento de um pedido. Passa por aqui tanto a edição
+// completa quanto a troca avulsa da forma de pagamento, para que um pedido
+// nunca fique meio dividido e meio simples no banco — que era a origem das
+// divergências no relatório de caixa.
+function normalizePaymentUpdate(input: Record<string, unknown>) {
+  const method = input.payment_method ? String(input.payment_method) : null;
+  const method2 = input.payment_method_2 ? String(input.payment_method_2) : null;
+  const isSplit = input.is_split_payment === true;
+
+  if (method && !PAYMENT_METHODS.includes(method)) throw new Error("Forma de pagamento inválida.");
+  if (method2 && !PAYMENT_METHODS.includes(method2)) throw new Error("Segunda forma de pagamento inválida.");
+
+  const total = toAmount(input.total_amount, "Valor total");
+  const change1 = toAmount(input.change_for, "Troco");
+  const change2 = toAmount(input.change_for_2, "Troco da segunda forma");
+
+  if (!isSplit) {
+    return {
+      payment_method: method,
+      payment_method_2: null,
+      payment_amount_1: null,
+      payment_amount_2: null,
+      total_amount: total,
+      change_for: method === "cash" ? change1 : null,
+      change_for_2: null,
+      is_split_payment: false,
+    };
+  }
+
+  if (!method || !method2) throw new Error("Pagamento dividido exige as duas formas de pagamento.");
+  if (method === method2) throw new Error("As duas formas de pagamento devem ser diferentes.");
+
+  const amt1 = toAmount(input.payment_amount_1, "Valor da primeira forma");
+  const amt2 = toAmount(input.payment_amount_2, "Valor da segunda forma");
+  if (!amt1 || !amt2) throw new Error("Informe o valor de cada forma de pagamento.");
+  if (total !== null && Math.abs(amt1 + amt2 - total) > 0.01) {
+    throw new Error("A soma das duas formas deve ser igual ao total do pedido.");
+  }
+
+  return {
+    payment_method: method,
+    payment_method_2: method2,
+    payment_amount_1: amt1,
+    payment_amount_2: amt2,
+    total_amount: total ?? amt1 + amt2,
+    change_for: method === "cash" ? change1 : null,
+    change_for_2: method2 === "cash" ? change2 : null,
+    is_split_payment: true,
+  };
+}
+
+// Saiu o PIX do pedido, sai junto a marcação de PIX pago: senão o badge fica
+// verde num pedido que agora é dinheiro.
+function pixResetFields(fields: { payment_method: string | null; payment_method_2: string | null }) {
+  const hasPix = fields.payment_method === "pix" || fields.payment_method_2 === "pix";
+  return hasPix ? {} : { pix_paid: false, pix_paid_at: null };
+}
+
 async function verifyJWT(token: string, secret: string): Promise<AdminPayload | null> {
   try {
     const [header, payload, signature] = token.split(".");
@@ -400,10 +467,13 @@ serve(async (req) => {
       let query = adminClient
         .from("orders")
         .select(`
-          id, status, channel, created_at, delivery_date, total_amount, payment_method,
-          payment_due_date, paid_at, paid_by, notes,
+          id, status, channel, created_at, delivery_date, delivery_time, fulfillment_type,
+          scheduled_date, scheduled_time, total_amount, payment_method, payment_method_2,
+          payment_amount_1, payment_amount_2, is_split_payment, change_for, change_for_2,
+          payment_due_date, paid_at, paid_by, notes, updated_at, updated_by,
           ${customersEmbed},
-          order_items(qty, products(name))
+          addresses(street, number, neighborhood, city, complement, reference),
+          order_items(qty, product_id, products(name))
         `, { count: "exact" })
         .neq("status", "cancelado")
         .not("payment_due_date", "is", null);
@@ -457,7 +527,7 @@ serve(async (req) => {
 
       const { data: order, error: fetchError } = await adminClient
         .from("orders")
-        .select("id, status, total_amount, payment_due_date, paid_at")
+        .select("id, status, total_amount, payment_due_date, paid_at, payment_method, is_split_payment")
         .eq("id", orderId)
         .maybeSingle();
       if (fetchError) throw fetchError;
@@ -477,10 +547,24 @@ serve(async (req) => {
         updated_by: admin.username,
       };
 
+      // A baixa registra uma única forma de pagamento. Se o pedido estava
+      // dividido, o split sai junto — senão o relatório de caixa continuaria
+      // somando as duas parcelas antigas além do valor recebido agora.
       const method = payload?.paymentMethod as string | undefined;
       if (method) {
-        if (!["cash", "pix", "card"].includes(method)) throw new Error("Forma de pagamento inválida.");
-        updateFields.payment_method = method;
+        if (!PAYMENT_METHODS.includes(method)) throw new Error("Forma de pagamento inválida.");
+        Object.assign(updateFields, {
+          payment_method: method,
+          payment_method_2: null,
+          payment_amount_1: null,
+          payment_amount_2: null,
+          change_for_2: null,
+          is_split_payment: false,
+        });
+        if (method !== "pix") {
+          updateFields.pix_paid = false;
+          updateFields.pix_paid_at = null;
+        }
       }
 
       const { error } = await adminClient.from("orders").update(updateFields).eq("id", orderId);
@@ -918,6 +1002,16 @@ serve(async (req) => {
         else if (!isValidDate(due)) throw new Error("Data de vencimento inválida.");
       }
 
+      // O formulário de edição manda o bloco de pagamento inteiro (com
+      // is_split_payment). Normaliza tudo junto para não deixar sobra de um
+      // pagamento dividido anterior.
+      if ("is_split_payment" in orderData) {
+        const payment = normalizePaymentUpdate(orderData);
+        Object.assign(updateFields, payment, pixResetFields(payment));
+      } else if (orderData.payment_method && !PAYMENT_METHODS.includes(String(orderData.payment_method))) {
+        throw new Error("Forma de pagamento inválida.");
+      }
+
       // Status change to em_rota: atomic stock deduction + status via RPC
       if (orderData.status === "em_rota") {
         const { data: results, error: rotaError } = await adminClient.rpc("mark_orders_em_rota", {
@@ -1276,6 +1370,37 @@ serve(async (req) => {
       return json({ ok: true });
     }
 
+    // Troca só o bloco de pagamento, sem mexer em itens, endereço ou status.
+    // Vale para pedido já entregue: é o caminho de correção quando o
+    // combinado mudou na porta do cliente.
+    if (action === "orders.updatePayment") {
+      const orderId = payload?.orderId as string;
+      if (!orderId) throw new Error("Pedido inválido.");
+
+      const { data: order, error: fetchError } = await adminClient
+        .from("orders")
+        .select("id, status")
+        .eq("id", orderId)
+        .maybeSingle();
+      if (fetchError) throw fetchError;
+      if (!order) throw new Error("Pedido não encontrado.");
+
+      const payment = normalizePaymentUpdate((payload?.payment ?? {}) as Record<string, unknown>);
+
+      const { error } = await adminClient
+        .from("orders")
+        .update({
+          ...payment,
+          ...pixResetFields(payment),
+          updated_at: new Date().toISOString(),
+          updated_by: admin.username,
+        })
+        .eq("id", orderId);
+      if (error) throw error;
+
+      return json({ data: { ok: true, ...payment } });
+    }
+
     if (action === "orders.bulkUpdate") {
       const orderIds = (payload?.orderIds || []) as string[];
       const updates = (payload?.updates || {}) as Record<string, unknown>;
@@ -1285,7 +1410,24 @@ serve(async (req) => {
       const allowed: Record<string, unknown> = {};
       if (typeof updates.status === "string") allowed.status = updates.status;
       if (updates.rider_id === null || typeof updates.rider_id === "string") allowed.rider_id = updates.rider_id;
-      if (updates.payment_method === null || typeof updates.payment_method === "string") allowed.payment_method = updates.payment_method;
+      if (updates.payment_method === null || typeof updates.payment_method === "string") {
+        const method = updates.payment_method as string | null;
+        if (method && !PAYMENT_METHODS.includes(method)) throw new Error("Forma de pagamento inválida.");
+        // Trocar a forma em lote desfaz o pagamento dividido: uma forma só
+        // não pode conviver com as parcelas antigas no relatório de caixa.
+        Object.assign(allowed, {
+          payment_method: method,
+          payment_method_2: null,
+          payment_amount_1: null,
+          payment_amount_2: null,
+          change_for_2: null,
+          is_split_payment: false,
+        });
+        if (method !== "pix") {
+          allowed.pix_paid = false;
+          allowed.pix_paid_at = null;
+        }
+      }
 
       if (Object.keys(allowed).length === 0) throw new Error("Nenhum campo válido para atualizar");
 
