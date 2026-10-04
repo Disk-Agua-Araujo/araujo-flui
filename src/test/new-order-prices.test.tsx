@@ -1,0 +1,98 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+
+const listProducts = vi.fn();
+const createAdminOrder = vi.fn();
+
+vi.mock("@/services/admin-api", () => ({
+  adminApi: {
+    listProducts: (...args: unknown[]) => listProducts(...args),
+    createAdminOrder: (...args: unknown[]) => createAdminOrder(...args),
+    searchCustomers: vi.fn().mockResolvedValue([]),
+  },
+}));
+vi.mock("@/hooks/use-analytics", () => ({ trackEvent: vi.fn() }));
+
+// Radix (Switch, Select) mede elementos com ResizeObserver, que o jsdom não tem.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
+
+import { NewOrderTab } from "@/components/admin/NewOrderTab";
+
+const product = (id: string, name: string, price: number | null) => ({
+  id, name, price, price_text: price != null ? String(price) : "Consulte no WhatsApp",
+  description: null, type: "varejo", icon: null, active: true, created_at: "", stock_qty: 0,
+  min_stock_qty: 0, track_stock: false, category_id: null, show_in_quick_order: false, image_url: null,
+  ncm: null, cest: null, cfop: null, cst_csosn: null, origem: 0, unidade: "UN",
+});
+
+function renderTab() {
+  return render(<MemoryRouter><NewOrderTab /></MemoryRouter>);
+}
+
+async function addOne(name: string) {
+  const qty = await screen.findByLabelText(`Quantidade de ${name}`);
+  fireEvent.click(within(qty.parentElement as HTMLElement).getByLabelText("Aumentar"));
+}
+
+describe("Novo pedido: preço por item", () => {
+  beforeEach(() => {
+    listProducts.mockResolvedValue({
+      products: [product("fardo", "Fardo Crystal", 13), product("galao", "Galão crystal 20L", null)],
+      categories: [],
+      tiers: [],
+    });
+    createAdminOrder.mockReset().mockResolvedValue({ order_id: "abcdef1234", customer_id: null });
+  });
+
+  it("usa o preço do cadastro, avisa item sem preço e soma tudo", async () => {
+    renderTab();
+    await addOne("Fardo Crystal");
+    await addOne("Fardo Crystal");
+
+    expect(screen.getByLabelText("Preço unitário de Fardo Crystal")).toHaveValue("13");
+    expect(screen.getByText(/26,00/)).toBeInTheDocument();
+
+    await addOne("Galão crystal 20L");
+    expect(screen.getByText(/1 item está sem preço/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Preço unitário de Galão crystal 20L"), { target: { value: "15,50" } });
+    expect(screen.getByText(/41,50/)).toBeInTheDocument();
+    expect(screen.queryByText(/sem preço/)).not.toBeInTheDocument();
+  });
+
+  it("manda o preço de cada item e o total calculado", async () => {
+    renderTab();
+    await addOne("Fardo Crystal");
+    await addOne("Galão crystal 20L");
+    fireEvent.change(screen.getByLabelText("Preço unitário de Galão crystal 20L"), { target: { value: "15" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Salvar pedido/ }));
+
+    await waitFor(() => expect(createAdminOrder).toHaveBeenCalled());
+    const payload = createAdminOrder.mock.calls[0][0];
+    expect(payload.items).toEqual([
+      { product_id: "fardo", qty: 1, unit_price: 13 },
+      { product_id: "galao", qty: 1, unit_price: 15 },
+    ]);
+    expect(payload.total_amount).toBe(28);
+  });
+
+  it("total digitado à mão vira desconto sobre a soma", async () => {
+    renderTab();
+    await addOne("Fardo Crystal");
+    await addOne("Fardo Crystal");
+
+    fireEvent.click(screen.getByRole("button", { name: /PIX/ }));
+    // O Label do total não tem htmlFor; o input é o irmão dele.
+    const total = screen.getByText(/Valor total do pedido/).parentElement!.querySelector("input") as HTMLInputElement;
+    expect(total.value).toBe("26.00");
+
+    fireEvent.change(total, { target: { value: "24" } });
+    expect(screen.getByText(/Desconto de R\$\s2,00/)).toBeInTheDocument();
+  });
+});

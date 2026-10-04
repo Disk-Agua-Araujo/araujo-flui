@@ -72,7 +72,7 @@ export type AdminOrderRow = {
   paid_by: string | null;
   customers: { id: string; name: string; phone: string | null; cnpj: string | null; type?: string } | null;
   addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null; reference?: string | null } | null;
-  order_items: { qty: number; product_id?: string; products: { name: string } | null }[];
+  order_items: { qty: number; product_id?: string; unit_price?: number | null; products: { name: string } | null }[];
   rider_name?: string;
 };
 
@@ -81,6 +81,10 @@ export type AdminCustomerRow = {
   name: string;
   phone: string | null;
   cnpj: string | null;
+  cpf?: string | null;
+  ie?: string | null;
+  /** NF-e: 1 contribuinte, 2 isento, 9 não contribuinte. */
+  ie_indicator?: 1 | 2 | 9 | null;
   email: string | null;
   type: "PF" | "PJ";
   created_at: string;
@@ -93,6 +97,7 @@ export type AdminCustomerRow = {
     state: string;
     complement: string | null;
     zip: string | null;
+    ibge_code?: string | null;
     reference: string | null;
     is_primary: boolean | null;
   }[];
@@ -113,6 +118,14 @@ export type AdminProductRow = {
   category_id: string | null;
   show_in_quick_order: boolean;
   image_url: string | null;
+  /** Preço usado no pedido e na nota. price_text segue sendo o que o site exibe. */
+  price: number | null;
+  ncm: string | null;
+  cest: string | null;
+  cfop: string | null;
+  cst_csosn: string | null;
+  origem: number;
+  unidade: string;
 };
 
 export type AdminTierRow = {
@@ -265,7 +278,7 @@ export const adminApi = {
     channel: "admin" | "ligacao" | "whatsapp";
     customer?: { name: string; phone: string; type: "PF" | "PJ"; cnpj?: string | null; email?: string | null };
     address?: { street: string; number: string; neighborhood: string; city?: string; state?: string; complement?: string; zip?: string };
-    items: { product_id: string; qty: number }[];
+    items: { product_id: string; qty: number; unit_price?: number | null }[];
     notes?: string;
     delivery_date?: string;
     delivery_time?: string;
@@ -292,6 +305,9 @@ export const adminApi = {
     phone: string;
     type: "PF" | "PJ";
     cnpj?: string | null;
+    cpf?: string | null;
+    ie?: string | null;
+    ie_indicator?: 1 | 2 | 9 | null;
     email?: string | null;
     address?: {
       street: string;
@@ -301,6 +317,7 @@ export const adminApi = {
       state?: string;
       complement?: string | null;
       zip?: string | null;
+      ibge_code?: string | null;
       reference?: string | null;
     };
   }) => callAdminApi<AdminCustomerRow>("customers.save", payload),
@@ -361,7 +378,7 @@ export const adminApi = {
       reminder_dismissed?: boolean;
       payment_due_date?: string | null;
     };
-    items?: { product_id: string; qty: number }[];
+    items?: { product_id: string; qty: number; unit_price?: number | null }[];
     address?: {
       street: string;
       number: string;

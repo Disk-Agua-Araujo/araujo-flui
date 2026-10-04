@@ -22,6 +22,22 @@ type Tier = AdminTierRow;
 
 const QUICK_ORDER_CATEGORY_SLUGS = ["galoes-10l", "galoes-20l"];
 
+// Origem da mercadoria na NF-e (tabela da SEFAZ, resumida).
+const ORIGENS = [
+  { value: "0", label: "0 · Nacional" },
+  { value: "1", label: "1 · Importação direta" },
+  { value: "2", label: "2 · Importada, mercado interno" },
+  { value: "3", label: "3 · Nacional, conteúdo importado 40% a 70%" },
+  { value: "4", label: "4 · Nacional, processo produtivo básico" },
+  { value: "5", label: "5 · Nacional, conteúdo importado até 40%" },
+  { value: "6", label: "6 · Importação direta, sem similar" },
+  { value: "7", label: "7 · Importada, sem similar" },
+  { value: "8", label: "8 · Nacional, conteúdo importado acima de 70%" },
+];
+
+const formatPriceText = (n: number) => n.toFixed(2).replace(".", ",");
+const isNumericPriceText = (t: string | null | undefined) => !t?.trim() || /^\d+(,\d{1,2})?$/.test(t.trim());
+
 async function convertToWebP(file: File): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -51,6 +67,7 @@ export function ProductsTab() {
   const [loading, setLoading] = useState(true);
   const [editProduct, setEditProduct] = useState<Partial<Product> | null>(null);
   const [editTiers, setEditTiers] = useState<Partial<Tier>[]>([]);
+  const [priceInput, setPriceInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [stockDialog, setStockDialog] = useState<Product | null>(null);
   const [stockAdjust, setStockAdjust] = useState({ qty: 0, type: "in" as "in" | "out" | "adjust", reason: "" });
@@ -125,6 +142,8 @@ export function ProductsTab() {
     setRemoveImage(false);
     setUploadProgress(0);
 
+    setPriceInput(product?.price != null ? String(product.price) : "");
+
     if (product) {
       setEditProduct({ ...product });
       setEditTiers(tiers.filter((t) => t.product_id === product.id).map((t) => ({ ...t })));
@@ -145,6 +164,8 @@ export function ProductsTab() {
       category_id: null,
       show_in_quick_order: false,
       image_url: null,
+      origem: 0,
+      unidade: "UN",
     });
     setEditTiers([]);
   };
@@ -211,6 +232,12 @@ export function ProductsTab() {
       return;
     }
 
+    const price = priceInput.trim() ? Number(priceInput.replace(",", ".")) : null;
+    if (price !== null && (!Number.isFinite(price) || price < 0)) {
+      toast({ title: "Preço inválido", variant: "destructive" });
+      return;
+    }
+
     setSaving(true);
     try {
       await adminApi.saveProduct({
@@ -228,6 +255,13 @@ export function ProductsTab() {
           category_id: editProduct.category_id || null,
           show_in_quick_order: editProduct.show_in_quick_order ?? false,
           image_url: editProduct.image_url || null,
+          price,
+          ncm: editProduct.ncm || null,
+          cest: editProduct.cest || null,
+          cfop: editProduct.cfop || null,
+          cst_csosn: editProduct.cst_csosn || null,
+          origem: editProduct.origem ?? 0,
+          unidade: editProduct.unidade || "UN",
         },
         tiers: editTiers
           .filter((t) => Number(t.min_qty) > 0)
@@ -396,7 +430,10 @@ export function ProductsTab() {
                       <TableCell className="font-medium">{p.name}</TableCell>
                       <TableCell className="text-sm">{getCategoryName(p.category_id)}</TableCell>
                       <TableCell><Badge variant="outline">{p.type}</Badge></TableCell>
-                      <TableCell className="text-sm">{p.price_text}</TableCell>
+                      <TableCell className="text-sm">
+                        {p.price_text}
+                        {p.price == null && <p className="text-xs text-amber-600">Sem preço no pedido</p>}
+                      </TableCell>
                       <TableCell>
                         {p.track_stock ? (
                           <div className="flex items-center gap-1">
@@ -498,7 +535,30 @@ export function ProductsTab() {
                 </div>
                 <div><Label>Ícone</Label><Input value={editProduct.icon ?? ""} onChange={(e) => setEditProduct({ ...editProduct, icon: e.target.value })} placeholder="droplets" /></div>
               </div>
-              <div><Label>Preço (texto)</Label><Input value={editProduct.price_text ?? ""} onChange={(e) => setEditProduct({ ...editProduct, price_text: e.target.value })} /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Preço (R$)</Label>
+                  <Input
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    value={priceInput}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^\d.,]/g, "");
+                      setPriceInput(value);
+                      // O texto do site acompanha o preço, a menos que seja um texto livre como "Consulte no WhatsApp".
+                      const n = Number(value.replace(",", "."));
+                      if (value && Number.isFinite(n) && isNumericPriceText(editProduct.price_text)) {
+                        setEditProduct({ ...editProduct, price_text: formatPriceText(n) });
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Usado no pedido e na nota fiscal.</p>
+                </div>
+                <div>
+                  <Label>Texto do preço no site</Label>
+                  <Input value={editProduct.price_text ?? ""} onChange={(e) => setEditProduct({ ...editProduct, price_text: e.target.value })} />
+                </div>
+              </div>
               <div className="flex items-center gap-2">
                 <Switch checked={editProduct.active ?? true} onCheckedChange={(v) => setEditProduct({ ...editProduct, active: v })} />
                 <Label>Ativo</Label>
@@ -529,6 +589,29 @@ export function ProductsTab() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              <div className="border-t pt-4 space-y-3">
+                <div>
+                  <Label className="text-base font-semibold">Dados fiscais</Label>
+                  <p className="text-xs text-muted-foreground">Preenchidos com o contador. Necessários para emitir nota fiscal.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><Label>NCM</Label><Input inputMode="numeric" maxLength={8} placeholder="00000000" value={editProduct.ncm ?? ""} onChange={(e) => setEditProduct({ ...editProduct, ncm: e.target.value.replace(/\D/g, "") })} /></div>
+                  <div><Label>CEST</Label><Input inputMode="numeric" maxLength={7} placeholder="Se houver" value={editProduct.cest ?? ""} onChange={(e) => setEditProduct({ ...editProduct, cest: e.target.value.replace(/\D/g, "") })} /></div>
+                  <div><Label>CFOP</Label><Input inputMode="numeric" maxLength={4} placeholder="0000" value={editProduct.cfop ?? ""} onChange={(e) => setEditProduct({ ...editProduct, cfop: e.target.value.replace(/\D/g, "") })} /></div>
+                  <div><Label>CST ou CSOSN</Label><Input inputMode="numeric" maxLength={3} value={editProduct.cst_csosn ?? ""} onChange={(e) => setEditProduct({ ...editProduct, cst_csosn: e.target.value.replace(/\D/g, "") })} /></div>
+                  <div>
+                    <Label>Origem</Label>
+                    <Select value={String(editProduct.origem ?? 0)} onValueChange={(v) => setEditProduct({ ...editProduct, origem: Number(v) })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {ORIGENS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div><Label>Unidade</Label><Input maxLength={6} placeholder="UN" value={editProduct.unidade ?? ""} onChange={(e) => setEditProduct({ ...editProduct, unidade: e.target.value.toUpperCase() })} /></div>
+                </div>
               </div>
 
               {(editProduct.type === "atacado" || editProduct.type === "ambos") && (

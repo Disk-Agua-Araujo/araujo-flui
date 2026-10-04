@@ -46,6 +46,13 @@ function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+/** "12,5" ou "12.50" vira 12.5; vazio ou inválido vira null. */
+function parsePrice(value: string | undefined): number | null {
+  if (!value?.trim()) return null;
+  const n = Number(value.replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 /** Data local no formato aaaa-mm-dd, sem passar por UTC. */
 function toISODate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -94,6 +101,11 @@ export function NewOrderTab() {
   const [date, setDate] = useState<Date>();
   const [hora, setHora] = useState("");
   const [qtys, setQtys] = useState<Record<string, number>>({});
+  // Preço unitário digitado por produto. Começa com o preço do cadastro e pode
+  // ser trocado no pedido (galão 20L, atacado, negociação).
+  const [prices, setPrices] = useState<Record<string, string>>({});
+  // Enquanto ninguém mexe no total, ele acompanha a soma dos itens.
+  const [totalTouched, setTotalTouched] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const debouncedProductSearch = useDebounce(productSearch, 250);
@@ -266,13 +278,36 @@ export function NewOrderTab() {
     setQtys((prev) => ({ ...prev, [id]: Math.max(0, (prev[id] || 0) + delta) }));
   };
 
+  const changeQty = (id: string, n: number) => {
+    setQtys((prev) => ({ ...prev, [id]: n }));
+    if (n > 0 && prices[id] === undefined) {
+      const price = products.find((p) => p.id === id)?.price;
+      setPrices((prev) => ({ ...prev, [id]: price != null ? String(price) : "" }));
+    }
+  };
+
   const selectedItems = Object.entries(qtys)
     .filter(([, q]) => q > 0)
     .map(([id, qty]) => ({
       productId: id,
       nome: products.find((p) => p.id === id)?.name || id,
       qtd: qty,
+      unitPrice: parsePrice(prices[id]),
     }));
+
+  const itemsTotal = selectedItems.reduce((sum, i) => sum + (i.unitPrice ?? 0) * i.qtd, 0);
+  const itemsWithoutPrice = selectedItems.filter((i) => i.unitPrice === null).length;
+
+  useEffect(() => {
+    if (totalTouched) return;
+    setPayment((prev) => ({ ...prev, totalAmount: itemsTotal > 0 ? itemsTotal.toFixed(2) : "" }));
+  }, [itemsTotal, totalTouched]);
+
+  const handlePaymentChange = (next: SplitPaymentValue) => {
+    // Total apagado volta a acompanhar a soma dos itens.
+    if (next.totalAmount !== payment.totalAmount) setTotalTouched(next.totalAmount.trim() !== "");
+    setPayment(next);
+  };
 
   const resetForm = () => {
     setSubmitted(false);
@@ -293,6 +328,8 @@ export function NewOrderTab() {
     setDate(undefined);
     setHora("");
     setQtys({});
+    setPrices({});
+    setTotalTouched(false);
     setSelectedCustomerId(null);
     setSearchQuery("");
     setSearchResults([]);
@@ -361,7 +398,7 @@ export function NewOrderTab() {
           state: "SP",
           complement: complemento.trim() || undefined,
         } : undefined,
-        items: selectedItems.map((i) => ({ product_id: i.productId, qty: i.qtd })),
+        items: selectedItems.map((i) => ({ product_id: i.productId, qty: i.qtd, unit_price: i.unitPrice })),
         notes: obs.trim() || undefined,
         delivery_date: date ? format(date, "yyyy-MM-dd") : undefined,
         delivery_time: hora || undefined,
@@ -614,18 +651,46 @@ export function NewOrderTab() {
             <p className="text-muted-foreground text-sm">Nenhum produto encontrado.</p>
           ) : (
             filteredProducts.map((p) => (
-              <div key={p.id} className="flex items-center justify-between border rounded-md p-3">
-                <div>
+              <div key={p.id} className="flex items-center justify-between gap-2 border rounded-md p-3">
+                <div className="min-w-0">
                   <p className="font-medium text-sm">{p.name}</p>
                   <p className="text-xs text-muted-foreground">{p.price_text}</p>
                 </div>
-                <QuantityInput
-                  value={qtys[p.id] || 0}
-                  onChange={(n) => setQtys((prev) => ({ ...prev, [p.id]: n }))}
-                  ariaLabel={`Quantidade de ${p.name}`}
-                />
+                <div className="flex items-center gap-2 shrink-0">
+                  {(qtys[p.id] || 0) > 0 && (
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
+                      <Input
+                        inputMode="decimal"
+                        placeholder="Preço"
+                        aria-label={`Preço unitário de ${p.name}`}
+                        className={cn("h-8 w-24 pl-7 text-sm", parsePrice(prices[p.id]) === null && "border-amber-500")}
+                        value={prices[p.id] ?? ""}
+                        onChange={(e) => setPrices((prev) => ({ ...prev, [p.id]: e.target.value.replace(/[^\d.,]/g, "") }))}
+                      />
+                    </div>
+                  )}
+                  <QuantityInput
+                    value={qtys[p.id] || 0}
+                    onChange={(n) => changeQty(p.id, n)}
+                    ariaLabel={`Quantidade de ${p.name}`}
+                  />
+                </div>
               </div>
             ))
+          )}
+          {selectedItems.length > 0 && (
+            <div className="border-t pt-3 text-sm space-y-1">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Soma dos itens</span>
+                <span className="font-semibold">{formatCurrency(itemsTotal)}</span>
+              </div>
+              {itemsWithoutPrice > 0 && (
+                <p className="text-xs text-amber-600">
+                  {itemsWithoutPrice === 1 ? "1 item está sem preço." : `${itemsWithoutPrice} itens estão sem preço.`} Sem o preço de cada item não será possível emitir a nota fiscal.
+                </p>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -672,7 +737,14 @@ export function NewOrderTab() {
       <Card>
         <CardHeader><CardTitle className="text-lg">Forma de pagamento</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <SplitPaymentSection value={payment} onChange={setPayment} />
+          <SplitPaymentSection value={payment} onChange={handlePaymentChange} />
+          {totalTouched && totalAmountNum > 0 && itemsTotal > 0 && Math.abs(totalAmountNum - itemsTotal) >= 0.01 && (
+            <p className="text-xs text-muted-foreground">
+              {totalAmountNum < itemsTotal
+                ? `Desconto de ${formatCurrency(itemsTotal - totalAmountNum)} sobre a soma dos itens.`
+                : `Total ${formatCurrency(totalAmountNum - itemsTotal)} acima da soma dos itens.`}
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">Opcional — selecione se o cliente informou.</p>
 
           <div className="border-t pt-4 space-y-3">

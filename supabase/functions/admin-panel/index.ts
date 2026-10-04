@@ -39,6 +39,33 @@ function normalizePhone(input: string) {
   return (input || "").replace(/\D/g, "");
 }
 
+function digitsOrNull(value: unknown): string | null {
+  const digits = typeof value === "string" ? value.replace(/\D/g, "") : "";
+  return digits || null;
+}
+
+// Dados fiscais do cliente. Só entram os campos que vieram no payload, para
+// que telas que não conhecem esses campos (o Novo pedido) não apaguem nada.
+function customerFiscalFields(payload: Record<string, unknown>, type: "PF" | "PJ") {
+  const fields: Record<string, unknown> = {};
+  if ("cpf" in payload) fields.cpf = type === "PF" ? digitsOrNull(payload.cpf) : null;
+  if ("ie" in payload) fields.ie = type === "PJ" ? digitsOrNull(payload.ie) : null;
+  if ("ie_indicator" in payload) {
+    const indicator = Number(payload.ie_indicator);
+    fields.ie_indicator = type === "PJ" && [1, 2, 9].includes(indicator) ? indicator : null;
+  }
+  return fields;
+}
+
+// Preço unitário do item. Vazio vira null, e o banco completa com o preço do
+// produto (trigger order_items_default_price).
+function toUnitPrice(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) throw new Error("Preço do item inválido.");
+  return Math.round(n * 100) / 100;
+}
+
 function normalizeSearch(str: string): string {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
@@ -190,7 +217,7 @@ async function upsertCustomerByPhone(payload: {
   type: "PF" | "PJ";
   cnpj?: string | null;
   email?: string | null;
-}) {
+}, fiscal: Record<string, unknown> = {}) {
   const cleanPhone = normalizePhone(payload.phone);
   if (!cleanPhone) throw new Error("Telefone é obrigatório");
 
@@ -203,6 +230,7 @@ async function upsertCustomerByPhone(payload: {
         type: payload.type,
         cnpj: payload.type === "PJ" ? payload.cnpj || null : null,
         email: payload.email || null,
+        ...fiscal,
       })
       .eq("id", payload.id)
       .select("*")
@@ -226,6 +254,7 @@ async function upsertCustomerByPhone(payload: {
         name: payload.name,
         cnpj: payload.type === "PJ" ? payload.cnpj || null : null,
         email: payload.email || null,
+        ...fiscal,
       })
       .eq("id", existing.id)
       .select("*")
@@ -243,6 +272,7 @@ async function upsertCustomerByPhone(payload: {
       type: payload.type,
       cnpj: payload.type === "PJ" ? payload.cnpj || null : null,
       email: payload.email || null,
+      ...fiscal,
     })
     .select("*")
     .single();
@@ -276,7 +306,7 @@ serve(async (req) => {
           id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, em_rota_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed, payment_due_date, paid_at, paid_by,
           customers(id, name, phone, cnpj, type),
           addresses(street, number, neighborhood, city, complement, reference),
-          order_items(qty, product_id, products(name))
+          order_items(qty, product_id, unit_price, products(name))
         `, { count: "exact" })
         .order("created_at", { ascending: false })
         .range(from, to);
@@ -322,7 +352,7 @@ serve(async (req) => {
       const channel = (payload?.channel || "admin") as "admin" | "ligacao" | "whatsapp";
       const customer = payload?.customer;
       const address = payload?.address;
-      const items = payload?.items as { product_id: string; qty: number }[];
+      const items = payload?.items as { product_id: string; qty: number; unit_price?: number | null }[];
       const fulfillmentType = payload?.fulfillment_type || "delivery";
       const paymentMethod = payload?.payment_method || null;
       const paymentMethod2 = payload?.payment_method_2 || null;
@@ -341,6 +371,7 @@ serve(async (req) => {
       if (!Array.isArray(items) || items.length === 0) {
         throw new Error("Selecione ao menos um produto.");
       }
+      const itemPrices = items.map((item) => toUnitPrice(item.unit_price));
 
       let customerId: string | null = null;
       let addressId: string | null = null;
@@ -430,10 +461,11 @@ serve(async (req) => {
       if (orderError) throw orderError;
 
       const { error: itemsError } = await adminClient.from("order_items").insert(
-        items.map((item) => ({
+        items.map((item, i) => ({
           order_id: order.id,
           product_id: item.product_id,
           qty: item.qty,
+          unit_price: itemPrices[i],
         })),
       );
 
@@ -594,7 +626,7 @@ serve(async (req) => {
     if (action === "customers.list") {
       const { data, error } = await adminClient
         .from("customers")
-        .select("*, addresses(id, street, number, neighborhood, city, state, complement, zip, reference, is_primary)")
+        .select("*, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
         .order("created_at", { ascending: false })
         .limit(500);
       if (error) throw error;
@@ -617,6 +649,7 @@ serve(async (req) => {
       const name = ((payload?.name as string) || "").trim() || "Sem nome";
       const phone = normalizePhone(payload?.phone || "");
       const pType = (payload?.type || "PF") as "PF" | "PJ";
+      const fiscal = customerFiscalFields(payload ?? {}, pType);
 
       let data: any;
       if (payload?.id) {
@@ -628,6 +661,7 @@ serve(async (req) => {
             type: pType,
             cnpj: pType === "PJ" ? payload.cnpj || null : null,
             email: payload.email || null,
+            ...fiscal,
           })
           .eq("id", payload.id)
           .select("*")
@@ -641,7 +675,7 @@ serve(async (req) => {
           type: pType,
           cnpj: payload?.cnpj,
           email: payload?.email,
-        });
+        }, fiscal);
       } else {
         const { data: inserted, error } = await adminClient
           .from("customers")
@@ -651,6 +685,7 @@ serve(async (req) => {
             type: pType,
             cnpj: pType === "PJ" ? payload?.cnpj || null : null,
             email: payload?.email || null,
+            ...fiscal,
           })
           .select("*")
           .single();
@@ -677,6 +712,7 @@ serve(async (req) => {
             state: addr.state || "SP",
             complement: addr.complement || null,
             zip: addr.zip || null,
+            ibge_code: digitsOrNull(addr.ibge_code),
             reference: addr.reference || null,
           }).eq("id", existingAddr.id);
         } else {
@@ -689,6 +725,7 @@ serve(async (req) => {
             state: addr.state || "SP",
             complement: addr.complement || null,
             zip: addr.zip || null,
+            ibge_code: digitsOrNull(addr.ibge_code),
             reference: addr.reference || null,
             is_primary: true,
           });
@@ -706,7 +743,7 @@ serve(async (req) => {
 
       const { data: byNamePhone, error: e1 } = await adminClient
         .from("customers")
-        .select("id, name, phone, type, cnpj, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, reference, is_primary)")
+        .select("id, name, phone, type, cnpj, cpf, ie, ie_indicator, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
         .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
         .order("name")
         .limit(15);
@@ -727,7 +764,7 @@ serve(async (req) => {
       if (streetCustomerIds.length > 0) {
         const { data: streetCustomers, error: e3 } = await adminClient
           .from("customers")
-          .select("id, name, phone, type, cnpj, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, reference, is_primary)")
+          .select("id, name, phone, type, cnpj, cpf, ie, ie_indicator, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
           .in("id", streetCustomerIds)
           .order("name")
           .limit(10);
@@ -786,6 +823,20 @@ serve(async (req) => {
         show_in_quick_order: !!product.show_in_quick_order,
         image_url: product.image_url || null,
       };
+
+      // Preço e dados fiscais só entram quando vêm no payload: a segunda
+      // chamada do upload de imagem não manda esses campos e não pode apagá-los.
+      if ("price" in product) productData.price = toUnitPrice(product.price);
+      for (const key of ["ncm", "cest", "cfop", "cst_csosn"]) {
+        if (key in product) productData[key] = digitsOrNull(product[key]);
+      }
+      if ("origem" in product) {
+        const origem = Number(product.origem);
+        productData.origem = Number.isInteger(origem) && origem >= 0 && origem <= 8 ? origem : 0;
+      }
+      if ("unidade" in product) {
+        productData.unidade = String(product.unidade || "").trim().toUpperCase().slice(0, 6) || "UN";
+      }
 
       let productId = product.id as string | undefined;
       if (productId) {
@@ -986,8 +1037,9 @@ serve(async (req) => {
       if (!orderId) throw new Error("Pedido inválido.");
 
       const orderData = payload?.order || {};
-      const items = payload?.items as { product_id: string; qty: number }[] | undefined;
+      const items = payload?.items as { product_id: string; qty: number; unit_price?: number | null }[] | undefined;
       const address = payload?.address;
+      const itemPrices = (items ?? []).map((i) => toUnitPrice(i.unit_price));
 
       // Update order fields
       const updateFields: any = { updated_at: new Date().toISOString(), updated_by: admin.username };
@@ -1027,12 +1079,27 @@ serve(async (req) => {
       const { error: updateErr } = await adminClient.from("orders").update(updateFields).eq("id", orderId);
       if (updateErr) throw updateErr;
 
-      // Update items: DELETE + INSERT
+      // Update items: DELETE + INSERT. Item sem preço informado mantém o preço
+      // que já tinha neste pedido, para a edição não trocar pelo preço de hoje.
       if (items && items.length > 0) {
+        const { data: currentItems, error: curErr } = await adminClient
+          .from("order_items")
+          .select("product_id, unit_price")
+          .eq("order_id", orderId);
+        if (curErr) throw curErr;
+        const previousPrice = new Map<string, number | null>(
+          (currentItems ?? []).map((i: { product_id: string; unit_price: number | null }) => [i.product_id, i.unit_price]),
+        );
+
         const { error: delErr } = await adminClient.from("order_items").delete().eq("order_id", orderId);
         if (delErr) throw delErr;
         const { error: insErr } = await adminClient.from("order_items").insert(
-          items.map((i) => ({ order_id: orderId, product_id: i.product_id, qty: i.qty }))
+          items.map((i, idx) => ({
+            order_id: orderId,
+            product_id: i.product_id,
+            qty: i.qty,
+            unit_price: itemPrices[idx] ?? previousPrice.get(i.product_id) ?? null,
+          }))
         );
         if (insErr) throw insErr;
       }

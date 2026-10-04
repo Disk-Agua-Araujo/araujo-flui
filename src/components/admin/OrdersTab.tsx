@@ -680,6 +680,13 @@ function OrderCard({
   );
 }
 
+/** "12,5" ou "12.50" vira 12.5; vazio ou inválido vira null. */
+function parseItemPrice(value: string): number | null {
+  if (!value.trim()) return null;
+  const n = Number(value.replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 // ---- Edit Order Modal ----
 function EditOrderModal({
   open, onOpenChange, order, riders, onSaved,
@@ -715,7 +722,7 @@ function EditOrderModal({
   const [complement, setComplement] = useState("");
 
   // Items
-  const [items, setItems] = useState<{ product_id: string; qty: number; name: string }[]>([]);
+  const [items, setItems] = useState<{ product_id: string; qty: number; name: string; price: string }[]>([]);
 
   useEffect(() => {
     if (!open || !order) return;
@@ -739,6 +746,7 @@ function EditOrderModal({
       product_id: i.product_id || "",
       qty: i.qty,
       name: i.products?.name || "?",
+      price: i.unit_price != null ? String(i.unit_price) : "",
     })));
 
     // Load products for dropdown
@@ -778,7 +786,7 @@ function EditOrderModal({
           scheduled_date: scheduleEnabled ? (scheduledDate || deliveryDate || null) : null,
           scheduled_time: scheduleEnabled ? (scheduledTime || deliveryTime || null) : null,
         },
-        items: items.filter((i) => i.product_id && i.qty > 0).map((i) => ({ product_id: i.product_id, qty: i.qty })),
+        items: items.filter((i) => i.product_id && i.qty > 0).map((i) => ({ product_id: i.product_id, qty: i.qty, unit_price: parseItemPrice(i.price) })),
         address: fulfillmentType === "delivery" ? { street, number, neighborhood, city, complement } : null,
       });
       toast({ title: "Pedido atualizado com sucesso." });
@@ -791,7 +799,8 @@ function EditOrderModal({
     }
   };
 
-  const addItem = () => setItems((prev) => [...prev, { product_id: "", qty: 1, name: "" }]);
+  const addItem = () => setItems((prev) => [...prev, { product_id: "", qty: 1, name: "", price: "" }]);
+  const itemsTotal = items.reduce((sum, i) => sum + (parseItemPrice(i.price) ?? 0) * i.qty, 0);
   const removeItem = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx));
 
   if (!order) return null;
@@ -831,13 +840,26 @@ function EditOrderModal({
                 <div key={idx} className="flex gap-2 items-center">
                   <Select value={item.product_id} onValueChange={(v) => {
                     const prod = products.find((p) => p.id === v);
-                    setItems((prev) => prev.map((it, i) => i === idx ? { ...it, product_id: v, name: prod?.name || "" } : it));
+                    setItems((prev) => prev.map((it, i) => i === idx
+                      ? { ...it, product_id: v, name: prod?.name || "", price: prod?.price != null ? String(prod.price) : "" }
+                      : it));
                   }}>
                     <SelectTrigger className="flex-1"><SelectValue placeholder="Produto" /></SelectTrigger>
                     <SelectContent>
                       {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  <Input
+                    inputMode="decimal"
+                    placeholder="R$"
+                    aria-label="Preço unitário"
+                    className="h-8 w-20 text-sm"
+                    value={item.price}
+                    onChange={(e) => {
+                      const price = e.target.value.replace(/[^\d.,]/g, "");
+                      setItems((prev) => prev.map((it, i) => i === idx ? { ...it, price } : it));
+                    }}
+                  />
                   <QuantityInput
                     value={item.qty}
                     min={1}
@@ -849,6 +871,9 @@ function EditOrderModal({
                 </div>
               ))}
               <Button variant="outline" size="sm" onClick={addItem}><Plus className="h-3.5 w-3.5 mr-1" /> Adicionar item</Button>
+              {itemsTotal > 0 && (
+                <p className="text-xs text-muted-foreground">Soma dos itens: <strong>{formatCurrency(itemsTotal)}</strong></p>
+              )}
             </div>
           </div>
 

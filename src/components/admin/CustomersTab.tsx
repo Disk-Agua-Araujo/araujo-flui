@@ -12,6 +12,8 @@ import { Search, Eye, Users, Plus, Loader2, ClipboardList, Pencil, Trash2 } from
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { isValidCnpj, maskCnpj } from "@/lib/cnpj";
+import { isValidCpf, maskCpf } from "@/lib/cpf";
+import { lookupCep } from "@/lib/cep";
 import { adminApi, type AdminCustomerRow, type CustomerOrderRow } from "@/services/admin-api";
 import { normalize } from "@/lib/normalize";
 
@@ -41,6 +43,9 @@ export function CustomersTab() {
   const [formPhone, setFormPhone] = useState("");
   const [formType, setFormType] = useState<"PF" | "PJ">("PF");
   const [formCnpj, setFormCnpj] = useState("");
+  const [formCpf, setFormCpf] = useState("");
+  const [formIe, setFormIe] = useState("");
+  const [formIeIndicator, setFormIeIndicator] = useState<"" | "1" | "2" | "9">("");
   const [formEmail, setFormEmail] = useState("");
   const [formSaving, setFormSaving] = useState(false);
 
@@ -51,6 +56,8 @@ export function CustomersTab() {
   const [formCity, setFormCity] = useState("Santo André");
   const [formState, setFormState] = useState("SP");
   const [formZip, setFormZip] = useState("");
+  const [formIbge, setFormIbge] = useState("");
+  const [cepLoading, setCepLoading] = useState(false);
   const [formComplement, setFormComplement] = useState("");
   const [formReference, setFormReference] = useState("");
 
@@ -111,12 +118,34 @@ export function CustomersTab() {
   const clearAddressFields = () => {
     setFormStreet(""); setFormNumber(""); setFormNeighborhood("");
     setFormCity("Santo André"); setFormState("SP");
-    setFormZip(""); setFormComplement(""); setFormReference("");
+    setFormZip(""); setFormIbge(""); setFormComplement(""); setFormReference("");
+  };
+
+  // CEP completo preenche cidade, estado e o código IBGE (exigido na NF-e).
+  // Rua e bairro só entram se estiverem vazios, para não apagar o que foi digitado.
+  const handleZipChange = async (value: string) => {
+    const masked = maskCep(value);
+    setFormZip(masked);
+    setFormIbge("");
+    if (masked.replace(/\D/g, "").length !== 8) return;
+    setCepLoading(true);
+    const found = await lookupCep(masked);
+    setCepLoading(false);
+    if (!found) {
+      toast({ title: "CEP não encontrado", description: "Confira o número ou preencha o endereço à mão.", variant: "destructive" });
+      return;
+    }
+    setFormIbge(found.ibge);
+    if (found.city) setFormCity(found.city);
+    if (found.state) setFormState(found.state);
+    setFormStreet((prev) => prev.trim() ? prev : found.street);
+    setFormNeighborhood((prev) => prev.trim() ? prev : found.neighborhood);
   };
 
   const openCreate = () => {
     setEditing(null); setFormName(""); setFormPhone("");
     setFormType("PF"); setFormCnpj(""); setFormEmail("");
+    setFormCpf(""); setFormIe(""); setFormIeIndicator("");
     clearAddressFields();
     setDuplicateWarning(null); setForceCreate(false);
     setFormOpen(true);
@@ -126,11 +155,13 @@ export function CustomersTab() {
     setEditing(c);
     setFormName(c.name); setFormPhone(c.phone ?? "");
     setFormType(c.type); setFormCnpj(c.cnpj ?? ""); setFormEmail(c.email ?? "");
+    setFormCpf(maskCpf(c.cpf ?? "")); setFormIe(c.ie ?? "");
+    setFormIeIndicator(c.ie_indicator ? (String(c.ie_indicator) as "1" | "2" | "9") : "");
     const addr = getPrimaryAddress(c);
     if (addr) {
       setFormStreet(addr.street); setFormNumber(addr.number);
       setFormNeighborhood(addr.neighborhood); setFormCity(addr.city || "Santo André");
-      setFormState(addr.state || "SP"); setFormZip(addr.zip ?? "");
+      setFormState(addr.state || "SP"); setFormZip(maskCep(addr.zip ?? "")); setFormIbge(addr.ibge_code ?? "");
       setFormComplement(addr.complement ?? ""); setFormReference(addr.reference ?? "");
     } else { clearAddressFields(); }
     setDuplicateWarning(null); setForceCreate(false);
@@ -146,6 +177,14 @@ export function CustomersTab() {
     if (formType === "PJ") {
       if (!formCnpj.trim()) { toast({ title: "CNPJ obrigatório", variant: "destructive" }); return; }
       if (!isValidCnpj(formCnpj)) { toast({ title: "CNPJ inválido", variant: "destructive" }); return; }
+      if (formIeIndicator === "1" && !formIe.replace(/\D/g, "")) {
+        toast({ title: "Inscrição estadual obrigatória", description: "Cliente contribuinte de ICMS precisa da inscrição estadual.", variant: "destructive" });
+        return;
+      }
+    }
+    if (formType === "PF" && formCpf.trim() && !isValidCpf(formCpf)) {
+      toast({ title: "CPF inválido", variant: "destructive" });
+      return;
     }
 
     // Duplicate address check (skip if forceCreate or editing same address)
@@ -169,19 +208,28 @@ export function CustomersTab() {
 
     setFormSaving(true);
     try {
+      // Cadastro antigo com CEP e sem código IBGE ganha o código ao salvar.
+      let ibge = formIbge;
+      const zipDigits = formZip.replace(/\D/g, "");
+      if (!ibge && zipDigits.length === 8) ibge = (await lookupCep(zipDigits))?.ibge ?? "";
+
       await adminApi.saveCustomer({
         id: editing?.id,
         name: formName.trim() || "Sem nome",
         phone: normalizePhone(formPhone) || "",
         type: formType,
         cnpj: formType === "PJ" ? formCnpj : null,
+        cpf: formType === "PF" ? formCpf.replace(/\D/g, "") || null : null,
+        ie: formType === "PJ" ? formIe.replace(/\D/g, "") || null : null,
+        ie_indicator: formType === "PJ" && formIeIndicator ? (Number(formIeIndicator) as 1 | 2 | 9) : null,
         email: formEmail.trim() || null,
         address: {
           street: formStreet.trim(), number: formNumber.trim(),
           neighborhood: formNeighborhood.trim(),
           city: formCity.trim() || "Santo André", state: formState.trim() || "SP",
           complement: formComplement.trim() || null,
-          zip: formZip.replace(/\D/g, "").trim() || null,
+          zip: zipDigits || null,
+          ibge_code: ibge || null,
           reference: formReference.trim() || null,
         },
       });
@@ -305,6 +353,8 @@ export function CustomersTab() {
                 <p><strong>Telefone:</strong> {selected.phone ?? "—"}</p>
                 <p><strong>Tipo:</strong> {selected.type}</p>
                 {selected.cnpj && <p><strong>CNPJ:</strong> {selected.cnpj}</p>}
+                {selected.cpf && <p><strong>CPF:</strong> {maskCpf(selected.cpf)}</p>}
+                {selected.ie && <p><strong>Inscrição estadual:</strong> {selected.ie}</p>}
                 {selected.email && <p><strong>Email:</strong> {selected.email}</p>}
                 <p><strong>Cadastro:</strong> {format(new Date(selected.created_at), "dd/MM/yyyy HH:mm")}</p>
               </div>
@@ -400,11 +450,38 @@ export function CustomersTab() {
                 </SelectContent>
               </Select>
             </div>
-            {formType === "PJ" && (
+            {formType === "PF" && (
               <div>
-                <label className="text-sm font-medium">CNPJ *</label>
-                <Input value={formCnpj} onChange={(e) => setFormCnpj(maskCnpj(e.target.value))} maxLength={18} />
+                <label className="text-sm font-medium">CPF</label>
+                <Input value={formCpf} onChange={(e) => setFormCpf(maskCpf(e.target.value))} maxLength={14} placeholder="000.000.000-00" />
+                <p className="text-xs text-muted-foreground mt-1">Necessário para emitir nota fiscal.</p>
               </div>
+            )}
+            {formType === "PJ" && (
+              <>
+                <div>
+                  <label className="text-sm font-medium">CNPJ *</label>
+                  <Input value={formCnpj} onChange={(e) => setFormCnpj(maskCnpj(e.target.value))} maxLength={18} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-sm font-medium">Situação no ICMS</label>
+                    <Select value={formIeIndicator || "none"} onValueChange={(v) => setFormIeIndicator(v === "none" ? "" : (v as "1" | "2" | "9"))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Não informado</SelectItem>
+                        <SelectItem value="1">Contribuinte</SelectItem>
+                        <SelectItem value="2">Isento</SelectItem>
+                        <SelectItem value="9">Não contribuinte</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Inscrição estadual{formIeIndicator === "1" ? " *" : ""}</label>
+                    <Input value={formIe} onChange={(e) => setFormIe(e.target.value.replace(/[^\d.\-/]/g, ""))} maxLength={20} />
+                  </div>
+                </div>
+              </>
             )}
             <div>
               <label className="text-sm font-medium">Email</label>
@@ -440,8 +517,11 @@ export function CustomersTab() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium">CEP</label>
-                  <Input value={formZip} onChange={(e) => setFormZip(maskCep(e.target.value))} maxLength={9} placeholder="00000-000" />
+                  <label className="text-sm font-medium flex items-center gap-1">
+                    CEP {cepLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                  </label>
+                  <Input value={formZip} onChange={(e) => handleZipChange(e.target.value)} maxLength={9} placeholder="00000-000" />
+                  <p className="text-xs text-muted-foreground mt-1">Necessário para emitir nota fiscal. Preenche a cidade sozinho.</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Complemento</label>
