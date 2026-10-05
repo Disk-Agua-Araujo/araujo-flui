@@ -21,6 +21,7 @@ import { SplitPaymentSection, emptySplitPayment, validateSplitPayment, splitPaym
 import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
 import { lookupCep } from "@/lib/cep";
+import { PRICE_MODELS, defaultPriceModel, modelPrice, priceModelLabel, type PriceModel } from "@/lib/price-models";
 import { useToast } from "@/hooks/use-toast";
 import { trackEvent } from "@/hooks/use-analytics";
 import { adminApi, type AdminProductRow, type AdminCustomerRow, type AdminCategoryRow } from "@/services/admin-api";
@@ -115,6 +116,11 @@ export function NewOrderTab() {
   const [prices, setPrices] = useState<Record<string, string>>({});
   // Enquanto ninguém mexe no total, ele acompanha a soma dos itens.
   const [totalTouched, setTotalTouched] = useState(false);
+  // Modelo de preço (Porta, Entrega, Shopping, Empresa). Vem do cadastro do
+  // cliente ou do tipo de atendimento, até o atendente escolher outro.
+  const [priceModel, setPriceModel] = useState<PriceModel>("entrega");
+  const [priceModelTouched, setPriceModelTouched] = useState(false);
+  const [customerPriceModel, setCustomerPriceModel] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const debouncedProductSearch = useDebounce(productSearch, 250);
@@ -185,6 +191,7 @@ export function NewOrderTab() {
           setTipo(data.type || "PF");
           setCnpj(data.cnpj ?? "");
           setEmail(data.email ?? "");
+          setCustomerPriceModel(data.price_model ?? null);
 
           const addrs = data.addresses ?? [];
           setCustomerAddresses(addrs);
@@ -282,6 +289,8 @@ export function NewOrderTab() {
     setTipo(c.type);
     setCnpj(c.cnpj ?? "");
     setEmail(c.email ?? "");
+    setCustomerPriceModel(c.price_model ?? null);
+    setPriceModelTouched(false);
     setShowDropdown(false);
     setSearchQuery("");
 
@@ -312,10 +321,29 @@ export function NewOrderTab() {
   const changeQty = (id: string, n: number) => {
     setQtys((prev) => ({ ...prev, [id]: n }));
     if (n > 0 && prices[id] === undefined) {
-      const price = products.find((p) => p.id === id)?.price;
+      const price = modelPrice(products.find((p) => p.id === id), priceModel);
       setPrices((prev) => ({ ...prev, [id]: price != null ? String(price) : "" }));
     }
   };
+
+  // Sem escolha do atendente, o modelo segue o cliente e o tipo de atendimento.
+  useEffect(() => {
+    if (!priceModelTouched) setPriceModel(defaultPriceModel(customerPriceModel, fulfillmentType));
+  }, [customerPriceModel, fulfillmentType, priceModelTouched]);
+
+  // Trocar o modelo refaz o preço dos itens já escolhidos.
+  useEffect(() => {
+    setPrices((prev) => {
+      const next = { ...prev };
+      for (const [id, q] of Object.entries(qtys)) {
+        if (q <= 0) continue;
+        const price = modelPrice(products.find((p) => p.id === id), priceModel);
+        next[id] = price != null ? String(price) : "";
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priceModel]);
 
   const selectedItems = Object.entries(qtys)
     .filter(([, q]) => q > 0)
@@ -363,6 +391,9 @@ export function NewOrderTab() {
     setQtys({});
     setPrices({});
     setTotalTouched(false);
+    setPriceModel("entrega");
+    setPriceModelTouched(false);
+    setCustomerPriceModel(null);
     setSelectedCustomerId(null);
     setSearchQuery("");
     setSearchResults([]);
@@ -424,6 +455,7 @@ export function NewOrderTab() {
       const result = await adminApi.createAdminOrder({
         channel: canal,
         customer_id: selectedCustomerId,
+        price_model: priceModel,
         address_id: selectedCustomerId && sameAsPicked ? selectedAddressId : null,
         customer: hasCustomer ? {
           name: nome.trim(),
@@ -666,6 +698,25 @@ export function NewOrderTab() {
 
       <Card>
         <CardHeader><CardTitle className="text-lg">Produtos</CardTitle></CardHeader>
+        <CardContent className="pb-0">
+          <Label>Modelo de preço</Label>
+          <div className="flex gap-2 flex-wrap mt-1">
+            {PRICE_MODELS.map((m) => (
+              <Button
+                key={m.key}
+                type="button"
+                size="sm"
+                variant={priceModel === m.key ? "default" : "outline"}
+                onClick={() => { setPriceModel(m.key); setPriceModelTouched(true); }}
+              >
+                {m.label}
+              </Button>
+            ))}
+          </div>
+          {customerPriceModel && priceModelLabel(customerPriceModel) && (
+            <p className="text-xs text-muted-foreground mt-1">Padrão do cliente: {priceModelLabel(customerPriceModel)}.</p>
+          )}
+        </CardContent>
         <CardContent className="space-y-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -705,7 +756,11 @@ export function NewOrderTab() {
               <div key={p.id} className="flex items-center justify-between gap-2 border rounded-md p-3">
                 <div className="min-w-0">
                   <p className="font-medium text-sm">{p.name}</p>
-                  <p className="text-xs text-muted-foreground">{p.price_text}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {modelPrice(p, priceModel) != null
+                      ? `${priceModelLabel(priceModel)}: ${formatCurrency(modelPrice(p, priceModel)!)}`
+                      : `Sem preço de ${priceModelLabel(priceModel)}`}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {(qtys[p.id] || 0) > 0 && (

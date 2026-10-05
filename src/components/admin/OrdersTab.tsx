@@ -30,6 +30,7 @@ import {
 import { PaymentEditDialog } from "@/components/admin/PaymentEditDialog";
 import { InvoiceBadge, InvoicePanel, latestInvoice } from "@/components/admin/InvoicePanel";
 import { lookupCep } from "@/lib/cep";
+import { PRICE_MODELS, modelPrice, priceModelLabel, type PriceModel } from "@/lib/price-models";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDebounce } from "@/hooks/use-debounce";
 import {
@@ -756,6 +757,16 @@ function EditOrderModal({
 
   // Items
   const [items, setItems] = useState<{ product_id: string; qty: number; name: string; price: string }[]>([]);
+  const [priceModel, setPriceModel] = useState<PriceModel | "">("");
+
+  // Trocar o modelo na edição refaz o preço de todos os itens pelo cadastro.
+  const changePriceModel = (model: PriceModel) => {
+    setPriceModel(model);
+    setItems((prev) => prev.map((it) => {
+      const price = modelPrice(products.find((p) => p.id === it.product_id), model);
+      return { ...it, price: price != null ? String(price) : "" };
+    }));
+  };
 
   useEffect(() => {
     if (!open || !order) return;
@@ -784,6 +795,7 @@ function EditOrderModal({
       name: i.products?.name || "?",
       price: i.unit_price != null ? String(i.unit_price) : "",
     })));
+    setPriceModel((order.price_model as PriceModel) || "");
 
     // Load products for dropdown
     adminApi.listProducts().then(({ products: prods }) => setProducts(prods.filter((p) => p.active))).catch(() => {});
@@ -818,6 +830,7 @@ function EditOrderModal({
           fulfillment_type: fulfillmentType,
           ...splitPaymentToPayload(payment),
           payment_due_date: paymentDueDate || null,
+          ...(priceModel ? { price_model: priceModel } : {}),
           rider_id: riderId,
           scheduled_date: scheduleEnabled ? (scheduledDate || deliveryDate || null) : null,
           scheduled_time: scheduleEnabled ? (scheduledTime || deliveryTime || null) : null,
@@ -870,6 +883,19 @@ function EditOrderModal({
             </Select>
           </div>
 
+          {/* Modelo de preço */}
+          <div>
+            <label className="text-xs font-medium">Modelo de preço</label>
+            <div className="flex gap-1.5 flex-wrap mt-1">
+              {PRICE_MODELS.map((m) => (
+                <Button key={m.key} type="button" size="sm" className="h-7" variant={priceModel === m.key ? "default" : "outline"} onClick={() => changePriceModel(m.key)}>
+                  {m.label}
+                </Button>
+              ))}
+            </div>
+            {!priceModel && <p className="text-xs text-muted-foreground mt-1">Pedido sem modelo gravado. Escolher um refaz os preços dos itens.</p>}
+          </div>
+
           {/* Items */}
           <div>
             <label className="text-xs font-medium">Itens</label>
@@ -878,8 +904,9 @@ function EditOrderModal({
                 <div key={idx} className="flex gap-2 items-center">
                   <Select value={item.product_id} onValueChange={(v) => {
                     const prod = products.find((p) => p.id === v);
+                    const price = modelPrice(prod, priceModel || "entrega");
                     setItems((prev) => prev.map((it, i) => i === idx
-                      ? { ...it, product_id: v, name: prod?.name || "", price: prod?.price != null ? String(prod.price) : "" }
+                      ? { ...it, product_id: v, name: prod?.name || "", price: price != null ? String(price) : "" }
                       : it));
                   }}>
                     <SelectTrigger className="flex-1"><SelectValue placeholder="Produto" /></SelectTrigger>
@@ -1950,6 +1977,9 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                   <strong>Agendado:</strong>
                   <ScheduledBadge order={selectedOrder} />
                 </div>
+              )}
+              {priceModelLabel(selectedOrder.price_model) && (
+                <p><strong>Modelo de preço:</strong> {priceModelLabel(selectedOrder.price_model)}</p>
               )}
               <div className="flex items-center gap-2 flex-wrap">
                 <strong>Pagamento:</strong>

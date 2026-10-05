@@ -40,6 +40,11 @@ function normalizePhone(input: string) {
   return (input || "").replace(/\D/g, "");
 }
 
+// Modelos de preço do Disk: o mesmo produto tem um preço para cada um.
+const PRICE_MODELS = ["porta", "entrega", "shopping", "empresa"];
+const priceModelOrNull = (value: unknown) =>
+  typeof value === "string" && PRICE_MODELS.includes(value) ? value : null;
+
 function digitsOrNull(value: unknown): string | null {
   const digits = typeof value === "string" ? value.replace(/\D/g, "") : "";
   return digits || null;
@@ -56,6 +61,7 @@ function customerFiscalFields(payload: Record<string, unknown>, type: "PF" | "PJ
     fields.ie_indicator = type === "PJ" && [1, 2, 9].includes(indicator) ? indicator : null;
   }
   if ("legal_name" in payload) fields.legal_name = String(payload.legal_name ?? "").trim().slice(0, 150) || null;
+  if ("price_model" in payload) fields.price_model = priceModelOrNull(payload.price_model);
   if ("notes" in payload) fields.notes = String(payload.notes ?? "").trim().slice(0, 2000) || null;
   return fields;
 }
@@ -546,7 +552,7 @@ serve(async (req) => {
       const { data, error, count } = await adminClient
         .from("orders")
         .select(`
-          id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, em_rota_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed, payment_due_date, paid_at, paid_by,
+          id, channel, delivery_date, delivery_time, status, notes, price_model, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, em_rota_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed, payment_due_date, paid_at, paid_by,
           customers(id, name, phone, cnpj, type),
           addresses(street, number, neighborhood, city, complement, reference, zip, ibge_code),
           order_items(qty, product_id, unit_price, products(name)),
@@ -740,6 +746,7 @@ serve(async (req) => {
           scheduled_date: scheduledDate,
           scheduled_time: scheduledTime,
           payment_due_date: paymentDueDate,
+          price_model: priceModelOrNull(payload?.price_model),
         })
         .select("id")
         .single();
@@ -1036,7 +1043,7 @@ serve(async (req) => {
 
       const { data: byNamePhone, error: e1 } = await adminClient
         .from("customers")
-        .select("id, name, legal_name, notes, phone, type, cnpj, cpf, ie, ie_indicator, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
+        .select("id, name, legal_name, notes, price_model, phone, type, cnpj, cpf, ie, ie_indicator, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
         .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
         .order("name")
         .limit(15);
@@ -1057,7 +1064,7 @@ serve(async (req) => {
       if (streetCustomerIds.length > 0) {
         const { data: streetCustomers, error: e3 } = await adminClient
           .from("customers")
-          .select("id, name, legal_name, notes, phone, type, cnpj, cpf, ie, ie_indicator, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
+          .select("id, name, legal_name, notes, price_model, phone, type, cnpj, cpf, ie, ie_indicator, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
           .in("id", streetCustomerIds)
           .order("name")
           .limit(10);
@@ -1120,6 +1127,13 @@ serve(async (req) => {
       // Preço e dados fiscais só entram quando vêm no payload: a segunda
       // chamada do upload de imagem não manda esses campos e não pode apagá-los.
       if ("price" in product) productData.price = toUnitPrice(product.price);
+      // Um preço por modelo. A coluna price (site e pedidos antigos) acompanha
+      // o preço de entrega.
+      const modelPrices = ["price_porta", "price_entrega", "price_shopping", "price_empresa"];
+      if (modelPrices.some((k) => k in product)) {
+        for (const k of modelPrices) productData[k] = toUnitPrice(product[k]);
+        productData.price = productData.price_entrega;
+      }
       for (const key of ["ncm", "cest", "cfop", "cst_csosn", "pis_cofins_cst"]) {
         if (key in product) productData[key] = digitsOrNull(product[key]);
       }
@@ -1337,10 +1351,12 @@ serve(async (req) => {
 
       // Update order fields
       const updateFields: any = { updated_at: new Date().toISOString(), updated_by: admin.username };
-      const allowedFields = ["status", "notes", "delivery_date", "delivery_time", "fulfillment_type", "payment_method", "payment_method_2", "payment_amount_1", "payment_amount_2", "is_split_payment", "total_amount", "change_for", "change_for_2", "rider_id", "scheduled_date", "scheduled_time", "reminder_enabled", "reminder_dismissed", "payment_due_date"];
+      const allowedFields = ["status", "notes", "delivery_date", "delivery_time", "fulfillment_type", "payment_method", "payment_method_2", "payment_amount_1", "payment_amount_2", "is_split_payment", "total_amount", "change_for", "change_for_2", "rider_id", "scheduled_date", "scheduled_time", "reminder_enabled", "reminder_dismissed", "payment_due_date", "price_model"];
       for (const key of allowedFields) {
         if (key in orderData) updateFields[key] = orderData[key];
       }
+
+      if ("price_model" in updateFields) updateFields.price_model = priceModelOrNull(updateFields.price_model);
 
       if ("payment_due_date" in updateFields) {
         const due = updateFields.payment_due_date;

@@ -49,6 +49,7 @@ export type AdminOrderRow = {
   delivery_time: string | null;
   status: string;
   notes: string | null;
+  price_model?: string | null;
   created_at: string;
   fulfillment_type: string;
   payment_method: string | null;
@@ -130,6 +131,8 @@ export type AdminCustomerRow = {
   /** Razão social, usada na NF-e. O name é o nome do dia a dia (fantasia). */
   legal_name?: string | null;
   notes?: string | null;
+  /** Modelo de preço padrão do cliente (porta, entrega, shopping, empresa). */
+  price_model?: string | null;
   cpf?: string | null;
   ie?: string | null;
   /** NF-e: 1 contribuinte, 2 isento, 9 não contribuinte. */
@@ -167,8 +170,13 @@ export type AdminProductRow = {
   category_id: string | null;
   show_in_quick_order: boolean;
   image_url: string | null;
-  /** Preço usado no pedido e na nota. price_text segue sendo o que o site exibe. */
+  /** Preço antigo; acompanha o de entrega. price_text segue sendo o que o site exibe. */
   price: number | null;
+  /** Um preço por modelo de venda. */
+  price_porta: number | null;
+  price_entrega: number | null;
+  price_shopping: number | null;
+  price_empresa: number | null;
   ncm: string | null;
   cest: string | null;
   cfop: string | null;
@@ -339,6 +347,7 @@ export const adminApi = {
     customer?: { name: string; phone: string; type: "PF" | "PJ"; cnpj?: string | null; email?: string | null };
     /** Cliente escolhido na busca: vincula pelo id, mesmo sem telefone. */
     customer_id?: string | null;
+    price_model?: string | null;
     /** Endereço do cadastro reaproveitado sem alteração. */
     address_id?: string | null;
     address?: { street: string; number: string; neighborhood: string; city?: string; state?: string; complement?: string; zip?: string; ibge_code?: string };
@@ -374,6 +383,7 @@ export const adminApi = {
     ie_indicator?: 1 | 2 | 9 | null;
     legal_name?: string | null;
     notes?: string | null;
+    price_model?: string | null;
     email?: string | null;
     address?: {
       street: string;
@@ -447,6 +457,7 @@ export const adminApi = {
       reminder_enabled?: boolean;
       reminder_dismissed?: boolean;
       payment_due_date?: string | null;
+      price_model?: string | null;
     };
     items?: { product_id: string; qty: number; unit_price?: number | null }[];
     address?: {

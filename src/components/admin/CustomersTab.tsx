@@ -18,6 +18,7 @@ import { lookupCep } from "@/lib/cep";
 import { adminApi, type AdminCustomerRow, type CustomerOrderRow } from "@/services/admin-api";
 import { normalize } from "@/lib/normalize";
 import { CustomerImportDialog } from "@/components/admin/CustomerImportDialog";
+import { PRICE_MODELS, priceModelLabel } from "@/lib/price-models";
 
 const PREFILL_KEY = "admin-new-order-customer";
 
@@ -51,6 +52,7 @@ export function CustomersTab() {
   const [formIeIndicator, setFormIeIndicator] = useState<"" | "1" | "2" | "9">("");
   const [formLegalName, setFormLegalName] = useState("");
   const [formNotes, setFormNotes] = useState("");
+  const [formPriceModel, setFormPriceModel] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formSaving, setFormSaving] = useState(false);
 
@@ -152,7 +154,7 @@ export function CustomersTab() {
     setEditing(null); setFormName(""); setFormPhone("");
     setFormType("PF"); setFormCnpj(""); setFormEmail("");
     setFormCpf(""); setFormIe(""); setFormIeIndicator("");
-    setFormLegalName(""); setFormNotes("");
+    setFormLegalName(""); setFormNotes(""); setFormPriceModel("");
     clearAddressFields();
     setDuplicateWarning(null); setForceCreate(false);
     setFormOpen(true);
@@ -164,7 +166,7 @@ export function CustomersTab() {
     setFormType(c.type); setFormCnpj(c.cnpj ?? ""); setFormEmail(c.email ?? "");
     setFormCpf(maskCpf(c.cpf ?? "")); setFormIe(c.ie ?? "");
     setFormIeIndicator(c.ie_indicator ? (String(c.ie_indicator) as "1" | "2" | "9") : "");
-    setFormLegalName(c.legal_name ?? ""); setFormNotes(c.notes ?? "");
+    setFormLegalName(c.legal_name ?? ""); setFormNotes(c.notes ?? ""); setFormPriceModel(c.price_model ?? "");
     const addr = getPrimaryAddress(c);
     if (addr) {
       setFormStreet(addr.street); setFormNumber(addr.number);
@@ -232,6 +234,7 @@ export function CustomersTab() {
         ie_indicator: formType === "PJ" && formIeIndicator ? (Number(formIeIndicator) as 1 | 2 | 9) : null,
         legal_name: formLegalName.trim() || null,
         notes: formNotes.trim() || null,
+        price_model: formPriceModel || null,
         email: formEmail.trim() || null,
         address: {
           street: formStreet.trim(), number: formNumber.trim(),
@@ -369,6 +372,7 @@ export function CustomersTab() {
                 {selected.cpf && <p><strong>CPF:</strong> {maskCpf(selected.cpf)}</p>}
                 {selected.ie && <p><strong>Inscrição estadual:</strong> {selected.ie}</p>}
                 {selected.legal_name && <p className="col-span-2"><strong>Razão social:</strong> {selected.legal_name}</p>}
+                {priceModelLabel(selected.price_model) && <p><strong>Modelo de preço:</strong> {priceModelLabel(selected.price_model)}</p>}
                 {selected.notes && <p className="col-span-2 whitespace-pre-line"><strong>Observações:</strong> {selected.notes}</p>}
                 {selected.email && <p><strong>Email:</strong> {selected.email}</p>}
                 <p><strong>Cadastro:</strong> {format(new Date(selected.created_at), "dd/MM/yyyy HH:mm")}</p>
@@ -506,6 +510,18 @@ export function CustomersTab() {
             <div>
               <label className="text-sm font-medium">Email</label>
               <Input value={formEmail} onChange={(e) => setFormEmail(e.target.value)} type="email" maxLength={100} />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Modelo de preço padrão</label>
+              <Select value={formPriceModel || "none"} onValueChange={(v) => setFormPriceModel(v === "none" ? "" : v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem padrão (segue o atendimento)</SelectItem>
+                  {PRICE_MODELS.map((m) => <SelectItem key={m.key} value={m.key}>{m.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">No Novo pedido, o preço já vem neste modelo. Dá para trocar no pedido.</p>
             </div>
 
             <div>

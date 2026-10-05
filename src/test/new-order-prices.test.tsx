@@ -24,8 +24,9 @@ globalThis.ResizeObserver ??= class {
 
 import { NewOrderTab } from "@/components/admin/NewOrderTab";
 
-const product = (id: string, name: string, price: number | null) => ({
+const product = (id: string, name: string, price: number | null, models: Record<string, number | null> = {}) => ({
   id, name, price, price_text: price != null ? String(price) : "Consulte no WhatsApp",
+  price_porta: null, price_entrega: price, price_shopping: null, price_empresa: null, ...models,
   description: null, type: "varejo", icon: null, active: true, created_at: "", stock_qty: 0,
   min_stock_qty: 0, track_stock: false, category_id: null, show_in_quick_order: false, image_url: null,
   ncm: null, cest: null, cfop: null, cst_csosn: null, pis_cofins_cst: null, origem: 0, unidade: "UN", tax_group: null,
@@ -43,7 +44,10 @@ async function addOne(name: string) {
 describe("Novo pedido: preço por item", () => {
   beforeEach(() => {
     listProducts.mockResolvedValue({
-      products: [product("fardo", "Fardo Crystal", 13), product("galao", "Galão crystal 20L", null)],
+      products: [
+        product("fardo", "Fardo Crystal", 13, { price_shopping: 11, price_porta: 12 }),
+        product("galao", "Galão crystal 20L", null),
+      ],
       categories: [],
       tiers: [],
     });
@@ -119,5 +123,40 @@ describe("Novo pedido: preço por item", () => {
     expect(payload.customer_id).toBe("cvc");
     expect(payload.address_id).toBe("end1");
     expect(payload.address).toMatchObject({ zip: "09111340", ibge_code: "3547809" });
+  });
+
+  it("trocar o modelo de preço refaz o preço dos itens", async () => {
+    renderTab();
+    await addOne("Fardo Crystal");
+    expect(screen.getByLabelText("Preço unitário de Fardo Crystal")).toHaveValue("13");
+
+    fireEvent.click(screen.getByRole("button", { name: "Shopping" }));
+    expect(screen.getByLabelText("Preço unitário de Fardo Crystal")).toHaveValue("11");
+
+    fireEvent.click(screen.getByRole("button", { name: "Empresa" }));
+    expect(screen.getByLabelText("Preço unitário de Fardo Crystal")).toHaveValue("");
+    expect(screen.getByText(/1 item está sem preço/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Shopping" }));
+    fireEvent.click(screen.getByRole("button", { name: /Salvar pedido/ }));
+    await waitFor(() => expect(createAdminOrder).toHaveBeenCalled());
+    expect(createAdminOrder.mock.calls[0][0]).toMatchObject({
+      price_model: "shopping",
+      items: [{ product_id: "fardo", qty: 1, unit_price: 11 }],
+    });
+  });
+
+  it("cliente com modelo padrão já traz o preço desse modelo", async () => {
+    searchCustomers.mockResolvedValue([{
+      id: "loja", name: "CENTAURO GOLDEN", phone: "11999990000", type: "PJ", cnpj: null, email: null, created_at: "",
+      price_model: "shopping", addresses: [],
+    }]);
+    renderTab();
+    await addOne("Fardo Crystal");
+    fireEvent.change(screen.getByPlaceholderText("Nome ou telefone..."), { target: { value: "CENT" } });
+    fireEvent.click(await screen.findByText("CENTAURO GOLDEN", {}, { timeout: 2000 }));
+
+    expect(await screen.findByText("Padrão do cliente: Shopping.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Preço unitário de Fardo Crystal")).toHaveValue("11");
   });
 });

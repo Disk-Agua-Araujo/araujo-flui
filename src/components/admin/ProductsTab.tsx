@@ -16,6 +16,7 @@ import { adminApi, type AdminProductRow, type AdminTierRow, type AdminCategoryRo
 import { supabase } from "@/integrations/supabase/client";
 import { useDebounce } from "@/hooks/use-debounce";
 import { normalize } from "@/lib/normalize";
+import { PRICE_MODELS, modelPrice, type PriceModel } from "@/lib/price-models";
 
 type Product = AdminProductRow;
 type Tier = AdminTierRow;
@@ -67,7 +68,8 @@ export function ProductsTab() {
   const [loading, setLoading] = useState(true);
   const [editProduct, setEditProduct] = useState<Partial<Product> | null>(null);
   const [editTiers, setEditTiers] = useState<Partial<Tier>[]>([]);
-  const [priceInput, setPriceInput] = useState("");
+  // Um preço por modelo de venda (Porta, Entrega, Shopping, Empresa), como texto para digitar "2,50".
+  const [priceInputs, setPriceInputs] = useState<Record<PriceModel, string>>({ porta: "", entrega: "", shopping: "", empresa: "" });
   const [saving, setSaving] = useState(false);
   const [stockDialog, setStockDialog] = useState<Product | null>(null);
   const [stockAdjust, setStockAdjust] = useState({ qty: 0, type: "in" as "in" | "out" | "adjust", reason: "" });
@@ -142,7 +144,10 @@ export function ProductsTab() {
     setRemoveImage(false);
     setUploadProgress(0);
 
-    setPriceInput(product?.price != null ? String(product.price) : "");
+    setPriceInputs(Object.fromEntries(PRICE_MODELS.map((m) => {
+      const v = modelPrice(product ?? undefined, m.key);
+      return [m.key, v != null ? String(v) : ""];
+    })) as Record<PriceModel, string>);
 
     if (product) {
       setEditProduct({ ...product });
@@ -232,9 +237,16 @@ export function ProductsTab() {
       return;
     }
 
-    const price = priceInput.trim() ? Number(priceInput.replace(",", ".")) : null;
-    if (price !== null && (!Number.isFinite(price) || price < 0)) {
-      toast({ title: "Preço inválido", variant: "destructive" });
+    const parsed = Object.fromEntries(PRICE_MODELS.map((m) => {
+      const raw = priceInputs[m.key].trim();
+      return [m.column, raw ? Number(raw.replace(",", ".")) : null];
+    })) as Record<string, number | null>;
+    const invalid = PRICE_MODELS.find((m) => {
+      const v = parsed[m.column];
+      return v !== null && (!Number.isFinite(v) || v < 0);
+    });
+    if (invalid) {
+      toast({ title: `Preço de ${invalid.label} inválido`, variant: "destructive" });
       return;
     }
 
@@ -255,7 +267,10 @@ export function ProductsTab() {
           category_id: editProduct.category_id || null,
           show_in_quick_order: editProduct.show_in_quick_order ?? false,
           image_url: editProduct.image_url || null,
-          price,
+          price_porta: parsed.price_porta,
+          price_entrega: parsed.price_entrega,
+          price_shopping: parsed.price_shopping,
+          price_empresa: parsed.price_empresa,
           ncm: editProduct.ncm || null,
           cest: editProduct.cest || null,
           cfop: editProduct.cfop || null,
@@ -434,7 +449,13 @@ export function ProductsTab() {
                       <TableCell><Badge variant="outline">{p.type}</Badge></TableCell>
                       <TableCell className="text-sm">
                         {p.price_text}
-                        {p.price == null && <p className="text-xs text-amber-600">Sem preço no pedido</p>}
+                        {PRICE_MODELS.every((m) => modelPrice(p, m.key) == null)
+                          ? <p className="text-xs text-amber-600">Sem preço no pedido</p>
+                          : PRICE_MODELS.some((m) => modelPrice(p, m.key) == null) && (
+                            <p className="text-xs text-muted-foreground">
+                              Falta: {PRICE_MODELS.filter((m) => modelPrice(p, m.key) == null).map((m) => m.label).join(", ")}
+                            </p>
+                          )}
                       </TableCell>
                       <TableCell>
                         {p.track_stock ? (
@@ -537,29 +558,36 @@ export function ProductsTab() {
                 </div>
                 <div><Label>Ícone</Label><Input value={editProduct.icon ?? ""} onChange={(e) => setEditProduct({ ...editProduct, icon: e.target.value })} placeholder="droplets" /></div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Preço (R$)</Label>
-                  <Input
-                    inputMode="decimal"
-                    placeholder="0,00"
-                    value={priceInput}
-                    onChange={(e) => {
-                      const value = e.target.value.replace(/[^\d.,]/g, "");
-                      setPriceInput(value);
-                      // O texto do site acompanha o preço, a menos que seja um texto livre como "Consulte no WhatsApp".
-                      const n = Number(value.replace(",", "."));
-                      if (value && Number.isFinite(n) && isNumericPriceText(editProduct.price_text)) {
-                        setEditProduct({ ...editProduct, price_text: formatPriceText(n) });
-                      }
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">Usado no pedido e na nota fiscal.</p>
+              <div>
+                <Label>Preços por modelo de venda (R$)</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
+                  {PRICE_MODELS.map((m) => (
+                    <label key={m.key} className="text-xs space-y-0.5">
+                      <span className="text-muted-foreground">{m.label}</span>
+                      <Input
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        aria-label={`Preço ${m.label}`}
+                        value={priceInputs[m.key]}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/[^\d.,]/g, "");
+                          setPriceInputs((prev) => ({ ...prev, [m.key]: value }));
+                          // O texto do site acompanha o preço de Entrega, a menos que seja um texto livre como "Consulte no WhatsApp".
+                          const n = Number(value.replace(",", "."));
+                          if (m.key === "entrega" && value && Number.isFinite(n) && isNumericPriceText(editProduct.price_text)) {
+                            setEditProduct({ ...editProduct, price_text: formatPriceText(n) });
+                          }
+                        }}
+                      />
+                    </label>
+                  ))}
                 </div>
-                <div>
-                  <Label>Texto do preço no site</Label>
-                  <Input value={editProduct.price_text ?? ""} onChange={(e) => setEditProduct({ ...editProduct, price_text: e.target.value })} />
-                </div>
+                <p className="text-xs text-muted-foreground mt-1">O pedido usa o preço do modelo escolhido. Modelo em branco fica para o atendente digitar no pedido.</p>
+              </div>
+              <div>
+                <Label>Texto do preço no site</Label>
+                <Input value={editProduct.price_text ?? ""} onChange={(e) => setEditProduct({ ...editProduct, price_text: e.target.value })} />
+                <p className="text-xs text-muted-foreground mt-1">Acompanha o preço de Entrega.</p>
               </div>
               <div className="flex items-center gap-2">
                 <Switch checked={editProduct.active ?? true} onCheckedChange={(v) => setEditProduct({ ...editProduct, active: v })} />
