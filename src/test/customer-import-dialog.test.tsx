@@ -28,7 +28,7 @@ const csv = [
   "Nome;Celular;CPF/CNPJ;Endereço;Bairro;Cidade",
   "Maria Silva;(11) 98888-7777;529.982.247-25;Rua A, 10;Centro;Santo André",
   "Mercado Bom;11 4444-5555;11.222.333/0001-81;Av. B, 200 - loja 2;Vila;Santo André",
-  "Maria S.;11988887777;;;;",
+  "maria silva;11988887777;;;;",
 ].join("\n");
 
 describe("Importar clientes de planilha", () => {
@@ -49,7 +49,7 @@ describe("Importar clientes de planilha", () => {
     fireEvent.click(screen.getByRole("button", { name: /Conferir/ }));
     await screen.findByText(/nada foi gravado ainda/);
 
-    // A terceira linha repete o telefone da primeira e não é enviada.
+    // A terceira linha repete nome e telefone da primeira e não é enviada.
     const [rows, dryRun] = importCustomers.mock.calls[0];
     expect(dryRun).toBe(true);
     expect(rows).toHaveLength(2);

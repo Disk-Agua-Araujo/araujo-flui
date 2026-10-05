@@ -110,6 +110,9 @@ export type AdminCustomerRow = {
   name: string;
   phone: string | null;
   cnpj: string | null;
+  /** Razão social, usada na NF-e. O name é o nome do dia a dia (fantasia). */
+  legal_name?: string | null;
+  notes?: string | null;
   cpf?: string | null;
   ie?: string | null;
   /** NF-e: 1 contribuinte, 2 isento, 9 não contribuinte. */
@@ -347,6 +350,8 @@ export const adminApi = {
     cpf?: string | null;
     ie?: string | null;
     ie_indicator?: 1 | 2 | 9 | null;
+    legal_name?: string | null;
+    notes?: string | null;
     email?: string | null;
     address?: {
       street: string;

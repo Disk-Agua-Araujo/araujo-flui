@@ -87,17 +87,17 @@ export function CustomerImportDialog({
     }
   };
 
-  const toSend = review.filter((r) => r.duplicateOf === undefined);
+  const sendable = (r: PreparedRow) => r.duplicateOf === undefined && !r.skipped;
+  const toSend = review.filter(sendable);
 
   const handleReview = async () => {
     const prepared = prepareRows(data, headerRow, mapping);
-    const sendable = prepared.filter((r) => r.duplicateOf === undefined);
     setBusy(true);
     setProgress(0);
     try {
-      const results = await runBatches(sendable, true, setProgress);
+      const results = await runBatches(prepared.filter(sendable), true, setProgress);
       let k = 0;
-      setReview(prepared.map((r) => (r.duplicateOf === undefined ? { ...r, result: results[k++] } : r)));
+      setReview(prepared.map((r) => (sendable(r) ? { ...r, result: results[k++] } : r)));
       setStep("review");
     } catch (err) {
       toast({ title: "Erro ao conferir", description: err instanceof Error ? err.message : "Erro", variant: "destructive" });
@@ -112,7 +112,7 @@ export function CustomerImportDialog({
     try {
       const results = await runBatches(toSend, false, setProgress);
       let k = 0;
-      setReview((prev) => prev.map((r) => (r.duplicateOf === undefined ? { ...r, result: results[k++] } : r)));
+      setReview((prev) => prev.map((r) => (sendable(r) ? { ...r, result: results[k++] } : r)));
       setStep("done");
       onImported();
     } catch (err) {
@@ -128,7 +128,8 @@ export function CustomerImportDialog({
 
   const count = (action: CustomerImportResult["action"]) => review.filter((r) => r.result?.action === action).length;
   const duplicates = review.filter((r) => r.duplicateOf !== undefined).length;
-  const issues = review.filter((r) => r.duplicateOf !== undefined || r.warnings.length > 0 || r.result?.action === "skip");
+  const skippedRows = review.filter((r) => r.skipped).length;
+  const issues = review.filter((r) => r.skipped || r.duplicateOf !== undefined || r.warnings.length > 0 || r.result?.action === "skip");
   const toWrite = count("insert") + count("update");
 
   const summary = (
@@ -137,6 +138,7 @@ export function CustomerImportDialog({
       <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">{count("update")} completados</Badge>
       <Badge variant="secondary">{count("skip")} sem mudança</Badge>
       {duplicates > 0 && <Badge variant="outline">{duplicates} repetidos na planilha</Badge>}
+      {skippedRows > 0 && <Badge variant="outline">{skippedRows} fora (não são clientes)</Badge>}
     </div>
   );
 
@@ -146,6 +148,7 @@ export function CustomerImportDialog({
         <div key={r.line} className="p-2">
           <span className="font-medium">Linha {r.line}</span>
           {r.row.name && <span className="text-muted-foreground"> · {r.row.name}</span>}
+          {r.skipped && <p className="text-muted-foreground">{r.skipped} Não será importada.</p>}
           {r.duplicateOf !== undefined && <p className="text-muted-foreground">Repetida da linha {r.duplicateOf}, não será importada.</p>}
           {r.result?.reason && <p className="text-muted-foreground">{r.result.reason}</p>}
           {r.warnings.map((w) => <p key={w} className="text-amber-700">{w}</p>)}
@@ -170,7 +173,7 @@ export function CustomerImportDialog({
               <span className="font-medium">{busy ? "Lendo a planilha..." : "Escolher arquivo"}</span>
               <input
                 type="file"
-                accept=".xlsx,.xls,.csv"
+                accept=".xlsx,.xls,.csv,.tsv,.txt"
                 className="hidden"
                 disabled={busy}
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}

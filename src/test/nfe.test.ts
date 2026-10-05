@@ -49,6 +49,17 @@ describe("checkNfe", () => {
     expect(checkNfe(base({ totalAmount: 0 }))).toEqual(["O pedido está sem valor."]);
   });
 
+  it("empresa sem IE e sem situação no ICMS precisa completar o cadastro", () => {
+    const pj = { name: "Loja X", type: "PJ" as const, cpf: null, cnpj: "11222333000181", ie: null, ieIndicator: null, email: null, phone: null };
+    expect(checkNfe(base({ customer: pj }))).toEqual(["Falta a situação no ICMS de Loja X (contribuinte, isento ou não contribuinte)."]);
+    expect(checkNfe(base({ customer: { ...pj, ieIndicator: 2 } }))).toEqual([]);
+  });
+
+  it("nota sai com a razão social quando existe", () => {
+    const p = buildNfePayload(base({ customer: { ...base().customer!, legalName: "MARIA SILVA ME" } }), 1) as any;
+    expect(p.Cliente.NmCliente).toBe("MARIA SILVA ME");
+  });
+
   it("grupo tributário dispensa CFOP e CST", () => {
     expect(checkNfe(base({ items: [item({ cfop: null, cstCsosn: null, taxGroup: "AGUA" })] }))).toEqual([]);
   });

@@ -31,6 +31,8 @@ export type NfeInput = {
   };
   customer: {
     name: string;
+    /** Razão social; quando vazia, a nota usa o nome do cadastro. */
+    legalName?: string | null;
     type: "PF" | "PJ";
     cpf: string | null;
     cnpj: string | null;
@@ -78,6 +80,7 @@ export function checkNfe(input: NfeInput): string[] {
   } else if (c.type === "PJ") {
     if (digits(c.cnpj).length !== 14) problems.push(`Falta o CNPJ de ${c.name}.`);
     if (c.ieIndicator === 1 && !digits(c.ie)) problems.push(`${c.name} é contribuinte de ICMS e está sem inscrição estadual.`);
+    if (c.ieIndicator == null && !digits(c.ie)) problems.push(`Falta a situação no ICMS de ${c.name} (contribuinte, isento ou não contribuinte).`);
   }
 
   const a = input.address;
@@ -198,7 +201,7 @@ export function buildNfePayload(input: NfeInput, ambiente: 1 | 2): Record<string
     Observacao: `Pedido ${input.orderId.slice(0, 8).toUpperCase()}`,
     Cliente: {
       CpfCnpj: isPJ ? digits(c.cnpj) : digits(c.cpf),
-      NmCliente: ambiente === 2 ? HOMOLOGACAO_NOME : c.name,
+      NmCliente: ambiente === 2 ? HOMOLOGACAO_NOME : (c.legalName?.trim() || c.name),
       IndicadorIe: ieIndicator,
       ...(ieIndicator === 1 ? { Ie: digits(c.ie) } : {}),
       Endereco: {

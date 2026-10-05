@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Eye, Users, Plus, Loader2, ClipboardList, Pencil, Trash2, FileSpreadsheet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -48,6 +49,8 @@ export function CustomersTab() {
   const [formCpf, setFormCpf] = useState("");
   const [formIe, setFormIe] = useState("");
   const [formIeIndicator, setFormIeIndicator] = useState<"" | "1" | "2" | "9">("");
+  const [formLegalName, setFormLegalName] = useState("");
+  const [formNotes, setFormNotes] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formSaving, setFormSaving] = useState(false);
 
@@ -91,6 +94,7 @@ export function CustomersTab() {
     const s = normalize(search);
     return customers.filter((c) => {
       if (normalize(c.name).includes(s)) return true;
+      if (normalize(c.legal_name || "").includes(s)) return true;
       if (normalize(c.phone || "").includes(s)) return true;
       if ((c.cnpj || "").includes(s)) return true;
       if (normalize(c.email || "").includes(s)) return true;
@@ -148,6 +152,7 @@ export function CustomersTab() {
     setEditing(null); setFormName(""); setFormPhone("");
     setFormType("PF"); setFormCnpj(""); setFormEmail("");
     setFormCpf(""); setFormIe(""); setFormIeIndicator("");
+    setFormLegalName(""); setFormNotes("");
     clearAddressFields();
     setDuplicateWarning(null); setForceCreate(false);
     setFormOpen(true);
@@ -159,6 +164,7 @@ export function CustomersTab() {
     setFormType(c.type); setFormCnpj(c.cnpj ?? ""); setFormEmail(c.email ?? "");
     setFormCpf(maskCpf(c.cpf ?? "")); setFormIe(c.ie ?? "");
     setFormIeIndicator(c.ie_indicator ? (String(c.ie_indicator) as "1" | "2" | "9") : "");
+    setFormLegalName(c.legal_name ?? ""); setFormNotes(c.notes ?? "");
     const addr = getPrimaryAddress(c);
     if (addr) {
       setFormStreet(addr.street); setFormNumber(addr.number);
@@ -224,6 +230,8 @@ export function CustomersTab() {
         cpf: formType === "PF" ? formCpf.replace(/\D/g, "") || null : null,
         ie: formType === "PJ" ? formIe.replace(/\D/g, "") || null : null,
         ie_indicator: formType === "PJ" && formIeIndicator ? (Number(formIeIndicator) as 1 | 2 | 9) : null,
+        legal_name: formLegalName.trim() || null,
+        notes: formNotes.trim() || null,
         email: formEmail.trim() || null,
         address: {
           street: formStreet.trim(), number: formNumber.trim(),
@@ -360,6 +368,8 @@ export function CustomersTab() {
                 {selected.cnpj && <p><strong>CNPJ:</strong> {selected.cnpj}</p>}
                 {selected.cpf && <p><strong>CPF:</strong> {maskCpf(selected.cpf)}</p>}
                 {selected.ie && <p><strong>Inscrição estadual:</strong> {selected.ie}</p>}
+                {selected.legal_name && <p className="col-span-2"><strong>Razão social:</strong> {selected.legal_name}</p>}
+                {selected.notes && <p className="col-span-2 whitespace-pre-line"><strong>Observações:</strong> {selected.notes}</p>}
                 {selected.email && <p><strong>Email:</strong> {selected.email}</p>}
                 <p><strong>Cadastro:</strong> {format(new Date(selected.created_at), "dd/MM/yyyy HH:mm")}</p>
               </div>
@@ -468,6 +478,11 @@ export function CustomersTab() {
                   <label className="text-sm font-medium">CNPJ *</label>
                   <Input value={formCnpj} onChange={(e) => setFormCnpj(maskCnpj(e.target.value))} maxLength={18} />
                 </div>
+                <div>
+                  <label className="text-sm font-medium">Razão social</label>
+                  <Input value={formLegalName} onChange={(e) => setFormLegalName(e.target.value)} maxLength={150} />
+                  <p className="text-xs text-muted-foreground mt-1">Vai na nota fiscal. O campo Nome fica com o nome que a equipe usa.</p>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-sm font-medium">Situação no ICMS</label>
@@ -491,6 +506,11 @@ export function CustomersTab() {
             <div>
               <label className="text-sm font-medium">Email</label>
               <Input value={formEmail} onChange={(e) => setFormEmail(e.target.value)} type="email" maxLength={100} />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Observações</label>
+              <Textarea value={formNotes} onChange={(e) => setFormNotes(e.target.value)} rows={3} maxLength={2000} placeholder="Vasilhame emprestado, dia de fechamento, enviar nota em toda compra..." />
             </div>
 
             {/* Address fields */}

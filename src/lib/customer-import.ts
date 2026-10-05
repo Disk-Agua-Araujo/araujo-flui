@@ -3,16 +3,23 @@ import { isValidCnpj } from "@/lib/cnpj";
 import { normalize } from "@/lib/normalize";
 
 export type ImportField =
-  | "name" | "phone" | "cpf" | "cnpj" | "ie" | "email"
-  | "zip" | "street" | "number" | "neighborhood" | "city" | "state" | "complement" | "reference";
+  | "name" | "legal_name" | "phone" | "phone2" | "cpf" | "cnpj" | "person_type" | "ie" | "ie_exempt" | "email"
+  | "zip" | "street" | "number" | "neighborhood" | "city" | "state" | "complement" | "reference"
+  | "notes" | "status" | "contact_type";
 
+// Os sinônimos estão em ordem de preferência: num export do Bling, por exemplo,
+// o nome do dia a dia é a coluna "Fantasia" e a razão social é "Nome".
 export const IMPORT_FIELDS: { key: ImportField; label: string; synonyms: string[] }[] = [
-  { key: "name", label: "Nome *", synonyms: ["nome", "cliente", "razao social", "nome fantasia", "nome do cliente"] },
-  { key: "phone", label: "Telefone", synonyms: ["telefone", "celular", "fone", "whatsapp", "tel", "contato"] },
-  { key: "cpf", label: "CPF (ou CPF/CNPJ)", synonyms: ["cpf", "cpf cnpj", "documento", "doc"] },
+  { key: "name", label: "Nome *", synonyms: ["fantasia", "nome fantasia", "nome", "cliente", "nome do cliente"] },
+  { key: "legal_name", label: "Razão social", synonyms: ["razao social", "nome"] },
+  { key: "phone", label: "Telefone", synonyms: ["celular", "whatsapp", "telefone", "fone", "tel", "contato"] },
+  { key: "phone2", label: "Telefone alternativo", synonyms: ["fone", "telefone 2", "telefone fixo"] },
+  { key: "cpf", label: "CPF (ou CPF/CNPJ)", synonyms: ["cpf", "cnpj cpf", "cpf cnpj", "documento", "doc"] },
   { key: "cnpj", label: "CNPJ", synonyms: ["cnpj"] },
-  { key: "ie", label: "Inscrição estadual", synonyms: ["ie", "inscricao estadual", "insc estadual", "inscricao"] },
-  { key: "email", label: "Email", synonyms: ["email", "e mail"] },
+  { key: "person_type", label: "Tipo de pessoa", synonyms: ["tipo pessoa", "tipo de pessoa"] },
+  { key: "ie", label: "Inscrição estadual", synonyms: ["ie", "ie rg", "inscricao estadual", "insc estadual", "inscricao"] },
+  { key: "ie_exempt", label: "IE isento (S/N)", synonyms: ["ie isento", "isento"] },
+  { key: "email", label: "Email", synonyms: ["e mail para envio nfe", "email nfe", "email", "e mail"] },
   { key: "zip", label: "CEP", synonyms: ["cep"] },
   { key: "street", label: "Rua", synonyms: ["rua", "logradouro", "endereco"] },
   { key: "number", label: "Número", synonyms: ["numero", "n", "no", "num", "nro"] },
@@ -21,13 +28,17 @@ export const IMPORT_FIELDS: { key: ImportField; label: string; synonyms: string[
   { key: "state", label: "Estado (UF)", synonyms: ["uf", "estado"] },
   { key: "complement", label: "Complemento", synonyms: ["complemento", "compl"] },
   { key: "reference", label: "Ponto de referência", synonyms: ["referencia", "ponto de referencia"] },
+  { key: "notes", label: "Observações", synonyms: ["observacoes", "observacao", "obs"] },
+  { key: "status", label: "Situação (pula inativos)", synonyms: ["situacao", "status"] },
+  { key: "contact_type", label: "Tipo de contato (pula fornecedor)", synonyms: ["tipo contato", "tipo de contato"] },
 ];
 
 export type Mapping = Partial<Record<ImportField, number>>;
 
 /** Linha no formato que a ação customers.import espera. */
 export type ImportRow = {
-  name: string; phone?: string; cpf?: string; cnpj?: string; ie?: string; email?: string;
+  name: string; legal_name?: string; notes?: string; type?: "PF" | "PJ"; ie_exempt?: boolean;
+  phone?: string; cpf?: string; cnpj?: string; ie?: string; email?: string;
   address?: {
     street: string; number: string; neighborhood?: string; city?: string; state?: string;
     zip?: string; complement?: string; reference?: string;
@@ -42,18 +53,23 @@ export type PreparedRow = {
   warnings: string[];
   /** Linha repetida na própria planilha: não é enviada. */
   duplicateOf?: number;
+  /** Linha que não é cliente (inativo, fornecedor, linha vazia): não é enviada. */
+  skipped?: string;
 };
 
 const headerKey = (h: string) => normalize(h).replace(/[^a-z0-9]+/g, " ").trim();
+
+// Linhas que o sistema de origem usa como atalho e não são cliente de verdade.
+const PLACEHOLDER_NAMES = new Set(["vazio", "consumidor final", "balcao", "venda balcao", "recibo"]);
 
 /** Lê a primeira aba de um .xlsx, .xls ou .csv como matriz de textos. */
 export async function readSheet(file: File): Promise<string[][]> {
   const XLSX = await import("xlsx");
   const buffer = await file.arrayBuffer();
   let wb;
-  if (/\.(csv|txt)$/i.test(file.name)) {
+  if (/\.(csv|txt|tsv)$/i.test(file.name)) {
     // O SheetJS lê CSV como Latin-1 e estraga acento de arquivo UTF-8 (Google
-    // Planilhas). Tenta UTF-8; se não for, é o Windows-1252 do Excel brasileiro.
+    // Planilhas, Bling). Tenta UTF-8; se não for, é o Windows-1252 do Excel.
     const bytes = new Uint8Array(buffer);
     let text: string;
     try {
@@ -61,7 +77,13 @@ export async function readSheet(file: File): Promise<string[][]> {
     } catch {
       text = new TextDecoder("windows-1252").decode(bytes);
     }
-    wb = XLSX.read(text.replace(/^\uFEFF/, ""), { type: "string" });
+    text = text.replace(/^\uFEFF/, "");
+    // Export com tabulação (Bling) vira CSV com tabulação como separador.
+    const firstLine = text.split(/\r?\n/, 1)[0];
+    const tabs = (firstLine.match(/\t/g) ?? []).length;
+    wb = tabs > 1 && tabs >= (firstLine.match(/[;,]/g) ?? []).length
+      ? XLSX.read(text, { type: "string", FS: "\t" })
+      : XLSX.read(text, { type: "string" });
   } else {
     wb = XLSX.read(buffer, { type: "array" });
   }
@@ -77,13 +99,17 @@ export function findHeaderRow(data: string[][]): number {
   return idx === -1 ? 0 : idx;
 }
 
-/** Sugere a coluna de cada campo pelo nome do cabeçalho. */
+/** Sugere a coluna de cada campo pelo nome do cabeçalho, na ordem de preferência dos sinônimos. */
 export function guessMapping(headers: string[]): Mapping {
   const keys = headers.map(headerKey);
   const used = new Set<number>();
   const mapping: Mapping = {};
   for (const field of IMPORT_FIELDS) {
-    let col = keys.findIndex((k, i) => !used.has(i) && field.synonyms.includes(k));
+    let col = -1;
+    for (const syn of field.synonyms) {
+      col = keys.findIndex((k, i) => !used.has(i) && k === syn);
+      if (col !== -1) break;
+    }
     if (col === -1) {
       col = keys.findIndex((k, i) => !used.has(i) && field.synonyms.some((s) => s.length > 2 && k.split(" ").includes(s)));
     }
@@ -117,9 +143,28 @@ export function prepareRows(data: string[][], headerRow: number, mapping: Mappin
     if (!r.some(Boolean)) return;
     const line = headerRow + i + 2;
     const warnings: string[] = [];
-    const row: ImportRow = { name: get(r, "name") };
+    const legalName = get(r, "legal_name");
+    const row: ImportRow = { name: get(r, "name") || legalName };
+    if (legalName && legalName !== row.name) row.legal_name = legalName;
 
-    const phone = get(r, "phone").replace(/\D/g, "");
+    const status = normalize(get(r, "status"));
+    const contactType = normalize(get(r, "contact_type"));
+    const skipped =
+      !row.name ? "Linha sem nome."
+      : PLACEHOLDER_NAMES.has(normalize(row.name)) ? "Linha de atalho do sistema antigo, não é cliente."
+      : status && status !== "ativo" ? `Contato ${get(r, "status").toLowerCase()} na planilha.`
+      : contactType && !contactType.includes("cliente") ? `Cadastrado como ${get(r, "contact_type").toLowerCase()}, não como cliente.`
+      : undefined;
+    if (skipped) {
+      prepared.push({ line, row, warnings, skipped });
+      return;
+    }
+
+    const personType = normalize(get(r, "person_type"));
+    if (personType.includes("jur")) row.type = "PJ";
+    else if (personType.includes("fis")) row.type = "PF";
+
+    const phone = (get(r, "phone") || get(r, "phone2")).replace(/\D/g, "");
     if (phone) row.phone = phone;
 
     for (const f of ["cpf", "cnpj"] as const) {
@@ -131,10 +176,22 @@ export function prepareRows(data: string[][], headerRow: number, mapping: Mappin
       else warnings.push(`Documento inválido (${raw}), importado sem ele.`);
     }
 
+    // RG de pessoa física não interessa à nota; IE que o Excel virou número
+    // ("6,26714E+11") perdeu dígitos e não serve.
     const ie = get(r, "ie");
-    if (ie) row.ie = ie;
+    const isPJ = row.type === "PJ" || !!row.cnpj;
+    if (ie && isPJ) {
+      if (/e\+/i.test(ie)) warnings.push(`Inscrição estadual estragada pelo Excel (${ie}), importada sem ela.`);
+      else row.ie = ie;
+    }
+    const exempt = normalize(get(r, "ie_exempt"));
+    if (isPJ && (exempt === "s" || exempt === "sim")) row.ie_exempt = true;
+    else if (isPJ && (exempt === "n" || exempt === "nao")) row.ie_exempt = false;
+
     const email = get(r, "email");
     if (email) row.email = email;
+    const notes = get(r, "notes");
+    if (notes) row.notes = notes;
 
     let street = get(r, "street");
     let number = get(r, "number");
@@ -166,9 +223,15 @@ export function prepareRows(data: string[][], headerRow: number, mapping: Mappin
       warnings.push("Endereço sem rua ou sem número, importado sem endereço.");
     }
 
-    const keys = [row.cpf && `cpf:${row.cpf}`, row.cnpj && `cnpj:${row.cnpj}`, row.phone && `tel:${row.phone}`].filter(Boolean) as string[];
-    const dup = keys.map((k) => seen.get(k)).find((v) => v !== undefined);
-    keys.forEach((k) => { if (!seen.has(k)) seen.set(k, line); });
+    // Documento identifica. Sem documento, telefone sozinho não: no Disk, lojas
+    // diferentes dividem o telefone do gerente. Então a chave vira telefone + nome.
+    // Linha com documento é comparada só pelo documento, mas também registra
+    // nome + telefone, para pegar a mesma loja repetida sem o documento.
+    const nameTel = `nome:${normalize(row.name)}|tel:${row.phone ?? ""}`;
+    const docKeys = [row.cpf && `cpf:${row.cpf}`, row.cnpj && `cnpj:${row.cnpj}`].filter(Boolean) as string[];
+    const lookup = docKeys.length ? docKeys : [nameTel];
+    const dup = lookup.map((k) => seen.get(k)).find((v) => v !== undefined);
+    [...docKeys, nameTel].forEach((k) => { if (!seen.has(k)) seen.set(k, line); });
 
     prepared.push({ line, row, warnings, duplicateOf: dup });
   });

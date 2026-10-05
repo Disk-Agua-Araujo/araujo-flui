@@ -55,6 +55,8 @@ function customerFiscalFields(payload: Record<string, unknown>, type: "PF" | "PJ
     const indicator = Number(payload.ie_indicator);
     fields.ie_indicator = type === "PJ" && [1, 2, 9].includes(indicator) ? indicator : null;
   }
+  if ("legal_name" in payload) fields.legal_name = String(payload.legal_name ?? "").trim().slice(0, 150) || null;
+  if ("notes" in payload) fields.notes = String(payload.notes ?? "").trim().slice(0, 2000) || null;
   return fields;
 }
 
@@ -72,7 +74,8 @@ function formatCnpj(digits: string): string {
 }
 
 type ImportRow = {
-  name?: string; phone?: string; cpf?: string; cnpj?: string; ie?: string; email?: string;
+  name?: string; legal_name?: string; notes?: string; type?: string; ie_exempt?: boolean;
+  phone?: string; cpf?: string; cnpj?: string; ie?: string; email?: string;
   address?: {
     street?: string; number?: string; neighborhood?: string; city?: string; state?: string;
     zip?: string; complement?: string; reference?: string;
@@ -107,12 +110,26 @@ function normalizeImportRow(row: ImportRow) {
   const number = text(a.number, 20);
   const zip = text(a.zip, 10).replace(/\D/g, "");
 
+  // IE só com dígitos; "ISENTO" ou isento marcado vira indicador 2.
+  // IE preenchida é contribuinte (1). Empresa sem IE e sem isenção fica sem
+  // indicador, e a conferência da nota pede para completar.
+  // "6,26714E+11" é IE que o Excel transformou em número e cortou: descarta.
+  const ieText = text(row.ie, 20);
+  const ie = /e\+/i.test(ieText) ? null : ieText.replace(/\D/g, "") || null;
+  const ieIndicator = row.ie_exempt === true || /isent/i.test(ieText) ? 2
+    : ie || row.ie_exempt === false ? 1
+    : null;
+
   return {
     name: text(row.name, 100),
+    legalName: text(row.legal_name, 150) || null,
+    notes: text(row.notes, 2000) || null,
+    type: row.type === "PJ" ? "PJ" : row.type === "PF" ? "PF" : null,
     phone: phone || null,
     cpf,
     cnpj,
-    ie: text(row.ie, 20).replace(/\D/g, "") || null,
+    ie,
+    ieIndicator,
     email: text(row.email, 100).toLowerCase() || null,
     address: street && number ? {
       street,
@@ -188,7 +205,7 @@ async function loadNfeInput(orderId: string): Promise<NfeInput> {
     .select(`
       id, channel, fulfillment_type, total_amount, payment_method, payment_method_2, payment_amount_1,
       payment_amount_2, is_split_payment, payment_due_date, paid_at,
-      customers(name, type, cpf, cnpj, ie, ie_indicator, email, phone,
+      customers(name, legal_name, type, cpf, cnpj, ie, ie_indicator, email, phone,
         addresses(id, street, number, neighborhood, city, state, zip, complement, ibge_code, is_primary)),
       addresses(id, street, number, neighborhood, city, state, zip, complement, ibge_code),
       order_items(qty, unit_price, product_id, products(name, ncm, cest, cfop, cst_csosn, origem, unidade, tax_group))
@@ -223,7 +240,7 @@ async function loadNfeInput(orderId: string): Promise<NfeInput> {
       paidAt: order.paid_at,
     },
     customer: c ? {
-      name: c.name, type: c.type, cpf: c.cpf, cnpj: c.cnpj, ie: c.ie,
+      name: c.name, legalName: c.legal_name, type: c.type, cpf: c.cpf, cnpj: c.cnpj, ie: c.ie,
       ieIndicator: c.ie_indicator, email: c.email, phone: c.phone,
     } : null,
     address: addr ? {
@@ -837,13 +854,20 @@ serve(async (req) => {
     }
 
     if (action === "customers.list") {
-      const { data, error } = await adminClient
-        .from("customers")
-        .select("*, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (error) throw error;
-      return json({ data });
+      // A lista ia até 500 clientes e o PostgREST corta cada resposta em 1000.
+      // Com a cartela da loja nova passa disso, então busca em páginas.
+      const all: unknown[] = [];
+      for (let from = 0; from < 10000; from += 1000) {
+        const { data, error } = await adminClient
+          .from("customers")
+          .select("*, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
+          .order("created_at", { ascending: false })
+          .range(from, from + 999);
+        if (error) throw error;
+        all.push(...(data ?? []));
+        if (!data || data.length < 1000) break;
+      }
+      return json({ data: all });
     }
 
     if (action === "customers.orders") {
@@ -956,7 +980,7 @@ serve(async (req) => {
 
       const { data: byNamePhone, error: e1 } = await adminClient
         .from("customers")
-        .select("id, name, phone, type, cnpj, cpf, ie, ie_indicator, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
+        .select("id, name, legal_name, notes, phone, type, cnpj, cpf, ie, ie_indicator, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
         .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
         .order("name")
         .limit(15);
@@ -977,7 +1001,7 @@ serve(async (req) => {
       if (streetCustomerIds.length > 0) {
         const { data: streetCustomers, error: e3 } = await adminClient
           .from("customers")
-          .select("id, name, phone, type, cnpj, cpf, ie, ie_indicator, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
+          .select("id, name, legal_name, notes, phone, type, cnpj, cpf, ie, ie_indicator, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
           .in("id", streetCustomerIds)
           .order("name")
           .limit(10);
@@ -1447,10 +1471,11 @@ serve(async (req) => {
     }
 
     // ---- Importação de clientes por planilha ----
-    // Recebe um lote de linhas já mapeadas no navegador. Acha o cliente pelo
-    // CPF/CNPJ e depois pelo telefone; quando acha, só completa o que está
-    // vazio no cadastro, sem sobrescrever nada. dryRun devolve o que
-    // aconteceria sem gravar, e é isso que alimenta a prévia.
+    // Recebe um lote de linhas já mapeadas no navegador. Quem tem CPF/CNPJ é
+    // achado só pelo documento. Sem documento, telefone só identifica se o nome
+    // também bate: no Disk, lojas diferentes dividem o telefone do gerente.
+    // Sem documento e sem telefone, vale o nome exato. Cliente achado só ganha
+    // o que está vazio no cadastro. dryRun devolve o que aconteceria sem gravar.
     if (action === "customers.import") {
       const dryRun = payload?.dryRun === true;
       const rows = (payload?.rows || []) as ImportRow[];
@@ -1461,6 +1486,14 @@ serve(async (req) => {
       const phones = [...new Set(clean.map((r) => r.phone).filter(Boolean))] as string[];
       const cpfs = [...new Set(clean.map((r) => r.cpf).filter(Boolean))] as string[];
       const cnpjDigits = [...new Set(clean.map((r) => r.cnpj).filter(Boolean))] as string[];
+      const bareNames = [...new Set(clean.filter((r) => !r.cpf && !r.cnpj && !r.phone && r.name).map((r) => r.name))];
+
+      type Existing = {
+        id: string; name: string; legal_name: string | null; notes: string | null; phone: string | null;
+        type: "PF" | "PJ"; cpf: string | null; cnpj: string | null; ie: string | null; ie_indicator: number | null;
+        email: string | null; addresses: { id: string; street: string; number: string; zip: string | null }[];
+      };
+      const columns = "id, name, legal_name, notes, phone, type, cpf, cnpj, ie, ie_indicator, email, addresses(id, street, number, zip)";
 
       // O cadastro guarda CNPJ com máscara (é o que o painel manda), mas
       // pode haver registro só com dígitos. Busca pelas duas formas.
@@ -1471,24 +1504,35 @@ serve(async (req) => {
         const forms = cnpjDigits.flatMap((d) => [d, formatCnpj(d)]).map((c) => `"${c}"`);
         filters.push(`cnpj.in.(${forms.join(",")})`);
       }
-
-      type Existing = {
-        id: string; name: string; phone: string | null; type: "PF" | "PJ";
-        cpf: string | null; cnpj: string | null; ie: string | null; email: string | null;
-        addresses: { id: string; street: string; number: string; zip: string | null }[];
-      };
-      let existing: Existing[] = [];
+      const existing: Existing[] = [];
       if (filters.length) {
-        const { data, error } = await adminClient
-          .from("customers")
-          .select("id, name, phone, type, cpf, cnpj, ie, email, addresses(id, street, number, zip)")
-          .or(filters.join(","));
+        const { data, error } = await adminClient.from("customers").select(columns).or(filters.join(","));
         if (error) throw error;
-        existing = (data ?? []) as Existing[];
+        existing.push(...((data ?? []) as Existing[]));
       }
+      if (bareNames.length) {
+        const { data, error } = await adminClient.from("customers").select(columns).in("name", bareNames);
+        if (error) throw error;
+        for (const c of (data ?? []) as Existing[]) if (!existing.some((e) => e.id === c.id)) existing.push(c);
+      }
+
       const byCpf = new Map(existing.filter((c) => c.cpf).map((c) => [c.cpf as string, c]));
       const byCnpj = new Map(existing.filter((c) => c.cnpj).map((c) => [String(c.cnpj).replace(/\D/g, ""), c]));
-      const byPhone = new Map(existing.filter((c) => c.phone).map((c) => [c.phone as string, c]));
+      const sameName = (a: string, b: string) => {
+        const x = normalizeSearch(a);
+        const y = normalizeSearch(b);
+        return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
+      };
+      const claimed = new Set<string>();
+      const findMatch = (r: ReturnType<typeof normalizeImportRow>) => {
+        const byDoc = (r.cpf && byCpf.get(r.cpf)) || (r.cnpj && byCnpj.get(r.cnpj)) || null;
+        if (byDoc) return byDoc;
+        // Sem documento igual, só aproveita cadastro que também não tem documento.
+        const free = (c: Existing) => !claimed.has(c.id) && !c.cpf && !c.cnpj;
+        if (r.phone) return existing.find((c) => free(c) && c.phone === r.phone && sameName(c.name, r.name)) ?? null;
+        if (!r.cpf && !r.cnpj) return existing.find((c) => free(c) && !c.phone && normalizeSearch(c.name) === normalizeSearch(r.name)) ?? null;
+        return null;
+      };
 
       const sameStreet = (a: string, b: string) => normalizeSearch(a) === normalizeSearch(b);
       const results: ImportResult[] = [];
@@ -1502,7 +1546,9 @@ serve(async (req) => {
           results.push({ index: i, action: "skip", reason: "Linha sem nome." });
           return;
         }
-        const match = (r.cpf && byCpf.get(r.cpf)) || (r.cnpj && byCnpj.get(r.cnpj)) || (r.phone && byPhone.get(r.phone)) || null;
+        const match = findMatch(r);
+        if (match) claimed.add(match.id);
+        const isPJ = !!r.cnpj || (!r.cpf && r.type === "PJ");
         const addressRow = (customerId: string, isPrimary: boolean) => ({
           customer_id: customerId,
           street: r.address!.street,
@@ -1521,11 +1567,14 @@ serve(async (req) => {
           newCustomers.push({
             id,
             name: r.name,
+            legal_name: r.legalName,
+            notes: r.notes,
             phone: r.phone,
-            type: r.cnpj ? "PJ" : "PF",
-            cpf: r.cnpj ? null : r.cpf,
+            type: isPJ ? "PJ" : "PF",
+            cpf: isPJ ? null : r.cpf,
             cnpj: r.cnpj ? formatCnpj(r.cnpj) : null,
-            ie: r.cnpj ? r.ie : null,
+            ie: isPJ ? r.ie : null,
+            ie_indicator: isPJ ? r.ieIndicator : null,
             email: r.email,
           });
           if (r.address) newAddresses.push(addressRow(id, true));
@@ -1536,6 +1585,8 @@ serve(async (req) => {
         // Cliente já existe: completa só o que está vazio.
         const patch: Record<string, unknown> = {};
         if ((!match.name || match.name === "Sem nome") && r.name) patch.name = r.name;
+        if (!match.legal_name && r.legalName) patch.legal_name = r.legalName;
+        if (!match.notes && r.notes) patch.notes = r.notes;
         if (!match.phone && r.phone) patch.phone = r.phone;
         if (!match.email && r.email) patch.email = r.email;
         if (r.cnpj && !match.cnpj && !match.cpf) {
@@ -1543,7 +1594,9 @@ serve(async (req) => {
           patch.type = "PJ";
         }
         if (r.cpf && !match.cpf && !match.cnpj && match.type === "PF") patch.cpf = r.cpf;
-        if (r.ie && !match.ie && (match.type === "PJ" || patch.type === "PJ")) patch.ie = r.ie;
+        const pj = match.type === "PJ" || patch.type === "PJ";
+        if (pj && r.ie && !match.ie) patch.ie = r.ie;
+        if (pj && r.ieIndicator && !match.ie_indicator) patch.ie_indicator = r.ieIndicator;
         if (Object.keys(patch).length) updates.push({ id: match.id, patch });
 
         let address: ImportResult["address"] = "sem";
