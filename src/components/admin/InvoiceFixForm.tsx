@@ -16,9 +16,11 @@ type ProductDraft = { ncm: string; cest: string; cfop: string; cst: string; pis:
 const onlyDigits = (v: string, max: number) => v.replace(/\D/g, "").slice(0, max);
 
 /** "Completar agora": os dados fiscais que faltam para a nota, no próprio pedido. */
-export function InvoiceFixForm({ fixes, onSaved }: { fixes: InvoiceFixes; onSaved: () => void }) {
+export function InvoiceFixForm({ orderId, fixes, onSaved }: { orderId: string; fixes: InvoiceFixes; onSaved: () => void }) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
+  const priceItems = fixes.prices ?? [];
+  const [prices, setPrices] = useState<Record<string, string>>({});
   const [products, setProducts] = useState<Record<string, ProductDraft>>(() =>
     Object.fromEntries(fixes.products.map((p) => [p.id, {
       ncm: p.ncm ?? "",
@@ -40,9 +42,16 @@ export function InvoiceFixForm({ fixes, onSaved }: { fixes: InvoiceFixes; onSave
     setProducts((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
 
   const save = async () => {
+    const priceValues = priceItems.map((p) => ({ product_id: p.productId, unit_price: Number((prices[p.productId] ?? "").replace(",", ".")) }));
+    if (priceValues.some((p) => !Number.isFinite(p.unit_price) || p.unit_price <= 0)) {
+      toast({ title: "Informe o preço de cada item", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       await adminApi.fixInvoiceData({
+        orderId,
+        prices: priceValues,
         products: fixes.products.map((p) => {
           const d = products[p.id];
           return p.taxGroup
@@ -69,6 +78,19 @@ export function InvoiceFixForm({ fixes, onSaved }: { fixes: InvoiceFixes; onSave
   return (
     <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 space-y-3 text-xs">
       <p className="font-medium text-amber-900">Completar agora</p>
+
+      {priceItems.map((p) => (
+        <label key={p.productId} className="space-y-0.5 block">
+          Preço unitário de {p.name} neste pedido ({p.qty} un.)
+          <Input
+            className="h-8"
+            inputMode="decimal"
+            placeholder="R$ 0,00"
+            value={prices[p.productId] ?? ""}
+            onChange={(e) => setPrices((prev) => ({ ...prev, [p.productId]: e.target.value.replace(/[^\d.,]/g, "") }))}
+          />
+        </label>
+      ))}
 
       {fixes.products.map((p) => {
         const d = products[p.id];

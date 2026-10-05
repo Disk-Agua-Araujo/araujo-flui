@@ -133,6 +133,8 @@ export function checkNfe(input: NfeInput): string[] {
 }
 
 export type NfeFixes = {
+  /** Itens do pedido sem preço (produto "Consulte no WhatsApp"). */
+  prices: { productId: string; name: string; qty: number }[];
   products: {
     id: string; name: string; ncm: string | null; cest: string | null; cfop: string | null;
     cstCsosn: string | null; pisCofinsCst: string | null; origem: number; taxGroup: string | null;
@@ -144,10 +146,12 @@ export type NfeFixes = {
   address: { id: string; label: string; zip: string | null } | null;
 };
 
-/** O que dá para completar no próprio bloco da nota: dados fiscais do
- *  produto, documento e IE do cliente e CEP do endereço. Preço fica de fora:
- *  é do pedido e se acerta na edição do pedido. */
+/** O que dá para completar no próprio bloco da nota: preço do item, dados
+ *  fiscais do produto, documento e IE do cliente e CEP do endereço. */
 export function nfeFixes(input: NfeInput): NfeFixes {
+  const prices = input.items
+    .filter((it) => it.unitPrice === null)
+    .map((it) => ({ productId: it.productId, name: it.name, qty: it.qty }));
   const seen = new Set<string>();
   const products = input.items
     .filter((it) => {
@@ -179,7 +183,7 @@ export function nfeFixes(input: NfeInput): NfeFixes {
     ? { id: input.addressId, label: `${a.street}, ${a.number}`, zip: a.zip }
     : null;
 
-  return { products, customer, address };
+  return { prices, products, customer, address };
 }
 
 /** Payload de /Fiscal/EnviarNotaFiscal. Chame checkNfe antes. */

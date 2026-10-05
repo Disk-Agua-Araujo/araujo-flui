@@ -1711,6 +1711,34 @@ serve(async (req) => {
     // "Completar agora": grava só os dados fiscais que faltavam para a nota,
     // sem mexer no resto do cadastro do produto, do cliente ou do endereço.
     if (action === "invoices.fixData") {
+      // Preço do item neste pedido. Pedido sem total passa a ter a soma dos itens.
+      const prices = (payload?.prices ?? []) as { product_id?: string; unit_price?: unknown }[];
+      if (prices.length && payload?.orderId) {
+        for (const pr of prices.slice(0, 50)) {
+          const value = toUnitPrice(pr.unit_price);
+          if (!pr.product_id || value === null || value <= 0) throw new Error("Informe o preço de cada item.");
+          const { error } = await adminClient
+            .from("order_items")
+            .update({ unit_price: value })
+            .eq("order_id", payload.orderId)
+            .eq("product_id", pr.product_id);
+          if (error) throw error;
+        }
+        const { data: ord, error: ordErr } = await adminClient
+          .from("orders")
+          .select("total_amount, order_items(qty, unit_price)")
+          .eq("id", payload.orderId)
+          .single();
+        if (ordErr) throw ordErr;
+        if (ord.total_amount == null) {
+          const items = (ord.order_items ?? []) as { qty: number; unit_price: number | null }[];
+          if (items.every((i) => i.unit_price != null)) {
+            const sum = Math.round(items.reduce((s, i) => s + i.qty * Number(i.unit_price) * 100, 0)) / 100;
+            await adminClient.from("orders").update({ total_amount: sum }).eq("id", payload.orderId);
+          }
+        }
+      }
+
       const products = (payload?.products ?? []) as Record<string, unknown>[];
       for (const p of products.slice(0, 50)) {
         if (!p?.id) continue;

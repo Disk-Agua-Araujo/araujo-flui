@@ -121,6 +121,8 @@ describe("Painel da nota fiscal", () => {
 
     await waitFor(() => expect(fixInvoiceData).toHaveBeenCalled());
     expect(fixInvoiceData.mock.calls[0][0]).toEqual({
+      orderId: "ord1",
+      prices: [],
       products: [{ id: "p1", ncm: "22019000", cest: "", cfop: "5102", cst_csosn: "102", pis_cofins_cst: "49", origem: 0 }],
       customer: { id: "c1", ie: "", ie_indicator: 2 },
       address: undefined,

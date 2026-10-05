@@ -83,6 +83,7 @@ export type InvoiceStatus = "processando" | "autorizada" | "erro" | "cancelada";
 
 /** O que falta para a nota e dá para completar no próprio bloco da nota. */
 export type InvoiceFixes = {
+  prices?: { productId: string; name: string; qty: number }[];
   products: {
     id: string; name: string; ncm: string | null; cest: string | null; cfop: string | null;
     cstCsosn: string | null; pisCofinsCst: string | null; origem: number; taxGroup: string | null;
@@ -513,6 +514,8 @@ export const adminApi = {
     callAdminApi<{ problems: string[]; environment: 1 | 2; fixes?: InvoiceFixes }>("invoices.check", { orderId }),
   /** Grava só os dados fiscais que faltavam (produto, cliente, CEP). */
   fixInvoiceData: (payload: {
+    orderId?: string;
+    prices?: { product_id: string; unit_price: number }[];
     products?: { id: string; ncm?: string; cest?: string; cfop?: string; cst_csosn?: string; pis_cofins_cst?: string; origem?: number }[];
     customer?: { id: string; cpf?: string; cnpj?: string; ie?: string; ie_indicator?: 1 | 2 | 9 | null };
     address?: { id: string; zip: string };

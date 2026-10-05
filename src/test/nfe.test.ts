@@ -172,10 +172,16 @@ describe("nfeFixes", () => {
     expect(f.products.map((p) => p.id)).toEqual(["a1b2c3d4-0000-0000-0000-000000000000"]);
     expect(f.customer?.needs).toEqual(["ie"]);
     expect(f.address).toEqual({ id: "a1", label: "Rua A, 10", zip: null });
+    expect(f.prices).toEqual([]);
   });
 
   it("cadastro completo não pede nada", () => {
-    expect(nfeFixes(base({ customerId: "c1", addressId: "a1" }))).toEqual({ products: [], customer: null, address: null });
+    expect(nfeFixes(base({ customerId: "c1", addressId: "a1" }))).toEqual({ prices: [], products: [], customer: null, address: null });
+  });
+
+  it("item sem preço entra para completar no próprio pedido", () => {
+    const f = nfeFixes(base({ items: [item({ unitPrice: null, name: "Galão crystal 20L", qty: 2 })] }));
+    expect(f.prices).toEqual([{ productId: "a1b2c3d4-0000-0000-0000-000000000000", name: "Galão crystal 20L", qty: 2 }]);
   });
 });
 

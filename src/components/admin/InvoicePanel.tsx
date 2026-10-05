@@ -83,7 +83,7 @@ export function InvoicePanel({
     return () => { cancelled = true; };
   }, [orderId, current?.status, checkKey]);
 
-  const hasFixes = !!fixes && (fixes.products.length > 0 || !!fixes.customer || !!fixes.address);
+  const hasFixes = !!fixes && ((fixes.prices?.length ?? 0) > 0 || fixes.products.length > 0 || !!fixes.customer || !!fixes.address);
 
   const run = async (key: string, fn: () => Promise<InvoiceRow | void>) => {
     setBusy(key);
@@ -181,7 +181,7 @@ export function InvoicePanel({
       )}
 
       {canEmit && hasFixes && (
-        <InvoiceFixForm key={checkKey} fixes={fixes!} onSaved={() => setCheckKey((k) => k + 1)} />
+        <InvoiceFixForm key={checkKey} orderId={orderId} fixes={fixes!} onSaved={() => setCheckKey((k) => k + 1)} />
       )}
 
       {canEmit && problems && problems.length === 0 && (
