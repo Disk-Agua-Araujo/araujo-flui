@@ -15,7 +15,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Switch } from "@/components/ui/switch";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { openWhatsApp, buildOrderMessage } from "@/services/whatsapp";
-import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2, Trash2, Pencil, CalendarClock, Bell, X } from "lucide-react";
+import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2, Trash2, Pencil, CalendarClock, Bell, X, StickyNote } from "lucide-react";
 import { PaymentIcon, PAYMENT_LABELS } from "@/components/PaymentIcon";
 import { Textarea } from "@/components/ui/textarea";
 import { QuantityInput } from "@/components/ui/quantity-input";
@@ -605,6 +605,7 @@ function OrderCard({
             <FulfillmentBadge type={o.fulfillment_type} />
             <ScheduledBadge order={o} />
             <InvoiceBadge invoices={o.invoices} />
+            <NotesBadge notes={o.notes} />
           </div>
         </div>
 
@@ -680,6 +681,16 @@ function OrderCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/** Selo "Obs" na lista: avisa que o pedido tem observação; o texto aparece ao passar o mouse. */
+function NotesBadge({ notes }: { notes: string | null }) {
+  if (!notes?.trim()) return null;
+  return (
+    <Badge variant="outline" className="text-xs gap-1 bg-amber-50 text-amber-800 border-amber-300" title={notes}>
+      <StickyNote className="h-3 w-3" /> Obs
+    </Badge>
   );
 }
 
@@ -1800,6 +1811,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                         <div className="flex flex-col gap-1 items-start">
                           <FulfillmentBadge type={o.fulfillment_type} />
                           <InvoiceBadge invoices={o.invoices} />
+                          <NotesBadge notes={o.notes} />
                         </div>
                       </TableCell>
                       <TableCell className="text-xs">{o.channel}</TableCell>
@@ -1915,6 +1927,14 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
           <DialogHeader><DialogTitle>Pedido {selectedOrder?.id.slice(0, 8).toUpperCase()}</DialogTitle></DialogHeader>
           {selectedOrder && (
             <div className="space-y-3 text-sm">
+              {selectedOrder.notes?.trim() && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5">
+                  <p className="text-xs font-semibold text-amber-900 flex items-center gap-1">
+                    <StickyNote className="h-3.5 w-3.5" /> Observações do pedido
+                  </p>
+                  <p className="whitespace-pre-line text-amber-950 mt-1">{selectedOrder.notes}</p>
+                </div>
+              )}
               <p><strong>Cliente:</strong> {selectedOrder.customers?.name ?? "Retirada / Sem cadastro"}</p>
               <p><strong>Telefone:</strong> {selectedOrder.customers?.phone ?? "—"}</p>
               {selectedOrder.customers?.cnpj && <p><strong>CNPJ:</strong> {selectedOrder.customers.cnpj}</p>}
@@ -1988,7 +2008,6 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
               <ul className="list-disc list-inside">
                 {selectedOrder.order_items.map((i, idx) => (<li key={idx}>{i.products?.name}: {i.qty}</li>))}
               </ul>
-              {selectedOrder.notes && <p><strong>Obs:</strong> {selectedOrder.notes}</p>}
               <InvoicePanel orderId={selectedOrder.id} invoices={selectedOrder.invoices} onChange={handleInvoiceChange} />
               <div className="flex gap-2 pt-2 flex-wrap">
                 <Button size="sm" variant="outline" onClick={() => { setEditOrder(selectedOrder); setSelectedOrder(null); }}>
