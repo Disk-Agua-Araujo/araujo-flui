@@ -60,4 +60,11 @@ describe("Painel da nota fiscal", () => {
     expect(screen.getByText("539: Rejeição: duplicidade")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /Emitir de novo/ })).toBeInTheDocument();
   });
+
+  it("nota de teste autorizada não trava a nota real em produção", async () => {
+    checkInvoice.mockResolvedValue({ problems: [], environment: 1 });
+    render(<InvoicePanel orderId="ord1" invoices={[authorized as never]} onChange={() => {}} />);
+    expect(await screen.findByRole("button", { name: /Emitir de novo/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Homologação/)).not.toBeInTheDocument();
+  });
 });

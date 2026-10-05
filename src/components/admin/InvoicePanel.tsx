@@ -59,21 +59,23 @@ export function InvoicePanel({
   const [form, setForm] = useState<"cancel" | "correct" | null>(null);
   const [text, setText] = useState("");
 
-  const canEmit = !current || current.status === "erro" || current.status === "cancelada";
+  // Nota de teste (homologação) não impede emitir a nota real depois que o
+  // sistema passa para produção.
+  const canEmit = !current || current.status === "erro" || current.status === "cancelada"
+    || (environment !== null && current.environment !== environment);
 
   useEffect(() => {
     setCurrent(latestInvoice(invoices));
   }, [invoices]);
 
-  // Antes de emitir, mostra o que falta acertar no cadastro.
+  // Confere o cadastro e descobre o ambiente atual (teste ou produção).
   useEffect(() => {
-    if (!canEmit) return;
     let cancelled = false;
     adminApi.checkInvoice(orderId)
       .then((r) => { if (!cancelled) { setProblems(r.problems); setEnvironment(r.environment); } })
       .catch(() => { if (!cancelled) setProblems(null); });
     return () => { cancelled = true; };
-  }, [orderId, canEmit]);
+  }, [orderId, current?.status]);
 
   const run = async (key: string, fn: () => Promise<InvoiceRow | void>) => {
     setBusy(key);
@@ -123,7 +125,7 @@ export function InvoicePanel({
     }
   });
 
-  const env = current?.environment ?? environment;
+  const env = environment ?? current?.environment;
 
   return (
     <div className="border rounded-md p-3 space-y-2">
