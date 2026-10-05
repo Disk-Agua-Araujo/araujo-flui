@@ -61,6 +61,12 @@ describe("checkNfe", () => {
     expect(p.Cliente.NmCliente).toBe("MARIA SILVA ME");
   });
 
+  it("bloqueia entrega em outro estado, que tem outra tributação", () => {
+    expect(checkNfe(base({ address: { ...base().address!, state: "pr" } }))).toEqual([
+      "Entrega em outro estado (PR): a nota interestadual tem outra tributação. Fale com o contador antes de emitir.",
+    ]);
+  });
+
   it("grupo tributário dispensa CFOP, CST e PIS/COFINS", () => {
     expect(checkNfe(base({ items: [item({ cfop: null, cstCsosn: null, pisCofinsCst: null, taxGroup: "AGUA" })] }))).toEqual([]);
   });

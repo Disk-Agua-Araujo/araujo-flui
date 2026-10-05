@@ -106,6 +106,12 @@ export function checkNfe(input: NfeInput): string[] {
     if (digits(a.zip).length !== 8) problems.push("Falta o CEP do endereço.");
     else if (digits(a.ibge).length !== 7) problems.push("Não foi possível achar o município pelo CEP. Confira o CEP do endereço.");
     if (!a.street || !a.number) problems.push("Endereço sem rua ou sem número.");
+    // A tributação cadastrada é de venda dentro de SP (CFOP 5xxx). Venda para
+    // outro estado muda CFOP (6xxx) e pode ter DIFAL: não sai sem o contador.
+    const uf = (a.state || "SP").trim().toUpperCase();
+    if (uf !== "SP") {
+      problems.push(`Entrega em outro estado (${uf}): a nota interestadual tem outra tributação. Fale com o contador antes de emitir.`);
+    }
   }
 
   if (input.items.length === 0) problems.push("O pedido não tem itens.");
