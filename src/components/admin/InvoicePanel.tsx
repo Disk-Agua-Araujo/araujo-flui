@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { InvoiceFixForm } from "@/components/admin/InvoiceFixForm";
 import { FileText, FileCode, Loader2, RefreshCw, Receipt, Ban, PenLine, Eye, Wifi } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { adminApi, type InvoiceRow, type InvoiceSummary } from "@/services/admin-api";
+import { adminApi, type InvoiceFixes, type InvoiceRow, type InvoiceSummary } from "@/services/admin-api";
 
 type AnyInvoice = InvoiceSummary & Partial<InvoiceRow>;
 
@@ -54,6 +56,9 @@ export function InvoicePanel({
   const { toast } = useToast();
   const [current, setCurrent] = useState<AnyInvoice | null>(latestInvoice(invoices));
   const [problems, setProblems] = useState<string[] | null>(null);
+  const [fixes, setFixes] = useState<InvoiceFixes | null>(null);
+  const [checkKey, setCheckKey] = useState(0);
+  const [purchaseOrder, setPurchaseOrder] = useState("");
   const [environment, setEnvironment] = useState<1 | 2 | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [form, setForm] = useState<"cancel" | "correct" | null>(null);
@@ -73,10 +78,12 @@ export function InvoicePanel({
   useEffect(() => {
     let cancelled = false;
     adminApi.checkInvoice(orderId)
-      .then((r) => { if (!cancelled) { setProblems(r.problems); setEnvironment(r.environment); } })
+      .then((r) => { if (!cancelled) { setProblems(r.problems); setEnvironment(r.environment); setFixes(r.fixes ?? null); } })
       .catch(() => { if (!cancelled) setProblems(null); });
     return () => { cancelled = true; };
-  }, [orderId, current?.status]);
+  }, [orderId, current?.status, checkKey]);
+
+  const hasFixes = !!fixes && (fixes.products.length > 0 || !!fixes.customer || !!fixes.address);
 
   const run = async (key: string, fn: () => Promise<InvoiceRow | void>) => {
     setBusy(key);
@@ -94,7 +101,7 @@ export function InvoicePanel({
   };
 
   const emit = () => run("emit", async () => {
-    const r = await adminApi.emitInvoice(orderId);
+    const r = await adminApi.emitInvoice(orderId, purchaseOrder);
     if (r.problems) {
       setProblems(r.problems);
       return;
@@ -110,7 +117,7 @@ export function InvoicePanel({
   };
 
   const preview = () => run("preview", async () => {
-    const r = await adminApi.previewInvoice(orderId);
+    const r = await adminApi.previewInvoice(orderId, purchaseOrder);
     if (r.problems) {
       setProblems(r.problems);
       return;
@@ -171,6 +178,17 @@ export function InvoicePanel({
           <p className="font-medium">Antes de emitir, acerte no cadastro:</p>
           <ul className="list-disc list-inside">{problems.map((p) => <li key={p}>{p}</li>)}</ul>
         </div>
+      )}
+
+      {canEmit && hasFixes && (
+        <InvoiceFixForm key={checkKey} fixes={fixes!} onSaved={() => setCheckKey((k) => k + 1)} />
+      )}
+
+      {canEmit && problems && problems.length === 0 && (
+        <label className="block text-xs space-y-0.5">
+          <span className="text-muted-foreground">Nº do pedido de compra do cliente (opcional, sai na nota)</span>
+          <Input className="h-8" value={purchaseOrder} maxLength={60} onChange={(e) => setPurchaseOrder(e.target.value)} />
+        </label>
       )}
 
       <div className="flex gap-2 flex-wrap">

@@ -81,6 +81,19 @@ export type AdminOrderRow = {
 
 export type InvoiceStatus = "processando" | "autorizada" | "erro" | "cancelada";
 
+/** O que falta para a nota e dá para completar no próprio bloco da nota. */
+export type InvoiceFixes = {
+  products: {
+    id: string; name: string; ncm: string | null; cest: string | null; cfop: string | null;
+    cstCsosn: string | null; pisCofinsCst: string | null; origem: number; taxGroup: string | null;
+  }[];
+  customer: {
+    id: string; name: string; type: "PF" | "PJ"; cpf: string | null; cnpj: string | null;
+    ie: string | null; ieIndicator: number | null; needs: ("cpf" | "cnpj" | "ie")[];
+  } | null;
+  address: { id: string; label: string; zip: string | null } | null;
+};
+
 /** Resumo da nota que vem junto da lista de pedidos. */
 export type InvoiceSummary = {
   id: string;
@@ -497,16 +510,22 @@ export const adminApi = {
     callAdminApi<{ ok: boolean }>("receivables.undoPaid", { orderId }),
 
   checkInvoice: (orderId: string) =>
-    callAdminApi<{ problems: string[]; environment: 1 | 2 }>("invoices.check", { orderId }),
+    callAdminApi<{ problems: string[]; environment: 1 | 2; fixes?: InvoiceFixes }>("invoices.check", { orderId }),
+  /** Grava só os dados fiscais que faltavam (produto, cliente, CEP). */
+  fixInvoiceData: (payload: {
+    products?: { id: string; ncm?: string; cest?: string; cfop?: string; cst_csosn?: string; pis_cofins_cst?: string; origem?: number }[];
+    customer?: { id: string; cpf?: string; cnpj?: string; ie?: string; ie_indicator?: 1 | 2 | 9 | null };
+    address?: { id: string; zip: string };
+  }) => callAdminApi<{ ok: boolean }>("invoices.fixData", payload),
   /** Confere token, certificado e SEFAZ. ok quando a SEFAZ responde 107 (em operação). */
   sefazStatus: () =>
     callAdminApi<{ ok: boolean; message: string; environment: 1 | 2; detail: string }>("invoices.sefazStatus"),
   /** DANFE de conferência, sem valor fiscal e sem passar pela SEFAZ. */
-  previewInvoice: (orderId: string) =>
-    callAdminApi<{ base64?: string; filename?: string; problems?: string[] }>("invoices.preview", { orderId }),
+  previewInvoice: (orderId: string, purchaseOrder?: string) =>
+    callAdminApi<{ base64?: string; filename?: string; problems?: string[] }>("invoices.preview", { orderId, purchaseOrder }),
   /** Devolve a nota, ou a lista do que falta acertar antes de emitir. */
-  emitInvoice: (orderId: string) =>
-    callAdminApi<{ invoice?: InvoiceRow; problems?: string[] }>("invoices.emit", { orderId }),
+  emitInvoice: (orderId: string, purchaseOrder?: string) =>
+    callAdminApi<{ invoice?: InvoiceRow; problems?: string[] }>("invoices.emit", { orderId, purchaseOrder }),
   refreshInvoice: (invoiceId: string) =>
     callAdminApi<{ invoice: InvoiceRow }>("invoices.refresh", { invoiceId }),
   cancelInvoice: (invoiceId: string, reason: string) =>

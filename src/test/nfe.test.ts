@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildNfePayload, checkNfe, describeNfeError, HOMOLOGACAO_NOME, type NfeInput } from "../../supabase/functions/_shared/nfe";
+import { buildNfePayload, checkNfe, describeNfeError, HOMOLOGACAO_NOME, nfeFixes, SIMPLES_OBS, type NfeInput } from "../../supabase/functions/_shared/nfe";
 
 const item = (over: Partial<NfeInput["items"][number]> = {}): NfeInput["items"][number] => ({
   productId: "a1b2c3d4-0000-0000-0000-000000000000",
@@ -151,6 +151,32 @@ describe("buildNfePayload", () => {
     const p = buildNfePayload(base({ fulfillmentType: "pickup" }), 2) as any;
     expect(p.IndicadorPresenca).toBe(1);
     expect(p.Transporte.ModalidadeFrete).toBe(9);
+  });
+});
+
+describe("nfeFixes", () => {
+  it("lista o que dá para completar no bloco da nota", () => {
+    const f = nfeFixes(base({
+      customerId: "c1",
+      addressId: "a1",
+      customer: { name: "Loja X", type: "PJ", cpf: null, cnpj: "11222333000181", ie: null, ieIndicator: null, email: null, phone: null },
+      address: { ...base().address!, zip: null, ibge: null },
+      items: [item({ ncm: null }), item({ ncm: null }), item({ productId: "outro", name: "Gelo" })],
+    }));
+    expect(f.products.map((p) => p.id)).toEqual(["a1b2c3d4-0000-0000-0000-000000000000"]);
+    expect(f.customer?.needs).toEqual(["ie"]);
+    expect(f.address).toEqual({ id: "a1", label: "Rua A, 10", zip: null });
+  });
+
+  it("cadastro completo não pede nada", () => {
+    expect(nfeFixes(base({ customerId: "c1", addressId: "a1" }))).toEqual({ products: [], customer: null, address: null });
+  });
+});
+
+describe("observação da nota", () => {
+  it("leva o pedido, o pedido de compra do cliente e a frase do Simples", () => {
+    const p = buildNfePayload(base({ purchaseOrder: " 056725 " }), 1) as any;
+    expect(p.Observacao).toBe(`Pedido 9F86D081 - Nº Pedido de compras: 056725 - ${SIMPLES_OBS}`);
   });
 });
 

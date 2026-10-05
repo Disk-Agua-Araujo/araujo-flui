@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { buildNfePayload, checkNfe, describeNfeError, isStillProcessing, type NfeInput } from "../_shared/nfe.ts";
+import { buildNfePayload, checkNfe, describeNfeError, isStillProcessing, nfeFixes, type NfeInput } from "../_shared/nfe.ts";
 
 type AdminRole = "admin_owner" | "admin_manager";
 
@@ -205,7 +205,7 @@ async function loadNfeInput(orderId: string): Promise<NfeInput> {
     .select(`
       id, channel, fulfillment_type, total_amount, payment_method, payment_method_2, payment_amount_1,
       payment_amount_2, is_split_payment, payment_due_date, paid_at,
-      customers(name, legal_name, type, cpf, cnpj, ie, ie_indicator, email, phone,
+      customers(id, name, legal_name, type, cpf, cnpj, ie, ie_indicator, email, phone,
         addresses(id, street, number, neighborhood, city, state, zip, complement, ibge_code, is_primary)),
       addresses(id, street, number, neighborhood, city, state, zip, complement, ibge_code),
       order_items(qty, unit_price, product_id, products(name, ncm, cest, cfop, cst_csosn, pis_cofins_cst, origem, unidade, tax_group))
@@ -238,6 +238,8 @@ async function loadNfeInput(orderId: string): Promise<NfeInput> {
 
   return {
     orderId: order.id,
+    customerId: c?.id ?? null,
+    addressId: addr?.id ?? null,
     channel: order.channel,
     fulfillmentType: order.fulfillment_type,
     totalAmount: order.total_amount,
@@ -1703,7 +1705,57 @@ serve(async (req) => {
     // ---- Nota fiscal ----
     if (action === "invoices.check") {
       const input = await loadNfeInput(String(payload?.orderId || ""));
-      return json({ data: { problems: checkNfe(input), environment: NFE_AMBIENTE } });
+      return json({ data: { problems: checkNfe(input), environment: NFE_AMBIENTE, fixes: nfeFixes(input) } });
+    }
+
+    // "Completar agora": grava só os dados fiscais que faltavam para a nota,
+    // sem mexer no resto do cadastro do produto, do cliente ou do endereço.
+    if (action === "invoices.fixData") {
+      const products = (payload?.products ?? []) as Record<string, unknown>[];
+      for (const p of products.slice(0, 50)) {
+        if (!p?.id) continue;
+        const patch: Record<string, unknown> = {};
+        for (const key of ["ncm", "cest", "cfop", "cst_csosn", "pis_cofins_cst"]) {
+          if (key in p) patch[key] = digitsOrNull(p[key]);
+        }
+        if ("origem" in p) {
+          const origem = Number(p.origem);
+          patch.origem = Number.isInteger(origem) && origem >= 0 && origem <= 8 ? origem : 0;
+        }
+        if (Object.keys(patch).length) {
+          const { error } = await adminClient.from("products").update(patch).eq("id", p.id);
+          if (error) throw error;
+        }
+      }
+
+      const cust = payload?.customer as Record<string, unknown> | undefined;
+      if (cust?.id) {
+        const { data: current, error: curErr } = await adminClient.from("customers").select("type").eq("id", cust.id).single();
+        if (curErr) throw curErr;
+        const type = current.type as "PF" | "PJ";
+        const patch: Record<string, unknown> = customerFiscalFields(cust, type);
+        if (type === "PJ" && "cnpj" in cust) {
+          const d = digitsOrNull(cust.cnpj);
+          if (d && d.length !== 14) throw new Error("CNPJ incompleto.");
+          patch.cnpj = d ? formatCnpj(d) : null;
+        }
+        if (Object.keys(patch).length) {
+          const { error } = await adminClient.from("customers").update(patch).eq("id", cust.id);
+          if (error) throw error;
+        }
+      }
+
+      const addr = payload?.address as Record<string, unknown> | undefined;
+      if (addr?.id && "zip" in addr) {
+        const zip = digitsOrNull(addr.zip);
+        if (zip && zip.length !== 8) throw new Error("CEP incompleto.");
+        const ibge = zip ? await lookupIbge(zip) : null;
+        if (zip && !ibge) throw new Error("CEP não encontrado. Confira o número.");
+        const { error } = await adminClient.from("addresses").update({ zip, ibge_code: ibge }).eq("id", addr.id);
+        if (error) throw error;
+      }
+
+      return json({ ok: true });
     }
 
     // Testa token, certificado e SEFAZ de uma vez, sem precisar de pedido.
@@ -1730,6 +1782,7 @@ serve(async (req) => {
     // Serve para conferir a nota antes de emitir, e funciona sem certificado.
     if (action === "invoices.preview") {
       const input = await loadNfeInput(String(payload?.orderId || ""));
+      input.purchaseOrder = payload?.purchaseOrder ? String(payload.purchaseOrder) : null;
       const problems = checkNfe(input);
       if (problems.length) return json({ data: { problems } });
 
@@ -1749,6 +1802,7 @@ serve(async (req) => {
     if (action === "invoices.emit") {
       const orderId = String(payload?.orderId || "");
       const input = await loadNfeInput(orderId);
+      input.purchaseOrder = payload?.purchaseOrder ? String(payload.purchaseOrder) : null;
       const problems = checkNfe(input);
       if (problems.length) return json({ data: { problems } });
 

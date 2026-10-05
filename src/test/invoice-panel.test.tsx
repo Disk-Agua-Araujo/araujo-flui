@@ -4,14 +4,22 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 const checkInvoice = vi.fn();
 const emitInvoice = vi.fn();
 const previewInvoice = vi.fn();
+const fixInvoiceData = vi.fn();
 
 vi.mock("@/services/admin-api", () => ({
   adminApi: {
     checkInvoice: (...a: unknown[]) => checkInvoice(...a),
     emitInvoice: (...a: unknown[]) => emitInvoice(...a),
     previewInvoice: (...a: unknown[]) => previewInvoice(...a),
+    fixInvoiceData: (...a: unknown[]) => fixInvoiceData(...a),
   },
 }));
+
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
 
 import { InvoicePanel } from "@/components/admin/InvoicePanel";
 
@@ -84,8 +92,41 @@ describe("Painel da nota fiscal", () => {
     fireEvent.click(button);
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
-    expect(previewInvoice).toHaveBeenCalledWith("ord1");
+    expect(previewInvoice).toHaveBeenCalledWith("ord1", "");
     expect(emitInvoice).not.toHaveBeenCalled();
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("completar agora sugere o padrão das notas, grava e confere de novo", async () => {
+    checkInvoice
+      .mockResolvedValueOnce({
+        problems: ["Fardo: falta o NCM no cadastro do produto.", "CVC: é contribuinte de ICMS e está sem inscrição estadual."],
+        environment: 2,
+        fixes: {
+          products: [{ id: "p1", name: "Fardo", ncm: null, cest: null, cfop: null, cstCsosn: null, pisCofinsCst: null, origem: 0, taxGroup: null }],
+          customer: { id: "c1", name: "CVC", type: "PJ", cpf: null, cnpj: "11763247000186", ie: null, ieIndicator: 1, needs: ["ie"] },
+          address: null,
+        },
+      })
+      .mockResolvedValueOnce({ problems: [], environment: 2, fixes: { products: [], customer: null, address: null } });
+    fixInvoiceData.mockResolvedValue({ ok: true });
+    render(<InvoicePanel orderId="ord1" invoices={[]} onChange={() => {}} />);
+
+    await screen.findByText("Completar agora");
+    expect(screen.getByDisplayValue("5102")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("102")).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("8 dígitos"), { target: { value: "2201.90.00" } });
+    fireEvent.click(screen.getByText("Não tem (isento)"));
+    fireEvent.click(screen.getByRole("button", { name: /Salvar e conferir de novo/ }));
+
+    await waitFor(() => expect(fixInvoiceData).toHaveBeenCalled());
+    expect(fixInvoiceData.mock.calls[0][0]).toEqual({
+      products: [{ id: "p1", ncm: "22019000", cest: "", cfop: "5102", cst_csosn: "102", pis_cofins_cst: "49", origem: 0 }],
+      customer: { id: "c1", ie: "", ie_indicator: 2 },
+      address: undefined,
+    });
+    await waitFor(() => expect(checkInvoice).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText("Completar agora")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Emitir nota fiscal/ })).toBeEnabled();
   });
 });

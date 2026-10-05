@@ -20,6 +20,11 @@ export type NfeItem = {
 
 export type NfeInput = {
   orderId: string;
+  /** Ids do cadastro, para o "Completar agora" saber o que atualizar. */
+  customerId?: string | null;
+  addressId?: string | null;
+  /** Número do pedido de compra do cliente (loja de rede costuma exigir na nota). */
+  purchaseOrder?: string | null;
   channel: string;
   fulfillmentType: string;
   totalAmount: number | null;
@@ -58,6 +63,10 @@ export type NfeInput = {
 };
 
 const digits = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "");
+
+// Frase obrigatória na nota de empresa do Simples Nacional, no texto que o
+// contador do Disk já usa (NF-e 93, de 08/09/2026).
+export const SIMPLES_OBS = "DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL. NAO GERA DIREITO A CREDITO FISCAL DE ICMS, ISS E IPI.";
 
 // Estes estados não aceitam destinatário "contribuinte isento" (indIEDest 2,
 // rejeição 805). Neles, empresa isenta de IE vai como não contribuinte (9).
@@ -115,6 +124,56 @@ export function checkNfe(input: NfeInput): string[] {
   if (total <= 0) problems.push("O pedido está sem valor.");
 
   return [...new Set(problems)];
+}
+
+export type NfeFixes = {
+  products: {
+    id: string; name: string; ncm: string | null; cest: string | null; cfop: string | null;
+    cstCsosn: string | null; pisCofinsCst: string | null; origem: number; taxGroup: string | null;
+  }[];
+  customer: {
+    id: string; name: string; type: "PF" | "PJ"; cpf: string | null; cnpj: string | null;
+    ie: string | null; ieIndicator: number | null; needs: ("cpf" | "cnpj" | "ie")[];
+  } | null;
+  address: { id: string; label: string; zip: string | null } | null;
+};
+
+/** O que dá para completar no próprio bloco da nota: dados fiscais do
+ *  produto, documento e IE do cliente e CEP do endereço. Preço fica de fora:
+ *  é do pedido e se acerta na edição do pedido. */
+export function nfeFixes(input: NfeInput): NfeFixes {
+  const seen = new Set<string>();
+  const products = input.items
+    .filter((it) => {
+      const missing = digits(it.ncm).length !== 8
+        || (!it.taxGroup && (digits(it.cfop).length !== 4 || !digits(it.cstCsosn) || !digits(it.pisCofinsCst)));
+      if (!missing || seen.has(it.productId)) return false;
+      seen.add(it.productId);
+      return true;
+    })
+    .map((it) => ({
+      id: it.productId, name: it.name, ncm: it.ncm, cest: it.cest, cfop: it.cfop,
+      cstCsosn: it.cstCsosn, pisCofinsCst: it.pisCofinsCst ?? null, origem: it.origem ?? 0, taxGroup: it.taxGroup,
+    }));
+
+  let customer: NfeFixes["customer"] = null;
+  const c = input.customer;
+  if (c && input.customerId) {
+    const needs: ("cpf" | "cnpj" | "ie")[] = [];
+    if (c.type === "PF" && digits(c.cpf).length !== 11) needs.push("cpf");
+    if (c.type === "PJ" && digits(c.cnpj).length !== 14) needs.push("cnpj");
+    if (c.type === "PJ" && !digits(c.ie) && c.ieIndicator !== 2 && c.ieIndicator !== 9) needs.push("ie");
+    if (needs.length) {
+      customer = { id: input.customerId, name: c.name, type: c.type, cpf: c.cpf, cnpj: c.cnpj, ie: c.ie, ieIndicator: c.ieIndicator, needs };
+    }
+  }
+
+  const a = input.address;
+  const address = a && input.addressId && (digits(a.zip).length !== 8 || digits(a.ibge).length !== 7)
+    ? { id: input.addressId, label: `${a.street}, ${a.number}`, zip: a.zip }
+    : null;
+
+  return { products, customer, address };
 }
 
 /** Payload de /Fiscal/EnviarNotaFiscal. Chame checkNfe antes. */
@@ -213,7 +272,11 @@ export function buildNfePayload(input: NfeInput, ambiente: 1 | 2): Record<string
     CalcularIBPT: consumidorFinal,
     IdentificadorInterno: input.orderId,
     EnviarEmail: !!c.email,
-    Observacao: `Pedido ${input.orderId.slice(0, 8).toUpperCase()}`,
+    Observacao: [
+      `Pedido ${input.orderId.slice(0, 8).toUpperCase()}`,
+      input.purchaseOrder?.trim() ? `Nº Pedido de compras: ${input.purchaseOrder.trim().slice(0, 60)}` : null,
+      SIMPLES_OBS,
+    ].filter(Boolean).join(" - "),
     Cliente: {
       CpfCnpj: isPJ ? digits(c.cnpj) : digits(c.cpf),
       NmCliente: ambiente === 2 ? HOMOLOGACAO_NOME : (c.legalName?.trim() || c.name),
