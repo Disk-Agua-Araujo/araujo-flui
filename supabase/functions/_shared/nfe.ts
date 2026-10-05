@@ -339,6 +339,11 @@ export function describeNfeError(resp: BrasilNfeErrors): string {
   for (const e of resp.erros ?? []) {
     parts.push([e.descricao, e.correcao].filter(Boolean).join(" "));
   }
+  // 539/204: o número já foi usado (por outro emissor ou por esta mesma
+  // empresa). Nada foi emitido; o que resolve é a numeração na Brasil NFe.
+  if (r?.CodStatusRespostaSefaz === 539 || r?.CodStatusRespostaSefaz === 204) {
+    parts.push("Esse número de nota já foi usado. Ajuste a série ou o próximo número no painel da Brasil NFe e emita de novo.");
+  }
   return [...new Set(parts.filter(Boolean))].join(" · ") || "A Brasil NFe recusou a nota sem dizer o motivo.";
 }
 

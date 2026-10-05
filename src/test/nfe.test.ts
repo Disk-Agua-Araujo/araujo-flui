@@ -211,4 +211,10 @@ describe("describeNfeError", () => {
       erros: [{ descricao: "CPF inválido.", correcao: "Confira o cadastro." }],
     })).toBe("237: Rejeição: CPF do destinatário inválido · CPF inválido. Confira o cadastro.");
   });
+
+  it("duplicidade de número explica o que fazer", () => {
+    expect(describeNfeError({
+      ReturnNF: { CodStatusRespostaSefaz: 539, DsStatusRespostaSefaz: "Rejeição: Duplicidade de NF-e com diferença na Chave de Acesso" },
+    })).toBe("539: Rejeição: Duplicidade de NF-e com diferença na Chave de Acesso · Esse número de nota já foi usado. Ajuste a série ou o próximo número no painel da Brasil NFe e emita de novo.");
+  });
 });
