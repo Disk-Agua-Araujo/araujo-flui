@@ -22,12 +22,13 @@ import { QuantityInput } from "@/components/ui/quantity-input";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
-import { adminApi, type AdminOrderRow, type DeliveryRider, type AdminProductRow, type OrderPaymentPayload } from "@/services/admin-api";
+import { adminApi, type AdminOrderRow, type DeliveryRider, type AdminProductRow, type OrderPaymentPayload, type InvoiceRow } from "@/services/admin-api";
 import {
   SplitPaymentSection, emptySplitPayment, splitPaymentFromOrder,
   splitPaymentToPayload, validateSplitPayment, type SplitPaymentValue,
 } from "@/components/admin/SplitPaymentSection";
 import { PaymentEditDialog } from "@/components/admin/PaymentEditDialog";
+import { InvoiceBadge, InvoicePanel, latestInvoice } from "@/components/admin/InvoicePanel";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDebounce } from "@/hooks/use-debounce";
 import {
@@ -602,6 +603,7 @@ function OrderCard({
           <div className="flex flex-col gap-1 items-end">
             <FulfillmentBadge type={o.fulfillment_type} />
             <ScheduledBadge order={o} />
+            <InvoiceBadge invoices={o.invoices} />
           </div>
         </div>
 
@@ -1011,11 +1013,12 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [pixSubFilter, setPixSubFilter] = useState("all");
   const [scheduleFilter, setScheduleFilter] = useState("all");
+  const [invoiceFilter, setInvoiceFilter] = useState("all");
 
   // Debounce dropdown filters (300ms) — UI updates instantly, list refiltra depois
-  const filterKey = `${statusFilter}|${periodFilter}|${paymentFilter}|${pixSubFilter}|${scheduleFilter}`;
+  const filterKey = `${statusFilter}|${periodFilter}|${paymentFilter}|${pixSubFilter}|${scheduleFilter}|${invoiceFilter}`;
   const debouncedFilterKey = useDebounce(filterKey, 300);
-  const [dStatus, dPeriod, dPayment, dPix, dSchedule] = debouncedFilterKey.split("|");
+  const [dStatus, dPeriod, dPayment, dPix, dSchedule, dInvoice] = debouncedFilterKey.split("|");
   const isFiltering = filterKey !== debouncedFilterKey || search !== debouncedSearch;
 
   // Action button loading state (Editar / Imprimir / WhatsApp)
@@ -1054,6 +1057,17 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     });
     setOrders((prev) => prev.map((o) => (o.id === orderId ? patch(o) : o)));
     setSelectedOrder((prev) => (prev && prev.id === orderId ? patch(prev) : prev));
+  }, []);
+
+  // Nota emitida, atualizada ou cancelada no detalhe: reflete na lista sem recarregar.
+  const handleInvoiceChange = useCallback((invoice: InvoiceRow) => {
+    const patch = (o: AdminOrderRow): AdminOrderRow => {
+      if (o.id !== invoice.order_id) return o;
+      const others = (o.invoices ?? []).filter((i) => i.id !== invoice.id);
+      return { ...o, invoices: [...others, invoice] };
+    };
+    setOrders((prev) => prev.map(patch));
+    setSelectedOrder((prev) => (prev ? patch(prev) : prev));
   }, []);
 
   // Reminder
@@ -1203,6 +1217,15 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
       );
     }
 
+    // Nota fiscal: "sem" é pedido sem nota viva (nenhuma, recusada ou cancelada).
+    if (dInvoice !== "all") {
+      result = result.filter((o) => {
+        const status = latestInvoice(o.invoices)?.status;
+        if (dInvoice === "sem") return o.status !== "cancelado" && (!status || status === "erro" || status === "cancelada");
+        return status === dInvoice;
+      });
+    }
+
     if (debouncedSearch) {
       const s = debouncedSearch.toLowerCase();
       result = result.filter(
@@ -1225,7 +1248,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     }
 
     return result;
-  }, [orders, dStatus, dPeriod, dPayment, dPix, dSchedule, debouncedSearch, tickNow]);
+  }, [orders, dStatus, dPeriod, dPayment, dPix, dSchedule, dInvoice, debouncedSearch, tickNow]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -1238,7 +1261,8 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     periodFilter !== "all" ||
     paymentFilter !== "all" ||
     pixSubFilter !== "all" ||
-    scheduleFilter !== "all";
+    scheduleFilter !== "all" ||
+    invoiceFilter !== "all";
 
   const clearFilters = () => {
     setSearch("");
@@ -1247,6 +1271,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     setPaymentFilter("all");
     setPixSubFilter("all");
     setScheduleFilter("all");
+    setInvoiceFilter("all");
   };
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -1526,6 +1551,17 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
           </SelectContent>
         </Select>
 
+        <Select value={invoiceFilter} onValueChange={setInvoiceFilter}>
+          <SelectTrigger className="w-[150px]"><SelectValue placeholder="Nota fiscal" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Nota: Todos</SelectItem>
+            <SelectItem value="sem">Sem nota</SelectItem>
+            <SelectItem value="erro">Nota com erro</SelectItem>
+            <SelectItem value="processando">Nota processando</SelectItem>
+            <SelectItem value="autorizada">Nota emitida</SelectItem>
+          </SelectContent>
+        </Select>
+
         <div className="flex gap-2">
           <Button variant="outline" size="icon" onClick={fetchOrders} disabled={loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -1734,7 +1770,10 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                           : "Retirada na loja"}
                       </TableCell>
                       <TableCell>
-                        <FulfillmentBadge type={o.fulfillment_type} />
+                        <div className="flex flex-col gap-1 items-start">
+                          <FulfillmentBadge type={o.fulfillment_type} />
+                          <InvoiceBadge invoices={o.invoices} />
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs">{o.channel}</TableCell>
                       <TableCell className="text-xs">
@@ -1845,7 +1884,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
 
       {/* Order Detail Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Pedido {selectedOrder?.id.slice(0, 8).toUpperCase()}</DialogTitle></DialogHeader>
           {selectedOrder && (
             <div className="space-y-3 text-sm">
@@ -1923,6 +1962,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                 {selectedOrder.order_items.map((i, idx) => (<li key={idx}>{i.products?.name}: {i.qty}</li>))}
               </ul>
               {selectedOrder.notes && <p><strong>Obs:</strong> {selectedOrder.notes}</p>}
+              <InvoicePanel orderId={selectedOrder.id} invoices={selectedOrder.invoices} onChange={handleInvoiceChange} />
               <div className="flex gap-2 pt-2 flex-wrap">
                 <Button size="sm" variant="outline" onClick={() => { setEditOrder(selectedOrder); setSelectedOrder(null); }}>
                   <Pencil className="h-4 w-4 mr-1" /> Editar pedido

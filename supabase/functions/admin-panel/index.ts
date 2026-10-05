@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { buildNfePayload, checkNfe, describeNfeError, isStillProcessing, type NfeInput } from "../_shared/nfe.ts";
 
 type AdminRole = "admin_owner" | "admin_manager";
 
@@ -124,6 +125,157 @@ function normalizeImportRow(row: ImportRow) {
       reference: text(a.reference) || null,
     } : null,
   };
+}
+
+// ---- Nota fiscal (Brasil NFe) ----
+// Ambiente fica em homologação (2, sem valor fiscal) até o secret NFE_AMBIENTE
+// ser trocado para 1 de propósito, depois dos testes aprovados pelo contador.
+const BRASILNFE_TOKEN = Deno.env.get("BRASILNFE_TOKEN") ?? "";
+const NFE_AMBIENTE: 1 | 2 = Deno.env.get("NFE_AMBIENTE") === "1" ? 1 : 2;
+const BRASILNFE_URL = "https://api.brasilnfe.com.br/services/Fiscal/";
+
+class BrasilNfeOffline extends Error {}
+
+async function brasilNfe<T>(method: string, body: unknown): Promise<T> {
+  if (!BRASILNFE_TOKEN) {
+    throw new Error("A emissão de nota ainda não foi configurada: falta o token da Brasil NFe.");
+  }
+  let res: Response;
+  try {
+    res = await fetch(BRASILNFE_URL + method, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", Token: BRASILNFE_TOKEN },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (err) {
+    console.error("brasilnfe offline", method, err);
+    throw new BrasilNfeOffline("A Brasil NFe não respondeu.");
+  }
+  const text = await res.text();
+  let data: unknown = text;
+  try { data = JSON.parse(text); } catch { /* resposta em texto puro */ }
+  if (!res.ok) {
+    console.error("brasilnfe http", method, res.status, text.slice(0, 500));
+    const detail = typeof data === "object" && data ? describeNfeError(data as Record<string, never>) : String(text).slice(0, 300);
+    throw new Error(`Brasil NFe recusou a requisição (${res.status}): ${detail}`);
+  }
+  return data as T;
+}
+
+function decodeBase64Utf8(b64: string): string {
+  const bin = atob(b64);
+  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+
+async function lookupIbge(zip: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${zip}/json/`, { signal: AbortSignal.timeout(8_000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.ibge ? String(data.ibge) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Junta pedido, cliente, endereço e produtos no formato do montador da nota.
+// Retirada usa o endereço principal do cliente. Endereço com CEP e sem código
+// IBGE ganha o código aqui (ViaCEP) e fica salvo para a próxima vez.
+async function loadNfeInput(orderId: string): Promise<NfeInput> {
+  const { data: o, error } = await adminClient
+    .from("orders")
+    .select(`
+      id, channel, fulfillment_type, total_amount, payment_method, payment_method_2, payment_amount_1,
+      payment_amount_2, is_split_payment, payment_due_date, paid_at,
+      customers(name, type, cpf, cnpj, ie, ie_indicator, email, phone,
+        addresses(id, street, number, neighborhood, city, state, zip, complement, ibge_code, is_primary)),
+      addresses(id, street, number, neighborhood, city, state, zip, complement, ibge_code),
+      order_items(qty, unit_price, product_id, products(name, ncm, cest, cfop, cst_csosn, origem, unidade, tax_group))
+    `)
+    .eq("id", orderId)
+    .single();
+  if (error) throw error;
+  const order = o as any;
+  const c = order.customers;
+  const addr = order.addresses
+    ?? c?.addresses?.find((a: any) => a.is_primary)
+    ?? c?.addresses?.[0]
+    ?? null;
+
+  if (addr && !addr.ibge_code && digitsOrNull(addr.zip)?.length === 8) {
+    addr.ibge_code = await lookupIbge(digitsOrNull(addr.zip)!);
+    if (addr.ibge_code) await adminClient.from("addresses").update({ ibge_code: addr.ibge_code }).eq("id", addr.id);
+  }
+
+  return {
+    orderId: order.id,
+    channel: order.channel,
+    fulfillmentType: order.fulfillment_type,
+    totalAmount: order.total_amount,
+    payment: {
+      method: order.payment_method,
+      method2: order.payment_method_2,
+      amount1: order.payment_amount_1,
+      amount2: order.payment_amount_2,
+      isSplit: !!order.is_split_payment,
+      dueDate: order.payment_due_date,
+      paidAt: order.paid_at,
+    },
+    customer: c ? {
+      name: c.name, type: c.type, cpf: c.cpf, cnpj: c.cnpj, ie: c.ie,
+      ieIndicator: c.ie_indicator, email: c.email, phone: c.phone,
+    } : null,
+    address: addr ? {
+      street: addr.street, number: addr.number, neighborhood: addr.neighborhood, city: addr.city,
+      state: addr.state, zip: addr.zip, complement: addr.complement, ibge: addr.ibge_code,
+    } : null,
+    items: (order.order_items ?? []).map((i: any) => ({
+      productId: i.product_id,
+      name: i.products?.name ?? "Produto",
+      qty: i.qty,
+      unitPrice: i.unit_price,
+      ncm: i.products?.ncm ?? null,
+      cest: i.products?.cest ?? null,
+      cfop: i.products?.cfop ?? null,
+      cstCsosn: i.products?.cst_csosn ?? null,
+      origem: i.products?.origem ?? 0,
+      unidade: i.products?.unidade ?? "UN",
+      taxGroup: i.products?.tax_group ?? null,
+    })),
+  };
+}
+
+type NfeResponse = {
+  ReturnNF?: {
+    Numero?: number; Serie?: number; ChaveNF?: string; NumeroProtocolo?: string;
+    CodStatusRespostaSefaz?: number; DsStatusRespostaSefaz?: string; Ok?: boolean;
+  };
+  Base64Xml?: string;
+  Error?: string;
+  Avisos?: string[];
+  erros?: { codigo?: string; descricao?: string; correcao?: string }[];
+};
+
+type NfeEvent = { Status?: number; DsMotivo?: string; Error?: string; CodStatusRespostaSefaz?: number };
+
+const INVOICE_COLUMNS = "id, order_id, environment, status, numero, serie, chave, protocolo, sefaz_code, message, total, correction_seq, created_at, updated_at, authorized_at, cancelled_at";
+
+async function updateInvoice(id: string, patch: Record<string, unknown>) {
+  const { data, error } = await adminClient
+    .from("invoices")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select(INVOICE_COLUMNS)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function getInvoice(id: string) {
+  const { data, error } = await adminClient.from("invoices").select("*").eq("id", id).single();
+  if (error) throw error;
+  return data as any;
 }
 
 function normalizeSearch(str: string): string {
@@ -366,7 +518,8 @@ serve(async (req) => {
           id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, em_rota_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed, payment_due_date, paid_at, paid_by,
           customers(id, name, phone, cnpj, type),
           addresses(street, number, neighborhood, city, complement, reference),
-          order_items(qty, product_id, unit_price, products(name))
+          order_items(qty, product_id, unit_price, products(name)),
+          invoices(id, status, numero, serie, environment, message, created_at)
         `, { count: "exact" })
         .order("created_at", { ascending: false })
         .range(from, to);
@@ -894,6 +1047,7 @@ serve(async (req) => {
         const origem = Number(product.origem);
         productData.origem = Number.isInteger(origem) && origem >= 0 && origem <= 8 ? origem : 0;
       }
+      if ("tax_group" in product) productData.tax_group = String(product.tax_group || "").trim().slice(0, 40) || null;
       if ("unidade" in product) {
         productData.unidade = String(product.unidade || "").trim().toUpperCase().slice(0, 6) || "UN";
       }
@@ -1434,6 +1588,175 @@ serve(async (req) => {
       }
 
       return json({ data: { results } });
+    }
+
+    // ---- Nota fiscal ----
+    if (action === "invoices.check") {
+      const input = await loadNfeInput(String(payload?.orderId || ""));
+      return json({ data: { problems: checkNfe(input), environment: NFE_AMBIENTE } });
+    }
+
+    if (action === "invoices.emit") {
+      const orderId = String(payload?.orderId || "");
+      const input = await loadNfeInput(orderId);
+      const problems = checkNfe(input);
+      if (problems.length) return json({ data: { problems } });
+
+      const { data: created, error: insErr } = await adminClient
+        .from("invoices")
+        .insert({
+          order_id: orderId,
+          environment: NFE_AMBIENTE,
+          status: "processando",
+          total: input.totalAmount,
+          created_by: admin.username,
+        })
+        .select("id")
+        .single();
+      if (insErr) {
+        if ((insErr as { code?: string }).code === "23505") throw new Error("Este pedido já tem uma nota emitida ou em emissão.");
+        throw insErr;
+      }
+
+      let resp: NfeResponse;
+      try {
+        resp = await brasilNfe<NfeResponse>("EnviarNotaFiscal", buildNfePayload(input, NFE_AMBIENTE));
+      } catch (err) {
+        if (err instanceof BrasilNfeOffline) {
+          const invoice = await updateInvoice(created.id, {
+            message: "A Brasil NFe não respondeu a tempo. Toque em Atualizar status em alguns minutos.",
+          });
+          return json({ data: { invoice } });
+        }
+        await updateInvoice(created.id, { status: "erro", message: err instanceof Error ? err.message : "Erro ao emitir." });
+        throw err;
+      }
+
+      const r = resp.ReturnNF;
+      let patch: Record<string, unknown>;
+      if (r?.Ok) {
+        patch = {
+          status: "autorizada",
+          numero: r.Numero ?? null,
+          serie: r.Serie ?? null,
+          chave: r.ChaveNF ?? null,
+          protocolo: r.NumeroProtocolo ?? null,
+          sefaz_code: r.CodStatusRespostaSefaz ?? null,
+          message: resp.Avisos?.length ? resp.Avisos.join(" · ") : null,
+          xml: resp.Base64Xml ? decodeBase64Utf8(resp.Base64Xml) : null,
+          authorized_at: new Date().toISOString(),
+        };
+      } else if (isStillProcessing(r?.CodStatusRespostaSefaz)) {
+        patch = {
+          sefaz_code: r?.CodStatusRespostaSefaz ?? null,
+          chave: r?.ChaveNF ?? null,
+          message: "A SEFAZ ainda está processando. Toque em Atualizar status em alguns minutos.",
+        };
+      } else {
+        patch = { status: "erro", sefaz_code: r?.CodStatusRespostaSefaz ?? null, message: describeNfeError(resp) };
+      }
+      const invoice = await updateInvoice(created.id, patch);
+      return json({ data: { invoice } });
+    }
+
+    if (action === "invoices.refresh") {
+      const inv = await getInvoice(String(payload?.invoiceId || ""));
+      if (inv.status !== "processando") {
+        const { xml: _xml, ...rest } = inv;
+        return json({ data: { invoice: rest } });
+      }
+
+      const day = 24 * 60 * 60 * 1000;
+      const created = new Date(inv.created_at).getTime();
+      const found = await brasilNfe<{ Notas?: { Chave?: string; Numero?: number; Serie?: string; NumeroProtocolo?: string; Status?: number }[]; Error?: string }>(
+        "ObterNotasFiscais",
+        {
+          TipoAmbiente: inv.environment,
+          TipoDocumentoFiscal: 1,
+          IdentificadorInterno: inv.order_id,
+          DtInicio: new Date(created - day).toISOString().slice(0, 19),
+          DtFim: new Date(Date.now() + day).toISOString().slice(0, 19),
+        },
+      );
+      const nota = (found.Notas ?? []).find((n) => n.Chave) ?? null;
+
+      let patch: Record<string, unknown>;
+      if (nota?.Status === 1) {
+        const b64 = await brasilNfe<string>("ObterArquivoNotaFiscal", { ChaveNF: nota.Chave, FileType: 1, TipoDocumentoFiscal: 1 });
+        patch = {
+          status: "autorizada",
+          chave: nota.Chave,
+          numero: nota.Numero ?? null,
+          serie: nota.Serie ? Number(nota.Serie) : null,
+          protocolo: nota.NumeroProtocolo ?? null,
+          message: null,
+          xml: typeof b64 === "string" && b64 ? decodeBase64Utf8(b64) : null,
+          authorized_at: new Date().toISOString(),
+        };
+      } else if (nota?.Status === 2) {
+        patch = { status: "cancelada", chave: nota.Chave, cancelled_at: new Date().toISOString() };
+      } else if (nota?.Status === 3) {
+        patch = { status: "erro", chave: nota.Chave, message: "Uso denegado pela SEFAZ. Fale com o contador." };
+      } else if (Date.now() - created > 10 * 60 * 1000) {
+        patch = { status: "erro", message: "A nota não chegou a ser registrada. Confira os dados e emita de novo." };
+      } else {
+        patch = { message: "A SEFAZ ainda está processando. Tente de novo em alguns minutos." };
+      }
+      const invoice = await updateInvoice(inv.id, patch);
+      return json({ data: { invoice } });
+    }
+
+    if (action === "invoices.cancel") {
+      const inv = await getInvoice(String(payload?.invoiceId || ""));
+      const reason = String(payload?.reason || "").trim();
+      if (inv.status !== "autorizada" || !inv.chave) throw new Error("Só é possível cancelar nota autorizada.");
+      if (reason.length < 15) throw new Error("Descreva o motivo do cancelamento com pelo menos 15 caracteres.");
+
+      const resp = await brasilNfe<NfeEvent>("CancelarNotaFiscal", {
+        ChaveNF: inv.chave,
+        Justificativa: reason.slice(0, 255),
+        TipoAmbiente: inv.environment,
+        TipoDocumento: 0,
+      });
+      if (resp.Status === 1) {
+        const invoice = await updateInvoice(inv.id, { status: "cancelada", cancelled_at: new Date().toISOString(), message: `Cancelada: ${reason}` });
+        return json({ data: { invoice } });
+      }
+      if (resp.Status === 2) {
+        const invoice = await updateInvoice(inv.id, { message: "Cancelamento enviado e ainda em processamento na SEFAZ." });
+        return json({ data: { invoice } });
+      }
+      throw new Error(resp.DsMotivo || resp.Error || "A SEFAZ recusou o cancelamento.");
+    }
+
+    if (action === "invoices.correct") {
+      const inv = await getInvoice(String(payload?.invoiceId || ""));
+      const text = String(payload?.text || "").trim();
+      if (inv.status !== "autorizada" || !inv.chave) throw new Error("Só é possível corrigir nota autorizada.");
+      if (text.length < 15) throw new Error("Descreva a correção com pelo menos 15 caracteres.");
+
+      const seq = (inv.correction_seq ?? 0) + 1;
+      const resp = await brasilNfe<NfeEvent>("EnviarCartaCorrecao", {
+        TipoAmbiente: inv.environment,
+        ChaveNF: inv.chave,
+        Correcao: text.slice(0, 1000),
+        NumeroSequencial: seq,
+      });
+      if (resp.Status !== 1) throw new Error(resp.DsMotivo || resp.Error || "A SEFAZ recusou a carta de correção.");
+      const invoice = await updateInvoice(inv.id, { correction_seq: seq, message: `Carta de correção ${seq}: ${text}` });
+      return json({ data: { invoice } });
+    }
+
+    if (action === "invoices.file") {
+      const inv = await getInvoice(String(payload?.invoiceId || ""));
+      if (!inv.chave) throw new Error("Esta nota ainda não tem chave de acesso.");
+      if (payload?.type === "xml") {
+        if (!inv.xml) throw new Error("O XML desta nota não está salvo.");
+        return json({ data: { content: inv.xml, filename: `NFe${inv.chave}.xml` } });
+      }
+      const b64 = await brasilNfe<string>("ObterArquivoNotaFiscal", { ChaveNF: inv.chave, FileType: 2, TipoDocumentoFiscal: 1 });
+      if (typeof b64 !== "string" || !b64) throw new Error("A Brasil NFe não devolveu o DANFE.");
+      return json({ data: { base64: b64, filename: `DANFE-${inv.numero ?? inv.chave}.pdf` } });
     }
 
     // ---- Riders ----

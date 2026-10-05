@@ -75,7 +75,34 @@ export type AdminOrderRow = {
   customers: { id: string; name: string; phone: string | null; cnpj: string | null; type?: string } | null;
   addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null; reference?: string | null } | null;
   order_items: { qty: number; product_id?: string; unit_price?: number | null; products: { name: string } | null }[];
+  invoices?: InvoiceSummary[];
   rider_name?: string;
+};
+
+export type InvoiceStatus = "processando" | "autorizada" | "erro" | "cancelada";
+
+/** Resumo da nota que vem junto da lista de pedidos. */
+export type InvoiceSummary = {
+  id: string;
+  status: InvoiceStatus;
+  numero: number | null;
+  /** 1 produção, 2 homologação (teste, sem valor fiscal). */
+  environment: 1 | 2;
+  created_at: string;
+};
+
+export type InvoiceRow = InvoiceSummary & {
+  order_id: string;
+  serie: number | null;
+  chave: string | null;
+  protocolo: string | null;
+  sefaz_code: number | null;
+  message: string | null;
+  total: number | null;
+  correction_seq: number;
+  updated_at: string;
+  authorized_at: string | null;
+  cancelled_at: string | null;
 };
 
 export type AdminCustomerRow = {
@@ -128,6 +155,8 @@ export type AdminProductRow = {
   cst_csosn: string | null;
   origem: number;
   unidade: string;
+  /** Grupo tributário do painel da Brasil NFe; dispensa CFOP e CST no item. */
+  tax_group: string | null;
 };
 
 export type AdminTierRow = {
@@ -454,6 +483,20 @@ export const adminApi = {
 
   undoReceivablePaid: (orderId: string) =>
     callAdminApi<{ ok: boolean }>("receivables.undoPaid", { orderId }),
+
+  checkInvoice: (orderId: string) =>
+    callAdminApi<{ problems: string[]; environment: 1 | 2 }>("invoices.check", { orderId }),
+  /** Devolve a nota, ou a lista do que falta acertar antes de emitir. */
+  emitInvoice: (orderId: string) =>
+    callAdminApi<{ invoice?: InvoiceRow; problems?: string[] }>("invoices.emit", { orderId }),
+  refreshInvoice: (invoiceId: string) =>
+    callAdminApi<{ invoice: InvoiceRow }>("invoices.refresh", { invoiceId }),
+  cancelInvoice: (invoiceId: string, reason: string) =>
+    callAdminApi<{ invoice: InvoiceRow }>("invoices.cancel", { invoiceId, reason }),
+  correctInvoice: (invoiceId: string, text: string) =>
+    callAdminApi<{ invoice: InvoiceRow }>("invoices.correct", { invoiceId, text }),
+  getInvoiceFile: (invoiceId: string, type: "xml" | "danfe") =>
+    callAdminApi<{ content?: string; base64?: string; filename: string }>("invoices.file", { invoiceId, type }),
 
   bulkDeleteOrders: (orderIds: string[]) =>
     callAdminApi<{ ok: boolean; deleted: number; skipped: number }>("orders.bulkDelete", { orderIds }),

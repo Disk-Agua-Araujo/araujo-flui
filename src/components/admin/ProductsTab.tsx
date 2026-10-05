@@ -262,6 +262,7 @@ export function ProductsTab() {
           cst_csosn: editProduct.cst_csosn || null,
           origem: editProduct.origem ?? 0,
           unidade: editProduct.unidade || "UN",
+          tax_group: editProduct.tax_group?.trim() || null,
         },
         tiers: editTiers
           .filter((t) => Number(t.min_qty) > 0)
@@ -595,6 +596,11 @@ export function ProductsTab() {
                 <div>
                   <Label className="text-base font-semibold">Dados fiscais</Label>
                   <p className="text-xs text-muted-foreground">Preenchidos com o contador. Necessários para emitir nota fiscal.</p>
+                </div>
+                <div>
+                  <Label>Grupo tributário (Brasil NFe)</Label>
+                  <Input placeholder="Código do grupo cadastrado no painel da Brasil NFe" value={editProduct.tax_group ?? ""} onChange={(e) => setEditProduct({ ...editProduct, tax_group: e.target.value })} />
+                  <p className="text-xs text-muted-foreground mt-1">Com o grupo preenchido, CFOP e CST vêm dele e podem ficar vazios.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div><Label>NCM</Label><Input inputMode="numeric" maxLength={8} placeholder="00000000" value={editProduct.ncm ?? ""} onChange={(e) => setEditProduct({ ...editProduct, ncm: e.target.value.replace(/\D/g, "") })} /></div>

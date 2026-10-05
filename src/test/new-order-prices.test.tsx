@@ -27,7 +27,7 @@ const product = (id: string, name: string, price: number | null) => ({
   id, name, price, price_text: price != null ? String(price) : "Consulte no WhatsApp",
   description: null, type: "varejo", icon: null, active: true, created_at: "", stock_qty: 0,
   min_stock_qty: 0, track_stock: false, category_id: null, show_in_quick_order: false, image_url: null,
-  ncm: null, cest: null, cfop: null, cst_csosn: null, origem: 0, unidade: "UN",
+  ncm: null, cest: null, cfop: null, cst_csosn: null, origem: 0, unidade: "UN", tax_group: null,
 });
 
 function renderTab() {
