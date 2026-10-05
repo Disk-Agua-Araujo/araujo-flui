@@ -517,5 +517,5 @@ export const adminApi = {
     callAdminApi<{ content?: string; base64?: string; filename: string }>("invoices.file", { invoiceId, type }),
 
   bulkDeleteOrders: (orderIds: string[]) =>
-    callAdminApi<{ ok: boolean; deleted: number; skipped: number }>("orders.bulkDelete", { orderIds }),
+    callAdminApi<{ ok: boolean; deleted: number; deletedIds?: string[]; skipped: number; skippedFiscal?: number }>("orders.bulkDelete", { orderIds }),
 };

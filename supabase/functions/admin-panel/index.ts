@@ -2207,19 +2207,43 @@ serve(async (req) => {
       if (!Array.isArray(orderIds) || orderIds.length === 0) throw new Error("Nenhum pedido selecionado");
       if (orderIds.length > 500) throw new Error("Máximo de 500 pedidos por operação");
 
-      const { data: rows } = await adminClient
+      const { data: rows, error: rowsErr } = await adminClient
         .from("orders")
         .select("id,status")
         .in("id", orderIds);
-      const deletable = (rows ?? []).filter((r) => r.status !== "entregue").map((r) => r.id);
-      const skipped = orderIds.length - deletable.length;
+      if (rowsErr) throw rowsErr;
+      const candidates = (rows ?? []).filter((r) => r.status !== "entregue").map((r) => r.id);
+      const skipped = orderIds.length - candidates.length;
 
+      // Nota de produção autorizada ou cancelada é documento fiscal com guarda
+      // de 5 anos: o pedido dela não é excluído. Nota de teste (homologação) e
+      // tentativa recusada saem junto com o pedido.
+      let skippedFiscal = 0;
+      let deletable = candidates;
+      if (candidates.length > 0) {
+        const { data: inv, error: invErr } = await adminClient
+          .from("invoices")
+          .select("order_id, environment, status")
+          .in("order_id", candidates);
+        if (invErr) throw invErr;
+        const fiscal = new Set(
+          (inv ?? []).filter((i) => i.environment === 1 && i.status !== "erro").map((i) => i.order_id),
+        );
+        skippedFiscal = fiscal.size;
+        deletable = candidates.filter((id) => !fiscal.has(id));
+      }
+
+      // Ordem importa: o pedido só some depois de tudo que aponta para ele, e
+      // nada é apagado se a consulta acima falhar.
       if (deletable.length > 0) {
-        await adminClient.from("order_items").delete().in("order_id", deletable);
+        const { error: invDelErr } = await adminClient.from("invoices").delete().in("order_id", deletable);
+        if (invDelErr) throw invDelErr;
+        const { error: itemsErr } = await adminClient.from("order_items").delete().in("order_id", deletable);
+        if (itemsErr) throw itemsErr;
         const { error } = await adminClient.from("orders").delete().in("id", deletable);
         if (error) throw error;
       }
-      return json({ data: { ok: true, deleted: deletable.length, skipped } });
+      return json({ data: { ok: true, deleted: deletable.length, deletedIds: deletable, skipped, skippedFiscal } });
     }
 
     if (action === "export.table") {

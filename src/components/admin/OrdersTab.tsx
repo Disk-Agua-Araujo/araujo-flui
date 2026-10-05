@@ -1440,16 +1440,17 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
         } : o));
         toast({ title: `Forma de pagamento atualizada em ${ids.length} pedido${ids.length !== 1 ? "s" : ""}.` });
       } else if (confirmAction.type === "delete") {
-        const res = (await adminApi.bulkDeleteOrders(ids)) ?? { deleted: 0, skipped: 0 };
+        const res: { deleted?: number; deletedIds?: string[]; skipped?: number; skippedFiscal?: number } = (await adminApi.bulkDeleteOrders(ids)) ?? {};
         const deleted = res.deleted ?? 0;
         const skipped = res.skipped ?? 0;
-        // Local state update: remove non-delivered orders that were selected
-        const idSet = new Set(ids);
-        setOrders((prev) => prev.filter((o) => !(idSet.has(o.id) && o.status !== "entregue")));
-        const msg = skipped > 0
-          ? `${deleted} excluído${deleted !== 1 ? "s" : ""}. ${skipped} pedido${skipped !== 1 ? "s" : ""} entregue${skipped !== 1 ? "s" : ""} ignorado${skipped !== 1 ? "s" : ""}.`
-          : `${deleted} pedido${deleted !== 1 ? "s" : ""} excluído${deleted !== 1 ? "s" : ""}.`;
-        toast({ title: msg });
+        const skippedFiscal = res.skippedFiscal ?? 0;
+        // Tira da lista só o que o servidor apagou de fato.
+        const goneIds = new Set(res.deletedIds ?? []);
+        setOrders((prev) => prev.filter((o) => !goneIds.has(o.id)));
+        const parts = [`${deleted} pedido${deleted !== 1 ? "s" : ""} excluído${deleted !== 1 ? "s" : ""}.`];
+        if (skipped > 0) parts.push(`${skipped} entregue${skipped !== 1 ? "s" : ""} ignorado${skipped !== 1 ? "s" : ""}.`);
+        if (skippedFiscal > 0) parts.push(`${skippedFiscal} com nota fiscal emitida ficou${skippedFiscal !== 1 ? "aram" : ""} (a nota precisa ser guardada).`);
+        toast({ title: parts.join(" ") });
       }
       clearSelection();
       setConfirmAction(null);
