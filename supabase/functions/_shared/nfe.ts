@@ -25,6 +25,8 @@ export type NfeInput = {
   addressId?: string | null;
   /** Número do pedido de compra do cliente (loja de rede costuma exigir na nota). */
   purchaseOrder?: string | null;
+  /** Observações digitadas no bloco da nota; saem nas informações complementares. */
+  notes?: string | null;
   channel: string;
   fulfillmentType: string;
   totalAmount: number | null;
@@ -285,6 +287,10 @@ export function buildNfePayload(input: NfeInput, ambiente: 1 | 2): Record<string
     Observacao: [
       `Pedido ${input.orderId.slice(0, 8).toUpperCase()}`,
       input.purchaseOrder?.trim() ? `Nº Pedido de compras: ${input.purchaseOrder.trim().slice(0, 60)}` : null,
+      // Quebra de linha vira " / ": caractere de controle pode ser recusado pela SEFAZ.
+      input.notes?.trim()
+        ? input.notes.trim().split(/\s*\r?\n\s*/).filter(Boolean).join(" / ").replace(/\s+/g, " ").slice(0, 1000)
+        : null,
       SIMPLES_OBS,
     ].filter(Boolean).join(" - "),
     Cliente: {

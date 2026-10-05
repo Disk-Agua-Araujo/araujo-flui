@@ -78,6 +78,20 @@ describe("Painel da nota fiscal", () => {
     expect(screen.queryByText(/Homologação/)).not.toBeInTheDocument();
   });
 
+  it("observação digitada vai junto na emissão", async () => {
+    checkInvoice.mockResolvedValue({ problems: [], environment: 1 });
+    emitInvoice.mockResolvedValue({ invoice: { ...authorized, environment: 1 } });
+    render(<InvoicePanel orderId="ord1" invoices={[]} onChange={() => {}} />);
+
+    const notes = await screen.findByPlaceholderText(/Pagamento via PIX/);
+    fireEvent.change(notes, { target: { value: "Entregar na portaria" } });
+    const button = screen.getByRole("button", { name: /Emitir nota fiscal/ });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+
+    await waitFor(() => expect(emitInvoice).toHaveBeenCalledWith("ord1", { purchaseOrder: "", notes: "Entregar na portaria" }));
+  });
+
   it("pré-visualizar baixa o PDF sem emitir a nota", async () => {
     checkInvoice.mockResolvedValue({ problems: [], environment: 2 });
     previewInvoice.mockResolvedValue({ base64: btoa("%PDF-1.4"), filename: "previa.pdf" });
@@ -92,7 +106,7 @@ describe("Painel da nota fiscal", () => {
     fireEvent.click(button);
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
-    expect(previewInvoice).toHaveBeenCalledWith("ord1", "");
+    expect(previewInvoice).toHaveBeenCalledWith("ord1", { purchaseOrder: "", notes: "" });
     expect(emitInvoice).not.toHaveBeenCalled();
     expect(onChange).not.toHaveBeenCalled();
   });

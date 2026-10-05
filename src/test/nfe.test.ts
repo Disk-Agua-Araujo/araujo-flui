@@ -192,6 +192,18 @@ describe("observação da nota", () => {
   });
 });
 
+describe("observações digitadas na nota", () => {
+  it("entram antes da frase do Simples, com quebra de linha virando barra", () => {
+    const p = buildNfePayload(base({ notes: "  Pagamento via PIX até dia 10\n\nEntrega na portaria  " }), 1) as any;
+    expect(p.Observacao).toBe(`Pedido 9F86D081 - Pagamento via PIX até dia 10 / Entrega na portaria - ${SIMPLES_OBS}`);
+  });
+
+  it("observação vazia não aparece", () => {
+    const p = buildNfePayload(base({ notes: "   " }), 1) as any;
+    expect(p.Observacao).toBe(`Pedido 9F86D081 - ${SIMPLES_OBS}`);
+  });
+});
+
 describe("describeNfeError", () => {
   it("junta motivo da SEFAZ e erros da API", () => {
     expect(describeNfeError({

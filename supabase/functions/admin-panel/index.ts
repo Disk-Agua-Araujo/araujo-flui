@@ -1811,6 +1811,7 @@ serve(async (req) => {
     if (action === "invoices.preview") {
       const input = await loadNfeInput(String(payload?.orderId || ""));
       input.purchaseOrder = payload?.purchaseOrder ? String(payload.purchaseOrder) : null;
+      input.notes = payload?.notes ? String(payload.notes) : null;
       const problems = checkNfe(input);
       if (problems.length) return json({ data: { problems } });
 
@@ -1831,6 +1832,7 @@ serve(async (req) => {
       const orderId = String(payload?.orderId || "");
       const input = await loadNfeInput(orderId);
       input.purchaseOrder = payload?.purchaseOrder ? String(payload.purchaseOrder) : null;
+      input.notes = payload?.notes ? String(payload.notes) : null;
       const problems = checkNfe(input);
       if (problems.length) return json({ data: { problems } });
 

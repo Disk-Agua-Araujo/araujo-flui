@@ -81,6 +81,9 @@ export type AdminOrderRow = {
 
 export type InvoiceStatus = "processando" | "autorizada" | "erro" | "cancelada";
 
+/** Textos opcionais que saem nas informações complementares da nota. */
+export type InvoiceExtras = { purchaseOrder?: string; notes?: string };
+
 /** O que falta para a nota e dá para completar no próprio bloco da nota. */
 export type InvoiceFixes = {
   prices?: { productId: string; name: string; qty: number }[];
@@ -524,11 +527,11 @@ export const adminApi = {
   sefazStatus: () =>
     callAdminApi<{ ok: boolean; message: string; environment: 1 | 2; detail: string }>("invoices.sefazStatus"),
   /** DANFE de conferência, sem valor fiscal e sem passar pela SEFAZ. */
-  previewInvoice: (orderId: string, purchaseOrder?: string) =>
-    callAdminApi<{ base64?: string; filename?: string; problems?: string[] }>("invoices.preview", { orderId, purchaseOrder }),
+  previewInvoice: (orderId: string, extras: InvoiceExtras = {}) =>
+    callAdminApi<{ base64?: string; filename?: string; problems?: string[] }>("invoices.preview", { orderId, ...extras }),
   /** Devolve a nota, ou a lista do que falta acertar antes de emitir. */
-  emitInvoice: (orderId: string, purchaseOrder?: string) =>
-    callAdminApi<{ invoice?: InvoiceRow; problems?: string[] }>("invoices.emit", { orderId, purchaseOrder }),
+  emitInvoice: (orderId: string, extras: InvoiceExtras = {}) =>
+    callAdminApi<{ invoice?: InvoiceRow; problems?: string[] }>("invoices.emit", { orderId, ...extras }),
   refreshInvoice: (invoiceId: string) =>
     callAdminApi<{ invoice: InvoiceRow }>("invoices.refresh", { invoiceId }),
   cancelInvoice: (invoiceId: string, reason: string) =>

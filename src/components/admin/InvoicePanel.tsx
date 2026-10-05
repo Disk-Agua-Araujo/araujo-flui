@@ -59,6 +59,7 @@ export function InvoicePanel({
   const [fixes, setFixes] = useState<InvoiceFixes | null>(null);
   const [checkKey, setCheckKey] = useState(0);
   const [purchaseOrder, setPurchaseOrder] = useState("");
+  const [invoiceNotes, setInvoiceNotes] = useState("");
   const [environment, setEnvironment] = useState<1 | 2 | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [form, setForm] = useState<"cancel" | "correct" | null>(null);
@@ -101,7 +102,7 @@ export function InvoicePanel({
   };
 
   const emit = () => run("emit", async () => {
-    const r = await adminApi.emitInvoice(orderId, purchaseOrder);
+    const r = await adminApi.emitInvoice(orderId, { purchaseOrder, notes: invoiceNotes });
     if (r.problems) {
       setProblems(r.problems);
       return;
@@ -117,7 +118,7 @@ export function InvoicePanel({
   };
 
   const preview = () => run("preview", async () => {
-    const r = await adminApi.previewInvoice(orderId, purchaseOrder);
+    const r = await adminApi.previewInvoice(orderId, { purchaseOrder, notes: invoiceNotes });
     if (r.problems) {
       setProblems(r.problems);
       return;
@@ -188,6 +189,19 @@ export function InvoicePanel({
         <label className="block text-xs space-y-0.5">
           <span className="text-muted-foreground">Nº do pedido de compra do cliente (opcional, sai na nota)</span>
           <Input className="h-8" value={purchaseOrder} maxLength={60} onChange={(e) => setPurchaseOrder(e.target.value)} />
+        </label>
+      )}
+
+      {canEmit && problems && problems.length === 0 && (
+        <label className="block text-xs space-y-0.5">
+          <span className="text-muted-foreground">Observações da nota (opcional, saem nas informações complementares)</span>
+          <Textarea
+            rows={2}
+            maxLength={1000}
+            placeholder="Ex.: Pagamento via PIX até dia 10. Entrega na portaria."
+            value={invoiceNotes}
+            onChange={(e) => setInvoiceNotes(e.target.value)}
+          />
         </label>
       )}
 
