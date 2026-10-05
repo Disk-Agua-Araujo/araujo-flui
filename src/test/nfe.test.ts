@@ -119,6 +119,15 @@ describe("buildNfePayload", () => {
     expect(p.EnviarEmail).toBe(true);
   });
 
+  it("empresa isenta de IE vai como não contribuinte em SP (rejeição 805) e como isenta onde é aceito", () => {
+    const isenta = { name: "CVC ATRIUM", type: "PJ" as const, cpf: null, cnpj: "11763247000186", ie: null, ieIndicator: 2, email: null, phone: null };
+    const sp = buildNfePayload(base({ customer: isenta }), 2) as any;
+    expect(sp.Cliente.IndicadorIe).toBe(9);
+    expect(sp.ConsumidorFinal).toBe(true);
+    const rj = buildNfePayload(base({ customer: isenta, address: { ...base().address!, state: "RJ" } }), 2) as any;
+    expect(rj.Cliente.IndicadorIe).toBe(2);
+  });
+
   it("pagamento dividido gera duas formas; a prazo vira crediário", () => {
     const split = buildNfePayload(base({
       payment: { method: "cash", method2: "card", amount1: 10, amount2: 20, isSplit: true, dueDate: null, paidAt: null },

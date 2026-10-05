@@ -59,6 +59,10 @@ export type NfeInput = {
 
 const digits = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "");
 
+// Estes estados não aceitam destinatário "contribuinte isento" (indIEDest 2,
+// rejeição 805). Neles, empresa isenta de IE vai como não contribuinte (9).
+const UF_SEM_ISENTO = new Set(["AM", "BA", "CE", "GO", "MG", "MS", "MT", "PE", "RN", "SE", "SP"]);
+
 // Em homologação a SEFAZ recusa (rejeição 598) destinatário com outro nome.
 export const HOMOLOGACAO_NOME = "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL";
 const cents = (n: number) => Math.round(n * 100);
@@ -143,7 +147,8 @@ export function buildNfePayload(input: NfeInput, ambiente: 1 | 2): Record<string
   }
 
   const isPJ = c.type === "PJ";
-  const ieIndicator = isPJ ? (c.ieIndicator ?? (digits(c.ie) ? 1 : 9)) : 9;
+  const rawIndicator = isPJ ? (c.ieIndicator ?? (digits(c.ie) ? 1 : 9)) : 9;
+  const ieIndicator = rawIndicator === 2 && UF_SEM_ISENTO.has((a.state || "SP").toUpperCase()) ? 9 : rawIndicator;
   const consumidorFinal = !(isPJ && ieIndicator === 1);
   const pickup = input.fulfillmentType === "pickup";
 
