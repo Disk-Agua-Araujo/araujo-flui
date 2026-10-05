@@ -66,6 +66,66 @@ function toUnitPrice(value: unknown): number | null {
   return Math.round(n * 100) / 100;
 }
 
+function formatCnpj(digits: string): string {
+  return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+}
+
+type ImportRow = {
+  name?: string; phone?: string; cpf?: string; cnpj?: string; ie?: string; email?: string;
+  address?: {
+    street?: string; number?: string; neighborhood?: string; city?: string; state?: string;
+    zip?: string; complement?: string; reference?: string;
+  };
+};
+
+type ImportResult = {
+  index: number;
+  action: "insert" | "update" | "skip";
+  name?: string;
+  address?: "nova" | "adicional" | "existente" | "sem";
+  reason?: string;
+};
+
+// Normaliza uma linha da planilha. CPF e CNPJ são reconhecidos pelo tamanho,
+// não pela coluna, porque muita planilha traz os dois numa coluna só.
+function normalizeImportRow(row: ImportRow) {
+  const text = (v: unknown, max = 200) => (typeof v === "string" || typeof v === "number" ? String(v).trim().slice(0, max) : "");
+  let phone = text(row.phone, 30).replace(/\D/g, "");
+  if (phone.length >= 12 && phone.startsWith("55")) phone = phone.slice(2);
+
+  let cpf: string | null = null;
+  let cnpj: string | null = null;
+  for (const doc of [row.cpf, row.cnpj]) {
+    const d = text(doc, 30).replace(/\D/g, "");
+    if (d.length === 11 && !cpf) cpf = d;
+    if (d.length === 14 && !cnpj) cnpj = d;
+  }
+
+  const a = row.address ?? {};
+  const street = text(a.street);
+  const number = text(a.number, 20);
+  const zip = text(a.zip, 10).replace(/\D/g, "");
+
+  return {
+    name: text(row.name, 100),
+    phone: phone || null,
+    cpf,
+    cnpj,
+    ie: text(row.ie, 20).replace(/\D/g, "") || null,
+    email: text(row.email, 100).toLowerCase() || null,
+    address: street && number ? {
+      street,
+      number,
+      neighborhood: text(a.neighborhood, 100),
+      city: text(a.city, 100),
+      state: text(a.state, 2).toUpperCase(),
+      zip: zip.length === 8 ? zip : null,
+      complement: text(a.complement) || null,
+      reference: text(a.reference) || null,
+    } : null,
+  };
+}
+
 function normalizeSearch(str: string): string {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
@@ -1230,6 +1290,150 @@ serve(async (req) => {
       );
 
       return json({ data: match || null });
+    }
+
+    // ---- Importação de clientes por planilha ----
+    // Recebe um lote de linhas já mapeadas no navegador. Acha o cliente pelo
+    // CPF/CNPJ e depois pelo telefone; quando acha, só completa o que está
+    // vazio no cadastro, sem sobrescrever nada. dryRun devolve o que
+    // aconteceria sem gravar, e é isso que alimenta a prévia.
+    if (action === "customers.import") {
+      const dryRun = payload?.dryRun === true;
+      const rows = (payload?.rows || []) as ImportRow[];
+      if (!Array.isArray(rows)) throw new Error("Linhas inválidas.");
+      if (rows.length > 200) throw new Error("Envie no máximo 200 linhas por vez.");
+
+      const clean = rows.map(normalizeImportRow);
+      const phones = [...new Set(clean.map((r) => r.phone).filter(Boolean))] as string[];
+      const cpfs = [...new Set(clean.map((r) => r.cpf).filter(Boolean))] as string[];
+      const cnpjDigits = [...new Set(clean.map((r) => r.cnpj).filter(Boolean))] as string[];
+
+      // O cadastro guarda CNPJ com máscara (é o que o painel manda), mas
+      // pode haver registro só com dígitos. Busca pelas duas formas.
+      const filters: string[] = [];
+      if (phones.length) filters.push(`phone.in.(${phones.join(",")})`);
+      if (cpfs.length) filters.push(`cpf.in.(${cpfs.join(",")})`);
+      if (cnpjDigits.length) {
+        const forms = cnpjDigits.flatMap((d) => [d, formatCnpj(d)]).map((c) => `"${c}"`);
+        filters.push(`cnpj.in.(${forms.join(",")})`);
+      }
+
+      type Existing = {
+        id: string; name: string; phone: string | null; type: "PF" | "PJ";
+        cpf: string | null; cnpj: string | null; ie: string | null; email: string | null;
+        addresses: { id: string; street: string; number: string; zip: string | null }[];
+      };
+      let existing: Existing[] = [];
+      if (filters.length) {
+        const { data, error } = await adminClient
+          .from("customers")
+          .select("id, name, phone, type, cpf, cnpj, ie, email, addresses(id, street, number, zip)")
+          .or(filters.join(","));
+        if (error) throw error;
+        existing = (data ?? []) as Existing[];
+      }
+      const byCpf = new Map(existing.filter((c) => c.cpf).map((c) => [c.cpf as string, c]));
+      const byCnpj = new Map(existing.filter((c) => c.cnpj).map((c) => [String(c.cnpj).replace(/\D/g, ""), c]));
+      const byPhone = new Map(existing.filter((c) => c.phone).map((c) => [c.phone as string, c]));
+
+      const sameStreet = (a: string, b: string) => normalizeSearch(a) === normalizeSearch(b);
+      const results: ImportResult[] = [];
+      const newCustomers: Record<string, unknown>[] = [];
+      const newAddresses: Record<string, unknown>[] = [];
+      const updates: { id: string; patch: Record<string, unknown> }[] = [];
+      const zipUpdates: { id: string; zip: string }[] = [];
+
+      clean.forEach((r, i) => {
+        if (!r.name) {
+          results.push({ index: i, action: "skip", reason: "Linha sem nome." });
+          return;
+        }
+        const match = (r.cpf && byCpf.get(r.cpf)) || (r.cnpj && byCnpj.get(r.cnpj)) || (r.phone && byPhone.get(r.phone)) || null;
+        const addressRow = (customerId: string, isPrimary: boolean) => ({
+          customer_id: customerId,
+          street: r.address!.street,
+          number: r.address!.number,
+          neighborhood: r.address!.neighborhood || "—",
+          city: r.address!.city || "Santo André",
+          state: r.address!.state || "SP",
+          complement: r.address!.complement,
+          zip: r.address!.zip,
+          reference: r.address!.reference,
+          is_primary: isPrimary,
+        });
+
+        if (!match) {
+          const id = crypto.randomUUID();
+          newCustomers.push({
+            id,
+            name: r.name,
+            phone: r.phone,
+            type: r.cnpj ? "PJ" : "PF",
+            cpf: r.cnpj ? null : r.cpf,
+            cnpj: r.cnpj ? formatCnpj(r.cnpj) : null,
+            ie: r.cnpj ? r.ie : null,
+            email: r.email,
+          });
+          if (r.address) newAddresses.push(addressRow(id, true));
+          results.push({ index: i, action: "insert", name: r.name, address: r.address ? "nova" : "sem" });
+          return;
+        }
+
+        // Cliente já existe: completa só o que está vazio.
+        const patch: Record<string, unknown> = {};
+        if ((!match.name || match.name === "Sem nome") && r.name) patch.name = r.name;
+        if (!match.phone && r.phone) patch.phone = r.phone;
+        if (!match.email && r.email) patch.email = r.email;
+        if (r.cnpj && !match.cnpj && !match.cpf) {
+          patch.cnpj = formatCnpj(r.cnpj);
+          patch.type = "PJ";
+        }
+        if (r.cpf && !match.cpf && !match.cnpj && match.type === "PF") patch.cpf = r.cpf;
+        if (r.ie && !match.ie && (match.type === "PJ" || patch.type === "PJ")) patch.ie = r.ie;
+        if (Object.keys(patch).length) updates.push({ id: match.id, patch });
+
+        let address: ImportResult["address"] = "sem";
+        if (r.address) {
+          const same = match.addresses.find((a) => sameStreet(a.street, r.address!.street) && a.number.trim() === r.address!.number);
+          if (same) {
+            address = "existente";
+            if (!same.zip && r.address.zip) zipUpdates.push({ id: same.id, zip: r.address.zip });
+          } else {
+            address = match.addresses.length ? "adicional" : "nova";
+            newAddresses.push(addressRow(match.id, match.addresses.length === 0));
+          }
+        }
+
+        const changed = Object.keys(patch).length > 0 || address === "nova" || address === "adicional";
+        results.push({
+          index: i,
+          action: changed ? "update" : "skip",
+          name: match.name,
+          address,
+          reason: changed ? undefined : "Já cadastrado, sem dado novo.",
+        });
+      });
+
+      if (!dryRun) {
+        if (newCustomers.length) {
+          const { error } = await adminClient.from("customers").insert(newCustomers);
+          if (error) throw error;
+        }
+        for (const u of updates) {
+          const { error } = await adminClient.from("customers").update(u.patch).eq("id", u.id);
+          if (error) throw error;
+        }
+        if (newAddresses.length) {
+          const { error } = await adminClient.from("addresses").insert(newAddresses);
+          if (error) throw error;
+        }
+        for (const z of zipUpdates) {
+          const { error } = await adminClient.from("addresses").update({ zip: z.zip }).eq("id", z.id);
+          if (error) throw error;
+        }
+      }
+
+      return json({ data: { results } });
     }
 
     // ---- Riders ----

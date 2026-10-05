@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Eye, Users, Plus, Loader2, ClipboardList, Pencil, Trash2 } from "lucide-react";
+import { Search, Eye, Users, Plus, Loader2, ClipboardList, Pencil, Trash2, FileSpreadsheet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { isValidCnpj, maskCnpj } from "@/lib/cnpj";
@@ -16,6 +16,7 @@ import { isValidCpf, maskCpf } from "@/lib/cpf";
 import { lookupCep } from "@/lib/cep";
 import { adminApi, type AdminCustomerRow, type CustomerOrderRow } from "@/services/admin-api";
 import { normalize } from "@/lib/normalize";
+import { CustomerImportDialog } from "@/components/admin/CustomerImportDialog";
 
 const PREFILL_KEY = "admin-new-order-customer";
 
@@ -38,6 +39,7 @@ export function CustomersTab() {
   const [ordersLoading, setOrdersLoading] = useState(false);
 
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<AdminCustomerRow | null>(null);
   const [formName, setFormName] = useState("");
   const [formPhone, setFormPhone] = useState("");
@@ -287,8 +289,11 @@ export function CustomersTab() {
           <Input placeholder="Buscar por nome, telefone, CNPJ, email ou rua..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
         <Badge variant="secondary"><Users className="h-3 w-3 mr-1" />{filtered.length}</Badge>
+        <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}><FileSpreadsheet className="h-4 w-4 mr-1" /> Importar planilha</Button>
         <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4 mr-1" /> Novo cliente</Button>
       </div>
+
+      <CustomerImportDialog open={importOpen} onOpenChange={setImportOpen} onImported={fetchCustomers} />
 
       <Card>
         <CardContent className="p-0">

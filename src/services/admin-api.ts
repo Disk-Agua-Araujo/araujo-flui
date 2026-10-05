@@ -1,3 +1,5 @@
+import type { ImportRow } from "@/lib/customer-import";
+
 const TOKEN_KEY = "admin_token";
 const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-panel`;
 const PUBLIC_BEARER = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -141,6 +143,14 @@ export type AdminCategoryRow = {
   slug: string;
   sort_order: number;
   created_at: string;
+};
+
+export type CustomerImportResult = {
+  index: number;
+  action: "insert" | "update" | "skip";
+  name?: string;
+  address?: "nova" | "adicional" | "existente" | "sem";
+  reason?: string;
 };
 
 export type CustomerOrderRow = {
@@ -334,6 +344,10 @@ export const adminApi = {
     type: "in" | "out" | "adjust";
     reason?: string;
   }) => callAdminApi<{ ok: boolean }>("stock.adjust", payload),
+
+  /** Importa um lote de até 200 linhas. Com dryRun só diz o que aconteceria. */
+  importCustomers: (rows: ImportRow[], dryRun: boolean) =>
+    callAdminApi<{ results: CustomerImportResult[] }>("customers.import", { rows, dryRun }),
 
   searchCustomers: (query: string) =>
     callAdminApi<AdminCustomerRow[]>("customers.search", { query }),
