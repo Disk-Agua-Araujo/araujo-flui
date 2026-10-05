@@ -3,11 +3,13 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 const checkInvoice = vi.fn();
 const emitInvoice = vi.fn();
+const previewInvoice = vi.fn();
 
 vi.mock("@/services/admin-api", () => ({
   adminApi: {
     checkInvoice: (...a: unknown[]) => checkInvoice(...a),
     emitInvoice: (...a: unknown[]) => emitInvoice(...a),
+    previewInvoice: (...a: unknown[]) => previewInvoice(...a),
   },
 }));
 
@@ -66,5 +68,24 @@ describe("Painel da nota fiscal", () => {
     render(<InvoicePanel orderId="ord1" invoices={[authorized as never]} onChange={() => {}} />);
     expect(await screen.findByRole("button", { name: /Emitir de novo/ })).toBeInTheDocument();
     expect(screen.queryByText(/Homologação/)).not.toBeInTheDocument();
+  });
+
+  it("pré-visualizar baixa o PDF sem emitir a nota", async () => {
+    checkInvoice.mockResolvedValue({ problems: [], environment: 2 });
+    previewInvoice.mockResolvedValue({ base64: btoa("%PDF-1.4"), filename: "previa.pdf" });
+    const createObjectURL = vi.fn(() => "blob:x");
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = vi.fn();
+    const onChange = vi.fn();
+    render(<InvoicePanel orderId="ord1" invoices={[]} onChange={onChange} />);
+
+    const button = await screen.findByRole("button", { name: /Pré-visualizar/ });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+    expect(previewInvoice).toHaveBeenCalledWith("ord1");
+    expect(emitInvoice).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

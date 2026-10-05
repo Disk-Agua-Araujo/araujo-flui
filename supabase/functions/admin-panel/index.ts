@@ -1596,6 +1596,26 @@ serve(async (req) => {
       return json({ data: { problems: checkNfe(input), environment: NFE_AMBIENTE } });
     }
 
+    // Monta o DANFE com a tarja "sem valor fiscal" sem passar pela SEFAZ.
+    // Serve para conferir a nota antes de emitir, e funciona sem certificado.
+    if (action === "invoices.preview") {
+      const input = await loadNfeInput(String(payload?.orderId || ""));
+      const problems = checkNfe(input);
+      if (problems.length) return json({ data: { problems } });
+
+      const resp = await brasilNfe<{ Status?: boolean; Base64File?: string; Error?: string; Avisos?: string[] }>(
+        "PreVisualizarNotaFiscal",
+        {
+          notaFiscal: { TipoAmbiente: NFE_AMBIENTE, ModeloDocumento: 55, nFInfos: [buildNfePayload(input, NFE_AMBIENTE)] },
+          TipoArquivo: 1,
+          TipoEnvio: 1,
+          mostrarTarjaPreVisualizacao: true,
+        },
+      );
+      if (!resp.Status || !resp.Base64File) throw new Error(describeNfeError(resp));
+      return json({ data: { base64: resp.Base64File, filename: `previa-pedido-${input.orderId.slice(0, 8).toUpperCase()}.pdf` } });
+    }
+
     if (action === "invoices.emit") {
       const orderId = String(payload?.orderId || "");
       const input = await loadNfeInput(orderId);

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { FileText, FileCode, Loader2, RefreshCw, Receipt, Ban, PenLine } from "lucide-react";
+import { FileText, FileCode, Loader2, RefreshCw, Receipt, Ban, PenLine, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { adminApi, type InvoiceRow, type InvoiceSummary } from "@/services/admin-api";
 
@@ -103,6 +103,20 @@ export function InvoicePanel({
     return inv;
   });
 
+  const pdf = (base64: string, filename: string) => {
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    download(new Blob([bytes], { type: "application/pdf" }), filename);
+  };
+
+  const preview = () => run("preview", async () => {
+    const r = await adminApi.previewInvoice(orderId);
+    if (r.problems) {
+      setProblems(r.problems);
+      return;
+    }
+    pdf(r.base64 ?? "", r.filename ?? "previa.pdf");
+  });
+
   const refresh = () => run("refresh", async () => (await adminApi.refreshInvoice(current!.id)).invoice);
 
   const submitForm = () => run(form!, async () => {
@@ -120,8 +134,7 @@ export function InvoicePanel({
     if (type === "xml") {
       download(new Blob([f.content ?? ""], { type: "application/xml" }), f.filename);
     } else {
-      const bytes = Uint8Array.from(atob(f.base64 ?? ""), (c) => c.charCodeAt(0));
-      download(new Blob([bytes], { type: "application/pdf" }), f.filename);
+      pdf(f.base64 ?? "", f.filename);
     }
   });
 
@@ -160,6 +173,12 @@ export function InvoicePanel({
           <Button size="sm" onClick={emit} disabled={!!busy || !problems || problems.length > 0}>
             {busy === "emit" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Receipt className="h-4 w-4 mr-1" />}
             {current ? "Emitir de novo" : "Emitir nota fiscal"}
+          </Button>
+        )}
+        {canEmit && (
+          <Button size="sm" variant="outline" onClick={preview} disabled={!!busy || !problems || problems.length > 0}>
+            {busy === "preview" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Eye className="h-4 w-4 mr-1" />}
+            Pré-visualizar
           </Button>
         )}
         {current?.status === "processando" && (

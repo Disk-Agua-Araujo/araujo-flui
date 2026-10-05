@@ -486,6 +486,9 @@ export const adminApi = {
 
   checkInvoice: (orderId: string) =>
     callAdminApi<{ problems: string[]; environment: 1 | 2 }>("invoices.check", { orderId }),
+  /** DANFE de conferência, sem valor fiscal e sem passar pela SEFAZ. */
+  previewInvoice: (orderId: string) =>
+    callAdminApi<{ base64?: string; filename?: string; problems?: string[] }>("invoices.preview", { orderId }),
   /** Devolve a nota, ou a lista do que falta acertar antes de emitir. */
   emitInvoice: (orderId: string) =>
     callAdminApi<{ invoice?: InvoiceRow; problems?: string[] }>("invoices.emit", { orderId }),
