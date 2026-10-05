@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildNfePayload, checkNfe, describeNfeError, type NfeInput } from "../../supabase/functions/_shared/nfe";
+import { buildNfePayload, checkNfe, describeNfeError, HOMOLOGACAO_NOME, type NfeInput } from "../../supabase/functions/_shared/nfe";
 
 const item = (over: Partial<NfeInput["items"][number]> = {}): NfeInput["items"][number] => ({
   productId: "a1b2c3d4-0000-0000-0000-000000000000",
@@ -109,6 +109,11 @@ describe("buildNfePayload", () => {
       payment: { method: null, method2: null, amount1: null, amount2: null, isSplit: false, dueDate: "2026-11-01", paidAt: null },
     }), 2) as any;
     expect(prazo.Pagamentos).toEqual([{ IndicadorPagamento: 1, FormaPagamento: "05", VlPago: 30 }]);
+  });
+
+  it("em homologação o destinatário leva o nome exigido pela SEFAZ; em produção, o nome real", () => {
+    expect((buildNfePayload(base(), 2) as any).Cliente.NmCliente).toBe(HOMOLOGACAO_NOME);
+    expect((buildNfePayload(base(), 1) as any).Cliente.NmCliente).toBe("Maria Silva");
   });
 
   it("retirada na loja é presencial e sem transporte", () => {

@@ -53,6 +53,9 @@ export type NfeInput = {
 };
 
 const digits = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "");
+
+// Em homologação a SEFAZ recusa (rejeição 598) destinatário com outro nome.
+export const HOMOLOGACAO_NOME = "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL";
 const cents = (n: number) => Math.round(n * 100);
 
 // Forma de pagamento da NF-e (tPag). Pix do Disk é chave fixa (estático, 20);
@@ -195,7 +198,7 @@ export function buildNfePayload(input: NfeInput, ambiente: 1 | 2): Record<string
     Observacao: `Pedido ${input.orderId.slice(0, 8).toUpperCase()}`,
     Cliente: {
       CpfCnpj: isPJ ? digits(c.cnpj) : digits(c.cpf),
-      NmCliente: c.name,
+      NmCliente: ambiente === 2 ? HOMOLOGACAO_NOME : c.name,
       IndicadorIe: ieIndicator,
       ...(ieIndicator === 1 ? { Ie: digits(c.ie) } : {}),
       Endereco: {

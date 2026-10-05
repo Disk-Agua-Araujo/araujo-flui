@@ -1596,6 +1596,24 @@ serve(async (req) => {
       return json({ data: { problems: checkNfe(input), environment: NFE_AMBIENTE } });
     }
 
+    // Testa token, certificado e SEFAZ de uma vez, sem precisar de pedido.
+    if (action === "invoices.sefazStatus") {
+      const r = await brasilNfe<{
+        CodStatusRespostaSefaz?: number; DsStatusRespostaSefaz?: string; DsTipoAmbiente?: string;
+        DsEstadoEmitente?: string; erros?: { descricao?: string; correcao?: string }[];
+      }>("ConsultarStatusSefaz", { ModeloDocumento: 55 });
+      return json({
+        data: {
+          ok: r.CodStatusRespostaSefaz === 107,
+          message: r.DsStatusRespostaSefaz
+            ? `${r.CodStatusRespostaSefaz}: ${r.DsStatusRespostaSefaz}`
+            : describeNfeError(r as Record<string, never>),
+          environment: NFE_AMBIENTE,
+          detail: [r.DsTipoAmbiente, r.DsEstadoEmitente].filter(Boolean).join(" · "),
+        },
+      });
+    }
+
     // Monta o DANFE com a tarja "sem valor fiscal" sem passar pela SEFAZ.
     // Serve para conferir a nota antes de emitir, e funciona sem certificado.
     if (action === "invoices.preview") {

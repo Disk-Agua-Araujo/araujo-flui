@@ -486,6 +486,9 @@ export const adminApi = {
 
   checkInvoice: (orderId: string) =>
     callAdminApi<{ problems: string[]; environment: 1 | 2 }>("invoices.check", { orderId }),
+  /** Confere token, certificado e SEFAZ. ok quando a SEFAZ responde 107 (em operação). */
+  sefazStatus: () =>
+    callAdminApi<{ ok: boolean; message: string; environment: 1 | 2; detail: string }>("invoices.sefazStatus"),
   /** DANFE de conferência, sem valor fiscal e sem passar pela SEFAZ. */
   previewInvoice: (orderId: string) =>
     callAdminApi<{ base64?: string; filename?: string; problems?: string[] }>("invoices.preview", { orderId }),

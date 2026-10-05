@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { FileText, FileCode, Loader2, RefreshCw, Receipt, Ban, PenLine, Eye } from "lucide-react";
+import { FileText, FileCode, Loader2, RefreshCw, Receipt, Ban, PenLine, Eye, Wifi } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { adminApi, type InvoiceRow, type InvoiceSummary } from "@/services/admin-api";
 
@@ -58,6 +58,7 @@ export function InvoicePanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [form, setForm] = useState<"cancel" | "correct" | null>(null);
   const [text, setText] = useState("");
+  const [sefaz, setSefaz] = useState<{ ok: boolean; message: string; detail: string } | null>(null);
 
   // Nota de teste (homologação) não impede emitir a nota real depois que o
   // sistema passa para produção.
@@ -115,6 +116,10 @@ export function InvoicePanel({
       return;
     }
     pdf(r.base64 ?? "", r.filename ?? "previa.pdf");
+  });
+
+  const testSefaz = () => run("sefaz", async () => {
+    setSefaz(await adminApi.sefazStatus());
   });
 
   const refresh = () => run("refresh", async () => (await adminApi.refreshInvoice(current!.id)).invoice);
@@ -204,6 +209,21 @@ export function InvoicePanel({
           </>
         )}
       </div>
+
+      {canEmit && (
+        <div className="text-xs">
+          <button type="button" className="text-muted-foreground underline inline-flex items-center gap-1 disabled:opacity-50" onClick={testSefaz} disabled={!!busy}>
+            {busy === "sefaz" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wifi className="h-3 w-3" />}
+            Testar conexão com a SEFAZ
+          </button>
+          {sefaz && (
+            <p className={sefaz.ok ? "text-green-700 mt-1" : "text-destructive mt-1"}>
+              {sefaz.ok ? "Conexão funcionando. " : "A conexão não está pronta. "}
+              {sefaz.message}{sefaz.detail ? ` (${sefaz.detail})` : ""}
+            </p>
+          )}
+        </div>
+      )}
 
       {form && (
         <div className="space-y-2 border-t pt-2">
