@@ -29,6 +29,7 @@ import {
 } from "@/components/admin/SplitPaymentSection";
 import { PaymentEditDialog } from "@/components/admin/PaymentEditDialog";
 import { InvoiceBadge, InvoicePanel, latestInvoice } from "@/components/admin/InvoicePanel";
+import { lookupCep } from "@/lib/cep";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDebounce } from "@/hooks/use-debounce";
 import {
@@ -722,6 +723,25 @@ function EditOrderModal({
   const [neighborhood, setNeighborhood] = useState("");
   const [city, setCity] = useState("");
   const [complement, setComplement] = useState("");
+  const [zip, setZip] = useState("");
+  const [ibge, setIbge] = useState("");
+
+  // CEP completo acha cidade e código IBGE; rua e bairro só se estiverem vazios.
+  const handleZipChange = async (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 8);
+    setZip(digits.length <= 5 ? digits : `${digits.slice(0, 5)}-${digits.slice(5)}`);
+    setIbge("");
+    if (digits.length !== 8) return;
+    const found = await lookupCep(digits);
+    if (!found) {
+      toast({ title: "CEP não encontrado", variant: "destructive" });
+      return;
+    }
+    setIbge(found.ibge);
+    if (found.city) setCity(found.city);
+    setStreet((prev) => prev.trim() ? prev : found.street);
+    setNeighborhood((prev) => prev.trim() ? prev : found.neighborhood);
+  };
 
   // Items
   const [items, setItems] = useState<{ product_id: string; qty: number; name: string; price: string }[]>([]);
@@ -744,6 +764,9 @@ function EditOrderModal({
     setNeighborhood(order.addresses?.neighborhood || "");
     setCity(order.addresses?.city || "Santo André");
     setComplement(order.addresses?.complement || "");
+    const z = (order.addresses?.zip || "").replace(/\D/g, "");
+    setZip(z.length > 5 ? `${z.slice(0, 5)}-${z.slice(5)}` : z);
+    setIbge(order.addresses?.ibge_code || "");
     setItems(order.order_items.map((i) => ({
       product_id: i.product_id || "",
       qty: i.qty,
@@ -789,7 +812,9 @@ function EditOrderModal({
           scheduled_time: scheduleEnabled ? (scheduledTime || deliveryTime || null) : null,
         },
         items: items.filter((i) => i.product_id && i.qty > 0).map((i) => ({ product_id: i.product_id, qty: i.qty, unit_price: parseItemPrice(i.price) })),
-        address: fulfillmentType === "delivery" ? { street, number, neighborhood, city, complement } : null,
+        address: fulfillmentType === "delivery"
+          ? { street, number, neighborhood, city, complement, zip: zip.replace(/\D/g, "") || null, ibge_code: ibge || null }
+          : null,
       });
       toast({ title: "Pedido atualizado com sucesso." });
       onSaved();
@@ -895,6 +920,7 @@ function EditOrderModal({
           {fulfillmentType === "delivery" && (
             <div className="space-y-2 border rounded-md p-3">
               <p className="text-xs font-medium">Endereço</p>
+              <Input placeholder="CEP (necessário para nota fiscal)" value={zip} onChange={(e) => handleZipChange(e.target.value)} maxLength={9} inputMode="numeric" />
               <div className="grid grid-cols-3 gap-2">
                 <Input placeholder="Rua" value={street} onChange={(e) => setStreet(e.target.value)} className="col-span-2" />
                 <Input placeholder="Nº" value={number} onChange={(e) => setNumber(e.target.value)} />

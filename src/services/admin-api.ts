@@ -73,7 +73,7 @@ export type AdminOrderRow = {
   paid_at: string | null;
   paid_by: string | null;
   customers: { id: string; name: string; phone: string | null; cnpj: string | null; type?: string } | null;
-  addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null; reference?: string | null } | null;
+  addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null; reference?: string | null; zip?: string | null; ibge_code?: string | null } | null;
   order_items: { qty: number; product_id?: string; unit_price?: number | null; products: { name: string } | null }[];
   invoices?: InvoiceSummary[];
   rider_name?: string;
@@ -319,7 +319,11 @@ export const adminApi = {
   createAdminOrder: (payload: {
     channel: "admin" | "ligacao" | "whatsapp";
     customer?: { name: string; phone: string; type: "PF" | "PJ"; cnpj?: string | null; email?: string | null };
-    address?: { street: string; number: string; neighborhood: string; city?: string; state?: string; complement?: string; zip?: string };
+    /** Cliente escolhido na busca: vincula pelo id, mesmo sem telefone. */
+    customer_id?: string | null;
+    /** Endereço do cadastro reaproveitado sem alteração. */
+    address_id?: string | null;
+    address?: { street: string; number: string; neighborhood: string; city?: string; state?: string; complement?: string; zip?: string; ibge_code?: string };
     items: { product_id: string; qty: number; unit_price?: number | null }[];
     notes?: string;
     delivery_date?: string;
@@ -434,6 +438,8 @@ export const adminApi = {
       city?: string;
       complement?: string | null;
       reference?: string | null;
+      zip?: string | null;
+      ibge_code?: string | null;
     } | null;
   }) => callAdminApi<{ ok: boolean }>("orders.update", payload),
 

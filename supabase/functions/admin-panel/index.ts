@@ -219,6 +219,17 @@ async function loadNfeInput(orderId: string): Promise<NfeInput> {
     ?? c?.addresses?.find((a: any) => a.is_primary)
     ?? c?.addresses?.[0]
     ?? null;
+  // Pedido antigo, com endereço sem CEP: usa o CEP do mesmo endereço no
+  // cadastro do cliente, se existir.
+  if (addr && !digitsOrNull(addr.zip)) {
+    const twin = c?.addresses?.find((a: any) =>
+      digitsOrNull(a.zip) && normalizeSearch(a.street || "") === normalizeSearch(addr.street || "") &&
+      String(a.number || "").trim() === String(addr.number || "").trim());
+    if (twin) {
+      addr.zip = twin.zip;
+      addr.ibge_code = addr.ibge_code || twin.ibge_code;
+    }
+  }
 
   if (addr && !addr.ibge_code && digitsOrNull(addr.zip)?.length === 8) {
     addr.ibge_code = await lookupIbge(digitsOrNull(addr.zip)!);
@@ -534,7 +545,7 @@ serve(async (req) => {
         .select(`
           id, channel, delivery_date, delivery_time, status, notes, created_at, fulfillment_type, payment_method, payment_method_2, payment_amount_1, payment_amount_2, change_for_2, is_split_payment, total_amount, change_for, rider_id, pix_paid, pix_paid_at, em_rota_at, updated_at, updated_by, scheduled_date, scheduled_time, reminder_enabled, reminder_dismissed, payment_due_date, paid_at, paid_by,
           customers(id, name, phone, cnpj, type),
-          addresses(street, number, neighborhood, city, complement, reference),
+          addresses(street, number, neighborhood, city, complement, reference, zip, ibge_code),
           order_items(qty, product_id, unit_price, products(name)),
           invoices(id, status, numero, serie, environment, message, created_at)
         `, { count: "exact" })
@@ -606,8 +617,48 @@ serve(async (req) => {
       let customerId: string | null = null;
       let addressId: string | null = null;
 
-      // Customer is optional for pickup / walk-in orders
-      if (customer?.name && customer?.phone) {
+      // Cliente escolhido na busca entra pelo id: cliente sem telefone (comum
+      // em loja de shopping) também fica vinculado ao pedido. O endereço
+      // escolhido é reaproveitado; endereço digitado vira um novo do cliente.
+      if (payload?.customer_id) {
+        const { data: existingCustomer, error: custErr } = await adminClient
+          .from("customers")
+          .select("id, addresses(id)")
+          .eq("id", payload.customer_id)
+          .single();
+        if (custErr || !existingCustomer) throw new Error("Cliente não encontrado.");
+        customerId = existingCustomer.id;
+        const ownAddresses = (existingCustomer.addresses ?? []) as { id: string }[];
+
+        if (fulfillmentType === "delivery") {
+          if (payload?.address_id && ownAddresses.some((a) => a.id === payload.address_id)) {
+            addressId = payload.address_id;
+            const fill: Record<string, unknown> = {};
+            if (digitsOrNull(address?.zip)) fill.zip = digitsOrNull(address?.zip);
+            if (digitsOrNull(address?.ibge_code)) fill.ibge_code = digitsOrNull(address?.ibge_code);
+            if (Object.keys(fill).length) await adminClient.from("addresses").update(fill).eq("id", addressId);
+          } else if (address?.street && address?.number) {
+            const { data: addressRow, error: addressError } = await adminClient
+              .from("addresses")
+              .insert({
+                customer_id: customerId,
+                street: address.street,
+                number: address.number,
+                neighborhood: address.neighborhood || "—",
+                city: address.city || "Santo André",
+                state: address.state || "SP",
+                complement: address.complement || null,
+                zip: digitsOrNull(address.zip),
+                ibge_code: digitsOrNull(address.ibge_code),
+                is_primary: ownAddresses.length === 0,
+              })
+              .select("id")
+              .single();
+            if (addressError) throw addressError;
+            addressId = addressRow.id;
+          }
+        }
+      } else if (customer?.name && customer?.phone) {
         const customerRow = await upsertCustomerByPhone({
           name: customer.name,
           phone: customer.phone,
@@ -629,7 +680,8 @@ serve(async (req) => {
               city: address.city || "Santo André",
               state: address.state || "SP",
               complement: address.complement || null,
-              zip: address.zip || null,
+              zip: digitsOrNull(address.zip),
+              ibge_code: digitsOrNull(address.ibge_code),
               is_primary: true,
             })
             .select("id")
@@ -650,7 +702,8 @@ serve(async (req) => {
             city: address.city || "Santo André",
             state: address.state || "SP",
             complement: address.complement || null,
-            zip: address.zip || null,
+            zip: digitsOrNull(address.zip),
+            ibge_code: digitsOrNull(address.ibge_code),
           })
           .select("id")
           .single();
@@ -1370,6 +1423,7 @@ serve(async (req) => {
             city: address.city || "Santo André",
             complement: address.complement || null,
             reference: address.reference || null,
+            ...("zip" in address ? { zip: digitsOrNull(address.zip), ibge_code: digitsOrNull(address.ibge_code) } : {}),
           }).eq("id", order.address_id);
           if (addrErr) throw addrErr;
         } else {
@@ -1385,6 +1439,8 @@ serve(async (req) => {
               state: "SP",
               complement: address.complement || null,
               reference: address.reference || null,
+              zip: digitsOrNull(address.zip),
+              ibge_code: digitsOrNull(address.ibge_code),
             })
             .select("id")
             .single();
@@ -1662,7 +1718,9 @@ serve(async (req) => {
             ? `${r.CodStatusRespostaSefaz}: ${r.DsStatusRespostaSefaz}`
             : describeNfeError(r as Record<string, never>),
           environment: NFE_AMBIENTE,
-          detail: [r.DsTipoAmbiente, r.DsEstadoEmitente].filter(Boolean).join(" · "),
+          // A consulta de status não recebe ambiente e responde pelo de produção;
+          // a emissão continua no ambiente de NFE_AMBIENTE. Mostra só a UF.
+          detail: r.DsEstadoEmitente ?? "",
         },
       });
     }

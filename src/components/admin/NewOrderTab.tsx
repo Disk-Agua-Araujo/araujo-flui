@@ -20,6 +20,7 @@ import { PaymentIcon } from "@/components/PaymentIcon";
 import { SplitPaymentSection, emptySplitPayment, validateSplitPayment, splitPaymentToPayload, type SplitPaymentValue } from "@/components/admin/SplitPaymentSection";
 import { cn } from "@/lib/utils";
 import { maskCnpj, isValidCnpj } from "@/lib/cnpj";
+import { lookupCep } from "@/lib/cep";
 import { useToast } from "@/hooks/use-toast";
 import { trackEvent } from "@/hooks/use-analytics";
 import { adminApi, type AdminProductRow, type AdminCustomerRow, type AdminCategoryRow } from "@/services/admin-api";
@@ -41,6 +42,11 @@ const PREFILL_KEY = "admin-new-order-customer";
 const SLUG_CARVAO = "carvao";
 
 type CustomerAddress = NonNullable<AdminCustomerRow["addresses"]>[number];
+
+function maskCep(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  return digits.length <= 5 ? digits : `${digits.slice(0, 5)}-${digits.slice(5)}`;
+}
 
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -97,6 +103,9 @@ export function NewOrderTab() {
   const [bairro, setBairro] = useState("");
   const [cidade, setCidade] = useState("Santo André");
   const [complemento, setComplemento] = useState("");
+  const [cep, setCep] = useState("");
+  const [ibge, setIbge] = useState("");
+  const [cepLoading, setCepLoading] = useState(false);
   const [obs, setObs] = useState("");
   const [date, setDate] = useState<Date>();
   const [hora, setHora] = useState("");
@@ -242,6 +251,28 @@ export function NewOrderTab() {
     setBairro(addr.neighborhood);
     setCidade(addr.city || "Santo André");
     setComplemento(addr.complement ?? "");
+    setCep(maskCep(addr.zip ?? ""));
+    setIbge(addr.ibge_code ?? "");
+  };
+
+  // CEP completo acha cidade e o código IBGE (exigido na nota). Rua e bairro só
+  // entram se estiverem vazios, para não apagar o que o atendente digitou.
+  const handleCepChange = async (value: string) => {
+    const masked = maskCep(value);
+    setCep(masked);
+    setIbge("");
+    if (masked.replace(/\D/g, "").length !== 8) return;
+    setCepLoading(true);
+    const found = await lookupCep(masked);
+    setCepLoading(false);
+    if (!found) {
+      toast({ title: "CEP não encontrado", description: "Confira o número ou siga sem ele.", variant: "destructive" });
+      return;
+    }
+    setIbge(found.ibge);
+    if (found.city) setCidade(found.city);
+    setRua((prev) => prev.trim() ? prev : found.street);
+    setBairro((prev) => prev.trim() ? prev : found.neighborhood);
   };
 
   const selectCustomer = (c: AdminCustomerRow) => {
@@ -324,6 +355,8 @@ export function NewOrderTab() {
     setBairro("");
     setCidade("Santo André");
     setComplemento("");
+    setCep("");
+    setIbge("");
     setObs("");
     setDate(undefined);
     setHora("");
@@ -380,9 +413,18 @@ export function NewOrderTab() {
     try {
       const hasCustomer = nome.trim() && telefone.trim();
       const hasAddress = rua.trim() && numero.trim();
+      // Endereço do cadastro sem alteração é reaproveitado, em vez de virar
+      // um endereço novo a cada pedido.
+      const pickedAddress = customerAddresses.find((a) => a.id === selectedAddressId);
+      const sameAsPicked = !!pickedAddress
+        && pickedAddress.street.trim() === rua.trim()
+        && pickedAddress.number.trim() === numero.trim()
+        && (pickedAddress.complement ?? "").trim() === complemento.trim();
 
       const result = await adminApi.createAdminOrder({
         channel: canal,
+        customer_id: selectedCustomerId,
+        address_id: selectedCustomerId && sameAsPicked ? selectedAddressId : null,
         customer: hasCustomer ? {
           name: nome.trim(),
           phone: telefone,
@@ -397,6 +439,8 @@ export function NewOrderTab() {
           city: cidade.trim(),
           state: "SP",
           complement: complemento.trim() || undefined,
+          zip: cep.replace(/\D/g, "") || undefined,
+          ibge_code: ibge || undefined,
         } : undefined,
         items: selectedItems.map((i) => ({ product_id: i.productId, qty: i.qtd, unit_price: i.unitPrice })),
         notes: obs.trim() || undefined,
@@ -600,6 +644,13 @@ export function NewOrderTab() {
         <Card>
           <CardHeader><CardTitle className="text-lg">Endereço</CardTitle></CardHeader>
           <CardContent className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label className="flex items-center gap-1">CEP {cepLoading && <Loader2 className="h-3 w-3 animate-spin" />}</Label>
+                <Input value={cep} onChange={(e) => handleCepChange(e.target.value)} placeholder="00000-000" maxLength={9} inputMode="numeric" />
+              </div>
+              <p className="col-span-2 self-end text-xs text-muted-foreground pb-2">Necessário para emitir nota fiscal. Preenche rua, bairro e cidade.</p>
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="col-span-2"><Label>Rua</Label><Input value={rua} onChange={(e) => setRua(e.target.value)} /></div>
               <div><Label>Nº</Label><Input value={numero} onChange={(e) => setNumero(e.target.value)} /></div>

@@ -4,12 +4,13 @@ import { MemoryRouter } from "react-router-dom";
 
 const listProducts = vi.fn();
 const createAdminOrder = vi.fn();
+const searchCustomers = vi.fn();
 
 vi.mock("@/services/admin-api", () => ({
   adminApi: {
     listProducts: (...args: unknown[]) => listProducts(...args),
     createAdminOrder: (...args: unknown[]) => createAdminOrder(...args),
-    searchCustomers: vi.fn().mockResolvedValue([]),
+    searchCustomers: (...args: unknown[]) => searchCustomers(...args),
   },
 }));
 vi.mock("@/hooks/use-analytics", () => ({ trackEvent: vi.fn() }));
@@ -47,6 +48,7 @@ describe("Novo pedido: preço por item", () => {
       tiers: [],
     });
     createAdminOrder.mockReset().mockResolvedValue({ order_id: "abcdef1234", customer_id: null });
+    searchCustomers.mockReset().mockResolvedValue([]);
   });
 
   it("usa o preço do cadastro, avisa item sem preço e soma tudo", async () => {
@@ -94,5 +96,28 @@ describe("Novo pedido: preço por item", () => {
 
     fireEvent.change(total, { target: { value: "24" } });
     expect(screen.getByText(/Desconto de R\$\s2,00/)).toBeInTheDocument();
+  });
+
+  it("cliente sem telefone escolhido na busca fica no pedido, com o endereço e o CEP do cadastro", async () => {
+    searchCustomers.mockResolvedValue([{
+      id: "cvc", name: "CVC ATRIUM", phone: null, type: "PJ", cnpj: "11.763.247/0001-86", email: null, created_at: "",
+      addresses: [{
+        id: "end1", street: "Rua Giovanni Battista Pirelli", number: "155", neighborhood: "Vila Homero Thon",
+        city: "Santo André", state: "SP", complement: "Luc 235", zip: "09111340", ibge_code: "3547809", reference: null, is_primary: true,
+      }],
+    }]);
+    renderTab();
+    fireEvent.change(screen.getByPlaceholderText("Nome ou telefone..."), { target: { value: "CVC" } });
+    fireEvent.click(await screen.findByText("CVC ATRIUM", {}, { timeout: 2000 }));
+    expect(screen.getByDisplayValue("09111-340")).toBeInTheDocument();
+
+    await addOne("Fardo Crystal");
+    fireEvent.click(screen.getByRole("button", { name: /Salvar pedido/ }));
+
+    await waitFor(() => expect(createAdminOrder).toHaveBeenCalled());
+    const payload = createAdminOrder.mock.calls[0][0];
+    expect(payload.customer_id).toBe("cvc");
+    expect(payload.address_id).toBe("end1");
+    expect(payload.address).toMatchObject({ zip: "09111340", ibge_code: "3547809" });
   });
 });
