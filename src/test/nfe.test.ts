@@ -10,6 +10,7 @@ const item = (over: Partial<NfeInput["items"][number]> = {}): NfeInput["items"][
   cest: "0300400",
   cfop: "5405",
   cstCsosn: "500",
+  pisCofinsCst: "49",
   origem: 0,
   unidade: "UN",
   taxGroup: null,
@@ -60,8 +61,14 @@ describe("checkNfe", () => {
     expect(p.Cliente.NmCliente).toBe("MARIA SILVA ME");
   });
 
-  it("grupo tributário dispensa CFOP e CST", () => {
-    expect(checkNfe(base({ items: [item({ cfop: null, cstCsosn: null, taxGroup: "AGUA" })] }))).toEqual([]);
+  it("grupo tributário dispensa CFOP, CST e PIS/COFINS", () => {
+    expect(checkNfe(base({ items: [item({ cfop: null, cstCsosn: null, pisCofinsCst: null, taxGroup: "AGUA" })] }))).toEqual([]);
+  });
+
+  it("sem grupo, cobra o CST de PIS/COFINS", () => {
+    expect(checkNfe(base({ items: [item({ pisCofinsCst: null })] }))).toEqual([
+      "Galão Crystal 20L: falta o CST de PIS/COFINS no cadastro do produto.",
+    ]);
   });
 });
 
@@ -80,7 +87,11 @@ describe("buildNfePayload", () => {
     });
     expect(p.Produtos[0]).toMatchObject({
       NCM: "22011000", CEST: "0300400", CFOP: 5405, Quantidade: 2, ValorUnitario: 15, ValorTotal: 30,
-      Imposto: { ICMS: { CodSituacaoTributaria: "500" } },
+      Imposto: {
+        ICMS: { CodSituacaoTributaria: "500" },
+        PIS: { CodSituacaoTributaria: "49", Aliquota: 0 },
+        COFINS: { CodSituacaoTributaria: "49", Aliquota: 0 },
+      },
     });
   });
 

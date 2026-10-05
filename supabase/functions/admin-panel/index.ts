@@ -208,7 +208,7 @@ async function loadNfeInput(orderId: string): Promise<NfeInput> {
       customers(name, legal_name, type, cpf, cnpj, ie, ie_indicator, email, phone,
         addresses(id, street, number, neighborhood, city, state, zip, complement, ibge_code, is_primary)),
       addresses(id, street, number, neighborhood, city, state, zip, complement, ibge_code),
-      order_items(qty, unit_price, product_id, products(name, ncm, cest, cfop, cst_csosn, origem, unidade, tax_group))
+      order_items(qty, unit_price, product_id, products(name, ncm, cest, cfop, cst_csosn, pis_cofins_cst, origem, unidade, tax_group))
     `)
     .eq("id", orderId)
     .single();
@@ -267,6 +267,7 @@ async function loadNfeInput(orderId: string): Promise<NfeInput> {
       cest: i.products?.cest ?? null,
       cfop: i.products?.cfop ?? null,
       cstCsosn: i.products?.cst_csosn ?? null,
+      pisCofinsCst: i.products?.pis_cofins_cst ?? null,
       origem: i.products?.origem ?? 0,
       unidade: i.products?.unidade ?? "UN",
       taxGroup: i.products?.tax_group ?? null,
@@ -1117,7 +1118,7 @@ serve(async (req) => {
       // Preço e dados fiscais só entram quando vêm no payload: a segunda
       // chamada do upload de imagem não manda esses campos e não pode apagá-los.
       if ("price" in product) productData.price = toUnitPrice(product.price);
-      for (const key of ["ncm", "cest", "cfop", "cst_csosn"]) {
+      for (const key of ["ncm", "cest", "cfop", "cst_csosn", "pis_cofins_cst"]) {
         if (key in product) productData[key] = digitsOrNull(product[key]);
       }
       if ("origem" in product) {

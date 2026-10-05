@@ -260,6 +260,7 @@ export function ProductsTab() {
           cest: editProduct.cest || null,
           cfop: editProduct.cfop || null,
           cst_csosn: editProduct.cst_csosn || null,
+          pis_cofins_cst: editProduct.pis_cofins_cst || null,
           origem: editProduct.origem ?? 0,
           unidade: editProduct.unidade || "UN",
           tax_group: editProduct.tax_group?.trim() || null,
@@ -600,13 +601,14 @@ export function ProductsTab() {
                 <div>
                   <Label>Grupo tributário (Brasil NFe)</Label>
                   <Input placeholder="Código do grupo cadastrado no painel da Brasil NFe" value={editProduct.tax_group ?? ""} onChange={(e) => setEditProduct({ ...editProduct, tax_group: e.target.value })} />
-                  <p className="text-xs text-muted-foreground mt-1">Com o grupo preenchido, CFOP e CST vêm dele e podem ficar vazios.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Com o grupo preenchido, CFOP, CST e PIS/COFINS vêm dele e podem ficar vazios. Empresa com alíquota de PIS/COFINS deve usar o grupo.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div><Label>NCM</Label><Input inputMode="numeric" maxLength={8} placeholder="00000000" value={editProduct.ncm ?? ""} onChange={(e) => setEditProduct({ ...editProduct, ncm: e.target.value.replace(/\D/g, "") })} /></div>
                   <div><Label>CEST</Label><Input inputMode="numeric" maxLength={7} placeholder="Se houver" value={editProduct.cest ?? ""} onChange={(e) => setEditProduct({ ...editProduct, cest: e.target.value.replace(/\D/g, "") })} /></div>
                   <div><Label>CFOP</Label><Input inputMode="numeric" maxLength={4} placeholder="0000" value={editProduct.cfop ?? ""} onChange={(e) => setEditProduct({ ...editProduct, cfop: e.target.value.replace(/\D/g, "") })} /></div>
-                  <div><Label>CST ou CSOSN</Label><Input inputMode="numeric" maxLength={3} value={editProduct.cst_csosn ?? ""} onChange={(e) => setEditProduct({ ...editProduct, cst_csosn: e.target.value.replace(/\D/g, "") })} /></div>
+                  <div><Label>CST ou CSOSN (ICMS)</Label><Input inputMode="numeric" maxLength={3} value={editProduct.cst_csosn ?? ""} onChange={(e) => setEditProduct({ ...editProduct, cst_csosn: e.target.value.replace(/\D/g, "") })} /></div>
+                  <div><Label>CST de PIS/COFINS</Label><Input inputMode="numeric" maxLength={2} placeholder="Ex.: 49" value={editProduct.pis_cofins_cst ?? ""} onChange={(e) => setEditProduct({ ...editProduct, pis_cofins_cst: e.target.value.replace(/\D/g, "") })} /></div>
                   <div>
                     <Label>Origem</Label>
                     <Select value={String(editProduct.origem ?? 0)} onValueChange={(v) => setEditProduct({ ...editProduct, origem: Number(v) })}>

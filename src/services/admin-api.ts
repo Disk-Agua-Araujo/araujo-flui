@@ -156,6 +156,7 @@ export type AdminProductRow = {
   cest: string | null;
   cfop: string | null;
   cst_csosn: string | null;
+  pis_cofins_cst: string | null;
   origem: number;
   unidade: string;
   /** Grupo tributário do painel da Brasil NFe; dispensa CFOP e CST no item. */

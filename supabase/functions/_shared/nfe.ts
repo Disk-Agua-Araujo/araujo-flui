@@ -10,6 +10,9 @@ export type NfeItem = {
   cest: string | null;
   cfop: string | null;
   cstCsosn: string | null;
+  /** CST de PIS e de COFINS (o mesmo para os dois). Alíquota vai zerada:
+   *  regime com alíquota de PIS/COFINS deve usar o grupo tributário. */
+  pisCofinsCst?: string | null;
   origem: number;
   unidade: string;
   taxGroup: string | null;
@@ -98,6 +101,8 @@ export function checkNfe(input: NfeInput): string[] {
     if (digits(it.ncm).length !== 8) problems.push(`${it.name}: falta o NCM no cadastro do produto.`);
     if (!it.taxGroup && (digits(it.cfop).length !== 4 || !digits(it.cstCsosn))) {
       problems.push(`${it.name}: falta a tributação (grupo tributário, ou CFOP e CST) no cadastro do produto.`);
+    } else if (!it.taxGroup && !digits(it.pisCofinsCst)) {
+      problems.push(`${it.name}: falta o CST de PIS/COFINS no cadastro do produto.`);
     }
   }
 
@@ -165,7 +170,12 @@ export function buildNfePayload(input: NfeInput, ambiente: 1 | 2): Record<string
       produto.CodTributacao = it.taxGroup;
     } else {
       produto.CFOP = Number(digits(it.cfop));
-      produto.Imposto = { ICMS: { CodSituacaoTributaria: digits(it.cstCsosn) } };
+      const pisCofins = { CodSituacaoTributaria: digits(it.pisCofinsCst).padStart(2, "0"), Aliquota: 0 };
+      produto.Imposto = {
+        ICMS: { CodSituacaoTributaria: digits(it.cstCsosn) },
+        PIS: pisCofins,
+        COFINS: { ...pisCofins },
+      };
     }
     return produto;
   });
