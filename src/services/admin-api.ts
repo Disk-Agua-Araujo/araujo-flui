@@ -495,6 +495,10 @@ export const adminApi = {
     address?: { street: string; number: string; neighborhood: string; city?: string; complement?: string };
   }) => callAdminApi<{ customer_id: string }>("orders.saveCustomerFromOrder", payload),
 
+  /** Vincula um cliente já cadastrado a um pedido existente. */
+  linkOrderCustomer: (orderId: string, customerId: string) =>
+    callAdminApi<{ customer: NonNullable<AdminOrderRow["customers"]> }>("orders.linkCustomer", { orderId, customerId }),
+
   dismissReminders: (orderIds: string[]) =>
     callAdminApi<{ ok: boolean }>("orders.dismissReminders", { orderIds }),
 

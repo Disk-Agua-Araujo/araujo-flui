@@ -20,9 +20,9 @@ import { PaymentIcon, PAYMENT_LABELS } from "@/components/PaymentIcon";
 import { Textarea } from "@/components/ui/textarea";
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { useToast } from "@/hooks/use-toast";
-import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
+import { format, startOfDay, startOfWeek, startOfMonth, addDays, addMonths } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
-import { adminApi, type AdminOrderRow, type DeliveryRider, type AdminProductRow, type OrderPaymentPayload, type InvoiceRow } from "@/services/admin-api";
+import { adminApi, type AdminOrderRow, type AdminCustomerRow, type DeliveryRider, type AdminProductRow, type OrderPaymentPayload, type InvoiceRow } from "@/services/admin-api";
 import {
   SplitPaymentSection, emptySplitPayment, splitPaymentFromOrder,
   splitPaymentToPayload, validateSplitPayment, type SplitPaymentValue,
@@ -98,6 +98,39 @@ const statusLabels: Record<string, string> = {
 };
 
 const PAGE_SIZE = 20;
+
+const MONTH_NAMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+/** "aaaa-mm-dd" como meia-noite no horário local (new Date("aaaa-mm-dd") seria UTC). */
+function localDay(iso: string) {
+  return new Date(`${iso}T00:00:00`);
+}
+
+/**
+ * Intervalo [início, fim) do filtro de período, pela data de criação do pedido.
+ * month é "aaaa-mm"; weekDay é qualquer dia da semana escolhida (semana de segunda a domingo).
+ */
+function periodRange(period: string, month: string, weekDay: string, from: string, to: string): { start?: Date; end?: Date } {
+  const now = new Date();
+  if (period === "today") return { start: startOfDay(now) };
+  if (period === "week") return { start: startOfWeek(now, { weekStartsOn: 1 }) };
+  if (period === "month") return { start: startOfMonth(now) };
+  if (period === "pick_month" && month) {
+    const start = localDay(`${month}-01`);
+    return { start, end: addMonths(start, 1) };
+  }
+  if (period === "pick_week" && weekDay) {
+    const start = startOfWeek(localDay(weekDay), { weekStartsOn: 1 });
+    return { start, end: addDays(start, 7) };
+  }
+  if (period === "range") {
+    return {
+      start: from ? localDay(from) : undefined,
+      end: to ? addDays(localDay(to), 1) : undefined,
+    };
+  }
+  return {};
+}
 
 function FulfillmentBadge({ type }: { type?: string }) {
   if (type === "pickup") {
@@ -476,6 +509,111 @@ function SaveCustomerModal({
             {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <UserPlus className="h-4 w-4 mr-1" />}
             Cadastrar cliente
           </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---- Link Existing Customer Modal ----
+// Cliente cadastrado depois que o pedido já foi feito: liga o pedido a ele.
+function LinkCustomerModal({
+  open, onOpenChange, order, onLinked,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  order: AdminOrderRow | null;
+  onLinked: (orderId: string, customer: NonNullable<AdminOrderRow["customers"]>) => void;
+}) {
+  const { toast } = useToast();
+  const [query, setQuery] = useState("");
+  const debouncedQuery = useDebounce(query, 300);
+  const [results, setResults] = useState<AdminCustomerRow[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [linkingId, setLinkingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) { setQuery(""); setResults([]); }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || debouncedQuery.trim().length < 2) { setResults([]); return; }
+    let cancelled = false;
+    setSearching(true);
+    adminApi.searchCustomers(debouncedQuery.trim())
+      .then((data) => { if (!cancelled) setResults(data ?? []); })
+      .catch(() => { if (!cancelled) setResults([]); })
+      .finally(() => { if (!cancelled) setSearching(false); });
+    return () => { cancelled = true; };
+  }, [debouncedQuery, open]);
+
+  const handleLink = async (c: AdminCustomerRow) => {
+    if (!order) return;
+    setLinkingId(c.id);
+    try {
+      const { customer } = await adminApi.linkOrderCustomer(order.id, c.id);
+      toast({ title: `Pedido vinculado a ${customer.name}.` });
+      onLinked(order.id, customer);
+      onOpenChange(false);
+    } catch (err) {
+      toast({ title: "Não foi possível vincular", description: err instanceof Error ? err.message : "Erro", variant: "destructive" });
+    } finally {
+      setLinkingId(null);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{order?.customers ? "Trocar cliente do pedido" : "Vincular cliente ao pedido"}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          {order?.customers && (
+            <p className="text-sm text-muted-foreground">Cliente atual: <strong className="text-foreground">{order.customers.name}</strong></p>
+          )}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              autoFocus
+              placeholder="Nome, telefone ou rua do cliente"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <div className="max-h-[320px] overflow-y-auto space-y-2">
+            {searching ? (
+              <p className="text-center text-sm text-muted-foreground py-4"><Loader2 className="inline h-4 w-4 animate-spin mr-1" />Buscando...</p>
+            ) : query.trim().length < 2 ? (
+              <p className="text-center text-sm text-muted-foreground py-4">Digite ao menos 2 letras para buscar.</p>
+            ) : results.length === 0 ? (
+              <p className="text-center text-sm text-muted-foreground py-4">Nenhum cliente encontrado.</p>
+            ) : (
+              results.map((c) => {
+                const addr = c.addresses?.find((a) => a.is_primary) ?? c.addresses?.[0];
+                const isCurrent = order?.customers?.id === c.id;
+                return (
+                  <div key={c.id} className="border rounded-lg p-2.5 flex items-center gap-2">
+                    <div className="flex-1 min-w-0 text-sm">
+                      <p className="font-medium truncate">{c.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {[c.phone, c.cnpj || c.cpf].filter(Boolean).join(" · ") || "Sem telefone"}
+                      </p>
+                      {addr && (
+                        <p className="text-xs text-muted-foreground truncate">{addr.street}, {addr.number} - {addr.neighborhood}</p>
+                      )}
+                    </div>
+                    <Button size="sm" variant={isCurrent ? "outline" : "default"} disabled={!!linkingId || isCurrent} onClick={() => handleLink(c)}>
+                      {linkingId === c.id && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+                      {isCurrent ? "Atual" : "Vincular"}
+                    </Button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">O endereço de entrega do pedido não muda.</p>
         </div>
       </DialogContent>
     </Dialog>
@@ -1071,6 +1209,10 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const debouncedSearch = useDebounce(search, 300);
   const [statusFilter, setStatusFilter] = useState("all");
   const [periodFilter, setPeriodFilter] = useState("all");
+  const [periodMonth, setPeriodMonth] = useState(() => format(new Date(), "yyyy-MM"));
+  const [periodWeekDay, setPeriodWeekDay] = useState(() => format(new Date(), "yyyy-MM-dd"));
+  const [periodFrom, setPeriodFrom] = useState("");
+  const [periodTo, setPeriodTo] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
   const [labelData, setLabelData] = useState<LabelData | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -1080,9 +1222,9 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const [invoiceFilter, setInvoiceFilter] = useState("all");
 
   // Debounce dropdown filters (300ms) — UI updates instantly, list refiltra depois
-  const filterKey = `${statusFilter}|${periodFilter}|${paymentFilter}|${pixSubFilter}|${scheduleFilter}|${invoiceFilter}`;
+  const filterKey = `${statusFilter}|${periodFilter}|${paymentFilter}|${pixSubFilter}|${scheduleFilter}|${invoiceFilter}|${periodMonth}|${periodWeekDay}|${periodFrom}|${periodTo}`;
   const debouncedFilterKey = useDebounce(filterKey, 300);
-  const [dStatus, dPeriod, dPayment, dPix, dSchedule, dInvoice] = debouncedFilterKey.split("|");
+  const [dStatus, dPeriod, dPayment, dPix, dSchedule, dInvoice, dMonth, dWeekDay, dFrom, dTo] = debouncedFilterKey.split("|");
   const isFiltering = filterKey !== debouncedFilterKey || search !== debouncedSearch;
 
   // Action button loading state (Editar / Imprimir / WhatsApp)
@@ -1104,6 +1246,15 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
 
   // Save customer from order
   const [saveCustomerOrder, setSaveCustomerOrder] = useState<AdminOrderRow | null>(null);
+
+  // Vincular cliente já cadastrado a um pedido existente
+  const [linkCustomerOrder, setLinkCustomerOrder] = useState<AdminOrderRow | null>(null);
+
+  const handleCustomerLinked = useCallback((orderId: string, customer: NonNullable<AdminOrderRow["customers"]>) => {
+    const patch = (o: AdminOrderRow): AdminOrderRow => (o.id === orderId ? { ...o, customers: customer } : o);
+    setOrders((prev) => prev.map(patch));
+    setSelectedOrder((prev) => (prev ? patch(prev) : prev));
+  }, []);
 
   // Edit order
   const [editOrder, setEditOrder] = useState<AdminOrderRow | null>(null);
@@ -1248,12 +1399,11 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     if (dStatus !== "all") result = result.filter((o) => o.status === dStatus);
 
     if (dPeriod !== "all") {
-      const now = new Date();
-      let cutoff: Date;
-      if (dPeriod === "today") cutoff = startOfDay(now);
-      else if (dPeriod === "week") cutoff = startOfWeek(now, { weekStartsOn: 1 });
-      else cutoff = startOfMonth(now);
-      result = result.filter((o) => new Date(o.created_at) >= cutoff);
+      const { start, end } = periodRange(dPeriod, dMonth, dWeekDay, dFrom, dTo);
+      result = result.filter((o) => {
+        const created = new Date(o.created_at);
+        return (!start || created >= start) && (!end || created < end);
+      });
     }
 
     if (dPayment !== "all") {
@@ -1312,7 +1462,19 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     }
 
     return result;
-  }, [orders, dStatus, dPeriod, dPayment, dPix, dSchedule, dInvoice, debouncedSearch, tickNow]);
+  }, [orders, dStatus, dPeriod, dPayment, dPix, dSchedule, dInvoice, dMonth, dWeekDay, dFrom, dTo, debouncedSearch, tickNow]);
+
+  // Anos do seletor de mês: do pedido mais antigo até o ano atual.
+  const periodYears = useMemo(() => {
+    const picked = Number(periodMonth.slice(0, 4));
+    const newest = Math.max(new Date().getFullYear(), picked);
+    const oldest = orders.reduce((min, o) => Math.min(min, new Date(o.created_at).getFullYear()), picked);
+    return Array.from({ length: newest - oldest + 1 }, (_, i) => newest - i);
+  }, [orders, periodMonth]);
+
+  const shiftMonth = (delta: number) => setPeriodMonth((m) => format(addMonths(localDay(`${m}-01`), delta), "yyyy-MM"));
+  const shiftWeek = (delta: number) => setPeriodWeekDay((d) => format(addDays(localDay(d), delta * 7), "yyyy-MM-dd"));
+  const pickedWeekStart = startOfWeek(localDay(periodWeekDay), { weekStartsOn: 1 });
 
   useEffect(() => {
     setCurrentPage(1);
@@ -1576,12 +1738,15 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
         </Select>
 
         <Select value={periodFilter} onValueChange={setPeriodFilter}>
-          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Período" /></SelectTrigger>
+          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Período" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
+            <SelectItem value="all">Período: Todos</SelectItem>
             <SelectItem value="today">Hoje</SelectItem>
-            <SelectItem value="week">Semana</SelectItem>
-            <SelectItem value="month">Mês</SelectItem>
+            <SelectItem value="week">Esta semana</SelectItem>
+            <SelectItem value="month">Este mês</SelectItem>
+            <SelectItem value="pick_month">Escolher mês</SelectItem>
+            <SelectItem value="pick_week">Escolher semana</SelectItem>
+            <SelectItem value="range">Entre datas</SelectItem>
           </SelectContent>
         </Select>
 
@@ -1636,6 +1801,59 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
           </Button>
         </div>
       </div>
+
+      {/* Período escolhido: mês, semana ou intervalo, pela data em que o pedido foi criado */}
+      {periodFilter === "pick_month" && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => shiftMonth(-1)} title="Mês anterior">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Select value={periodMonth.slice(5, 7)} onValueChange={(m) => setPeriodMonth(`${periodMonth.slice(0, 4)}-${m}`)}>
+            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {MONTH_NAMES.map((name, i) => (
+                <SelectItem key={name} value={String(i + 1).padStart(2, "0")}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={periodMonth.slice(0, 4)} onValueChange={(y) => setPeriodMonth(`${y}-${periodMonth.slice(5, 7)}`)}>
+            <SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {periodYears.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => shiftMonth(1)} title="Próximo mês">
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {periodFilter === "pick_week" && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => shiftWeek(-1)} title="Semana anterior">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-sm font-medium min-w-[170px] text-center">
+            {format(pickedWeekStart, "dd/MM")} a {format(addDays(pickedWeekStart, 6), "dd/MM/yyyy")}
+          </span>
+          <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => shiftWeek(1)} title="Próxima semana">
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <label className="text-xs text-muted-foreground flex items-center gap-2">
+            Ir para a semana do dia
+            <Input type="date" className="w-[160px]" value={periodWeekDay} onChange={(e) => { if (e.target.value) setPeriodWeekDay(e.target.value); }} />
+          </label>
+        </div>
+      )}
+
+      {periodFilter === "range" && (
+        <div className="flex items-center gap-2 flex-wrap text-sm">
+          <span className="text-muted-foreground">De</span>
+          <Input type="date" className="w-[160px]" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} />
+          <span className="text-muted-foreground">até</span>
+          <Input type="date" className="w-[160px]" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} />
+        </div>
+      )}
 
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-sm text-muted-foreground">
@@ -1962,7 +2180,14 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                   <p className="whitespace-pre-line text-amber-950 mt-1">{selectedOrder.notes}</p>
                 </div>
               )}
-              <p><strong>Cliente:</strong> {selectedOrder.customers?.name ?? "Retirada / Sem cadastro"}</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <p><strong>Cliente:</strong> {selectedOrder.customers?.name ?? "Retirada / Sem cadastro"}</p>
+                {selectedOrder.customers?.id && !["processando", "autorizada"].includes(latestInvoice(selectedOrder.invoices)?.status ?? "") && (
+                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setLinkCustomerOrder(selectedOrder)}>
+                    <Pencil className="h-3 w-3 mr-1" /> Trocar
+                  </Button>
+                )}
+              </div>
               <p><strong>Telefone:</strong> {selectedOrder.customers?.phone ?? "—"}</p>
               {selectedOrder.customers?.cnpj && <p><strong>CNPJ:</strong> {selectedOrder.customers.cnpj}</p>}
               <p><strong>Atendimento:</strong> <FulfillmentBadge type={selectedOrder.fulfillment_type} /></p>
@@ -2038,7 +2263,8 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
               <ul className="list-disc list-inside">
                 {selectedOrder.order_items.map((i, idx) => (<li key={idx}>{i.products?.name}: {i.qty}</li>))}
               </ul>
-              <InvoicePanel orderId={selectedOrder.id} invoices={selectedOrder.invoices} onChange={handleInvoiceChange} />
+              {/* key com o cliente: trocar o cliente refaz a conferência da nota */}
+              <InvoicePanel key={`${selectedOrder.id}-${selectedOrder.customers?.id ?? ""}`} orderId={selectedOrder.id} invoices={selectedOrder.invoices} onChange={handleInvoiceChange} />
               <div className="flex gap-2 pt-2 flex-wrap">
                 <Button size="sm" variant="outline" onClick={() => { setEditOrder(selectedOrder); setSelectedOrder(null); }}>
                   <Pencil className="h-4 w-4 mr-1" /> Editar pedido
@@ -2050,9 +2276,14 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                   <MessageCircle className="h-4 w-4 mr-1" /> WhatsApp
                 </Button>
                 {!selectedOrder.customers?.id && (
-                  <Button size="sm" variant="outline" onClick={() => setSaveCustomerOrder(selectedOrder)}>
-                    <UserPlus className="h-4 w-4 mr-1" /> Salvar como cliente
-                  </Button>
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => setLinkCustomerOrder(selectedOrder)}>
+                      <Search className="h-4 w-4 mr-1" /> Vincular cliente
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setSaveCustomerOrder(selectedOrder)}>
+                      <UserPlus className="h-4 w-4 mr-1" /> Salvar como cliente
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -2079,6 +2310,13 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
         onOpenChange={(o) => !o && setSaveCustomerOrder(null)}
         order={saveCustomerOrder}
         onSaved={handleCustomerSaved}
+      />
+
+      <LinkCustomerModal
+        open={!!linkCustomerOrder}
+        onOpenChange={(o) => !o && setLinkCustomerOrder(null)}
+        order={linkCustomerOrder}
+        onLinked={handleCustomerLinked}
       />
 
       <PaymentEditDialog

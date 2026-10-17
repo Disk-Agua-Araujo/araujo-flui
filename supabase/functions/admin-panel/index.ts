@@ -2115,6 +2115,42 @@ serve(async (req) => {
       return json({ data: { customer_id: newCustomer.id } });
     }
 
+    // Cliente cadastrado depois do pedido (ex.: pediu nota só depois de fechar).
+    // Só troca o cliente; o endereço do pedido fica como está.
+    if (action === "orders.linkCustomer") {
+      const orderId = payload?.orderId as string;
+      const customerId = payload?.customerId as string;
+      if (!orderId || !customerId) throw new Error("Pedido ou cliente inválido.");
+
+      const { data: customer, error: custErr } = await adminClient
+        .from("customers")
+        .select("id, name, phone, cnpj, type")
+        .eq("id", customerId)
+        .single();
+      if (custErr || !customer) throw new Error("Cliente não encontrado.");
+
+      const { data: order, error: ordErr } = await adminClient
+        .from("orders")
+        .select("customer_id, invoices(status)")
+        .eq("id", orderId)
+        .single();
+      if (ordErr || !order) throw new Error("Pedido não encontrado.");
+
+      const liveInvoice = ((order.invoices ?? []) as { status: string }[])
+        .some((i) => i.status === "processando" || i.status === "autorizada");
+      if (liveInvoice && order.customer_id !== customerId) {
+        throw new Error("Este pedido já tem nota fiscal emitida ou em processamento. Cancele a nota antes de trocar o cliente.");
+      }
+
+      const { error: updErr } = await adminClient
+        .from("orders")
+        .update({ customer_id: customerId, updated_at: new Date().toISOString(), updated_by: admin.username })
+        .eq("id", orderId);
+      if (updErr) throw updErr;
+
+      return json({ data: { customer } });
+    }
+
     if (action === "riders.stats") {
       // Get stats for riders: count of orders and sum of items for delivered orders
       const riderIds = (payload?.riderIds || []) as string[];
