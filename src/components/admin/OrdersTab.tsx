@@ -477,14 +477,14 @@ function SaveCustomerModal({
 }
 
 // ---- Link Existing Customer Modal ----
-// Cliente cadastrado depois que o pedido já foi feito: liga o pedido a ele.
+// Vincula, troca ou remove o cliente de qualquer pedido, em qualquer situação.
 function LinkCustomerModal({
   open, onOpenChange, order, onLinked,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   order: AdminOrderRow | null;
-  onLinked: (orderId: string, customer: NonNullable<AdminOrderRow["customers"]>) => void;
+  onLinked: (orderId: string, customer: AdminOrderRow["customers"]) => void;
 }) {
   const { toast } = useToast();
   const [query, setQuery] = useState("");
@@ -508,12 +508,16 @@ function LinkCustomerModal({
     return () => { cancelled = true; };
   }, [debouncedQuery, open]);
 
-  const handleLink = async (c: AdminCustomerRow) => {
+  // Nota emitida não muda com a troca: ela segue com o destinatário original.
+  const invoiceStatus = latestInvoice(order?.invoices)?.status;
+  const hasLiveInvoice = invoiceStatus === "autorizada" || invoiceStatus === "processando";
+
+  const handleLink = async (c: AdminCustomerRow | null) => {
     if (!order) return;
-    setLinkingId(c.id);
+    setLinkingId(c?.id ?? "remove");
     try {
-      const { customer } = await adminApi.linkOrderCustomer(order.id, c.id);
-      toast({ title: `Pedido vinculado a ${customer.name}.` });
+      const { customer } = await adminApi.linkOrderCustomer(order.id, c?.id ?? null);
+      toast({ title: customer ? `Pedido vinculado a ${customer.name}.` : "Cliente removido do pedido." });
       onLinked(order.id, customer);
       onOpenChange(false);
     } catch (err) {
@@ -531,7 +535,18 @@ function LinkCustomerModal({
         </DialogHeader>
         <div className="space-y-3">
           {order?.customers && (
-            <p className="text-sm text-muted-foreground">Cliente atual: <strong className="text-foreground">{order.customers.name}</strong></p>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-sm text-muted-foreground">Cliente atual: <strong className="text-foreground">{order.customers.name}</strong></p>
+              <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10" disabled={!!linkingId} onClick={() => handleLink(null)}>
+                {linkingId === "remove" ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <X className="h-3 w-3 mr-1" />} Remover cliente
+              </Button>
+            </div>
+          )}
+          {hasLiveInvoice && (
+            <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+              Este pedido já tem nota fiscal {invoiceStatus === "autorizada" ? "emitida" : "em processamento"}. A nota não muda: ela continua no nome
+              do destinatário original. Para a nota sair no novo cliente, cancele a nota e emita outra.
+            </p>
           )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -803,13 +818,16 @@ function parseItemPrice(value: string): number | null {
 
 // ---- Edit Order Modal ----
 function EditOrderModal({
-  open, onOpenChange, order, riders, onSaved,
+  open, onOpenChange, order, riders, onSaved, customerName, onChangeCustomer,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   order: AdminOrderRow | null;
   riders: DeliveryRider[];
   onSaved: () => void;
+  /** Nome atual vindo da lista: a troca de cliente grava na hora, fora do "Salvar". */
+  customerName: string | null;
+  onChangeCustomer: () => void;
 }) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
@@ -969,6 +987,17 @@ function EditOrderModal({
         )}
 
         <div className="space-y-4 text-sm">
+          {/* Cliente: troca grava na hora, sem depender do Salvar */}
+          <div>
+            <label className="text-xs font-medium">Cliente</label>
+            <div className="flex items-center justify-between gap-2 rounded-md border p-2 mt-1">
+              <span className={customerName ? "font-medium" : "text-muted-foreground"}>{customerName ?? "Sem cadastro"}</span>
+              <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={onChangeCustomer}>
+                {customerName ? <><Pencil className="h-3 w-3 mr-1" /> Trocar</> : <><Search className="h-3 w-3 mr-1" /> Vincular</>}
+              </Button>
+            </div>
+          </div>
+
           {/* Status */}
           <div>
             <label className="text-xs font-medium">Status</label>
@@ -1208,7 +1237,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   // Vincular cliente já cadastrado a um pedido existente
   const [linkCustomerOrder, setLinkCustomerOrder] = useState<AdminOrderRow | null>(null);
 
-  const handleCustomerLinked = useCallback((orderId: string, customer: NonNullable<AdminOrderRow["customers"]>) => {
+  const handleCustomerLinked = useCallback((orderId: string, customer: AdminOrderRow["customers"]) => {
     const patch = (o: AdminOrderRow): AdminOrderRow => (o.id === orderId ? { ...o, customers: customer } : o);
     setOrders((prev) => prev.map(patch));
     setSelectedOrder((prev) => (prev ? patch(prev) : prev));
@@ -1216,6 +1245,8 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
 
   // Edit order
   const [editOrder, setEditOrder] = useState<AdminOrderRow | null>(null);
+  // O formulário de edição não pode reiniciar quando o cliente troca; o nome vem da lista.
+  const editOrderLive = editOrder ? orders.find((o) => o.id === editOrder.id) ?? editOrder : null;
 
   // Troca avulsa da forma de pagamento (serve para pedido já fechado)
   const [paymentOrder, setPaymentOrder] = useState<AdminOrderRow | null>(null);
@@ -2066,11 +2097,11 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
               )}
               <div className="flex items-center gap-2 flex-wrap">
                 <p><strong>Cliente:</strong> {selectedOrder.customers?.name ?? "Retirada / Sem cadastro"}</p>
-                {selectedOrder.customers?.id && !["processando", "autorizada"].includes(latestInvoice(selectedOrder.invoices)?.status ?? "") && (
-                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setLinkCustomerOrder(selectedOrder)}>
-                    <Pencil className="h-3 w-3 mr-1" /> Trocar
-                  </Button>
-                )}
+                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setLinkCustomerOrder(selectedOrder)}>
+                  {selectedOrder.customers?.id
+                    ? <><Pencil className="h-3 w-3 mr-1" /> Trocar</>
+                    : <><Search className="h-3 w-3 mr-1" /> Vincular</>}
+                </Button>
               </div>
               <p><strong>Telefone:</strong> {selectedOrder.customers?.phone ?? "—"}</p>
               {selectedOrder.customers?.cnpj && <p><strong>CNPJ:</strong> {selectedOrder.customers.cnpj}</p>}
@@ -2215,6 +2246,8 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
         order={editOrder}
         riders={riders}
         onSaved={() => { fetchOrders(); setEditOrder(null); }}
+        customerName={editOrderLive?.customers?.name ?? null}
+        onChangeCustomer={() => setLinkCustomerOrder(editOrderLive)}
       />
 
       <ReminderModal

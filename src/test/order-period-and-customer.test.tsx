@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 const base = {
@@ -112,7 +112,8 @@ describe("Filtro de período e vínculo de cliente", () => {
     fireEvent.click(screen.getAllByTitle("Detalhes")[0]);
     fireEvent.click(await screen.findByText("Vincular cliente"));
     fireEvent.change(screen.getByPlaceholderText("Nome, telefone ou rua do cliente"), { target: { value: "Marcos" } });
-    fireEvent.click(await screen.findByRole("button", { name: "Vincular" }, { timeout: 2000 }));
+    const modal = screen.getByRole("dialog", { name: "Vincular cliente ao pedido" });
+    fireEvent.click(await within(modal).findByRole("button", { name: "Vincular" }, { timeout: 2000 }));
 
     expect(linkOrderCustomer).toHaveBeenCalledWith("aaaa0001-0000-0000-0000-000000000000", "c-marcos");
     expect(await screen.findByText((_, el) => el?.tagName === "P" && el.textContent === "Cliente: Marcos Lima")).toBeInTheDocument();

@@ -2118,38 +2118,32 @@ serve(async (req) => {
       return json({ data: { customer_id: newCustomer.id } });
     }
 
-    // Cliente cadastrado depois do pedido (ex.: pediu nota só depois de fechar).
-    // Só troca o cliente; o endereço do pedido fica como está.
+    // Vincula, troca ou remove o cliente de qualquer pedido (ex.: pediu nota só
+    // depois de fechar). Só mexe no cliente; o endereço do pedido fica como está.
+    // Nota já emitida não muda: o XML guardado continua com o destinatário dela.
     if (action === "orders.linkCustomer") {
       const orderId = payload?.orderId as string;
-      const customerId = payload?.customerId as string;
-      if (!orderId || !customerId) throw new Error("Pedido ou cliente inválido.");
+      const customerId = (payload?.customerId as string | null) || null;
+      if (!orderId) throw new Error("Pedido inválido.");
 
-      const { data: customer, error: custErr } = await adminClient
-        .from("customers")
-        .select("id, name, phone, cnpj, type")
-        .eq("id", customerId)
-        .single();
-      if (custErr || !customer) throw new Error("Cliente não encontrado.");
-
-      const { data: order, error: ordErr } = await adminClient
-        .from("orders")
-        .select("customer_id, invoices(status)")
-        .eq("id", orderId)
-        .single();
-      if (ordErr || !order) throw new Error("Pedido não encontrado.");
-
-      const liveInvoice = ((order.invoices ?? []) as { status: string }[])
-        .some((i) => i.status === "processando" || i.status === "autorizada");
-      if (liveInvoice && order.customer_id !== customerId) {
-        throw new Error("Este pedido já tem nota fiscal emitida ou em processamento. Cancele a nota antes de trocar o cliente.");
+      let customer = null;
+      if (customerId) {
+        const { data, error: custErr } = await adminClient
+          .from("customers")
+          .select("id, name, phone, cnpj, type")
+          .eq("id", customerId)
+          .single();
+        if (custErr || !data) throw new Error("Cliente não encontrado.");
+        customer = data;
       }
 
-      const { error: updErr } = await adminClient
+      const { data: updated, error: updErr } = await adminClient
         .from("orders")
         .update({ customer_id: customerId, updated_at: new Date().toISOString(), updated_by: admin.username })
-        .eq("id", orderId);
+        .eq("id", orderId)
+        .select("id");
       if (updErr) throw updErr;
+      if (!updated?.length) throw new Error("Pedido não encontrado.");
 
       return json({ data: { customer } });
     }
