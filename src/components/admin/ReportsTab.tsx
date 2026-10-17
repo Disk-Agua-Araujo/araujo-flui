@@ -1,15 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { Download, Package, ClipboardList, TrendingUp, CalendarIcon, Wallet, Loader2 } from "lucide-react";
+import { Download, Package, ClipboardList, TrendingUp, Wallet, Loader2 } from "lucide-react";
 import { PaymentIcon } from "@/components/PaymentIcon";
-import { format, startOfMonth, startOfWeek, startOfDay, subDays } from "date-fns";
-import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+import { useDebounce } from "@/hooks/use-debounce";
+import { PeriodFilter } from "@/components/admin/PeriodFilter";
+import { makePeriod, periodBounds, periodLabel, periodRange, type PeriodValue } from "@/lib/period";
 import { useToast } from "@/hooks/use-toast";
 import { adminApi, type AdminOrderRow, type ReportsSummary } from "@/services/admin-api";
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from "recharts";
@@ -25,32 +24,14 @@ const paymentLabels: Record<string, string> = {
   card: "Cartão",
 };
 
-type PeriodKey = "today" | "week" | "month" | "all";
-
-function periodToRange(period: PeriodKey | "custom", from?: Date, to?: Date) {
-  const now = new Date();
-  if (period === "custom" && from) {
-    return { start: startOfDay(from), end: to ?? now };
-  }
-  if (period === "today") return { start: startOfDay(now), end: now };
-  if (period === "week") return { start: startOfWeek(now, { weekStartsOn: 1 }), end: now };
-  if (period === "month") return { start: startOfMonth(now), end: now };
-  return { start: subDays(now, 365 * 5), end: now }; // "all" → 5 years window
-}
-
-function fmtDate(d: Date) {
-  return format(d, "yyyy-MM-dd");
-}
-
 function SalesReport() {
   const { toast } = useToast();
-  const [period, setPeriod] = useState<PeriodKey>("month");
+  const [periodValue, setPeriodValue] = useState<PeriodValue>(() => makePeriod("month"));
+  const period = useDebounce(periodValue, 300);
 
   // Revenue section independent filter
-  const [revPeriod, setRevPeriod] = useState<PeriodKey | "custom">("month");
-  const [revDateFrom, setRevDateFrom] = useState<Date | undefined>();
-  const [revDateTo, setRevDateTo] = useState<Date | undefined>();
-  const [customApplied, setCustomApplied] = useState(false);
+  const [revPeriodValue, setRevPeriodValue] = useState<PeriodValue>(() => makePeriod("month"));
+  const revPeriod = useDebounce(revPeriodValue, 300);
 
   // Aggregated data from RPC (no row limit)
   const [statsData, setStatsData] = useState<ReportsSummary | null>(null);
@@ -68,8 +49,8 @@ function SalesReport() {
     const load = async () => {
       setStatsLoading(true);
       try {
-        const { start, end } = periodToRange(period);
-        const data = await adminApi.getReportsSummary(fmtDate(start), fmtDate(end));
+        const { from, to } = periodBounds(periodRange(period));
+        const data = await adminApi.getReportsSummary(from, to);
         if (!cancelled) setStatsData(data);
       } catch (err) {
         if (!cancelled) {
@@ -86,13 +67,12 @@ function SalesReport() {
 
   // Load revenue stats whenever revenue filter changes
   useEffect(() => {
-    if (revPeriod === "custom" && (!customApplied || !revDateFrom)) return;
     let cancelled = false;
     const load = async () => {
       setRevenueLoading(true);
       try {
-        const { start, end } = periodToRange(revPeriod, revDateFrom, revDateTo);
-        const data = await adminApi.getReportsSummary(fmtDate(start), fmtDate(end));
+        const { from, to } = periodBounds(periodRange(revPeriod));
+        const data = await adminApi.getReportsSummary(from, to);
         if (!cancelled) setRevenueData(data);
       } catch (err) {
         if (!cancelled) {
@@ -105,18 +85,7 @@ function SalesReport() {
     };
     load();
     return () => { cancelled = true; };
-  }, [revPeriod, revDateFrom, revDateTo, customApplied, toast]);
-
-  const revenuePeriodLabel = useMemo(() => {
-    if (revPeriod === "custom" && customApplied && revDateFrom) {
-      const from = format(revDateFrom, "dd/MM/yyyy");
-      const to = revDateTo ? format(revDateTo, "dd/MM/yyyy") : format(new Date(), "dd/MM/yyyy");
-      return `Exibindo: ${from} a ${to}`;
-    }
-    if (revPeriod === "today") return `Exibindo: ${format(new Date(), "dd/MM/yyyy")}`;
-    if (revPeriod === "week") return `Exibindo: ${format(startOfWeek(new Date(), { weekStartsOn: 1 }), "dd/MM/yyyy")} a ${format(new Date(), "dd/MM/yyyy")}`;
-    return `Exibindo: ${format(startOfMonth(new Date()), "dd/MM/yyyy")} a ${format(new Date(), "dd/MM/yyyy")}`;
-  }, [revPeriod, revDateFrom, revDateTo, customApplied]);
+  }, [revPeriod, toast]);
 
   const revenueByMethod = useMemo(() => {
     const map: Record<string, { total: number; count: number }> = {
@@ -152,10 +121,10 @@ function SalesReport() {
   const exportCSV = useCallback(async () => {
     setExporting(true);
     try {
-      const { start, end } = periodToRange(period);
+      const { from, to } = periodBounds(periodRange(period));
       const orders: AdminOrderRow[] = await adminApi.listReportsOrders({
-        dateStart: fmtDate(start),
-        dateEnd: fmtDate(end),
+        dateStart: from,
+        dateEnd: to,
       });
 
       const BOM = "\uFEFF";
@@ -225,18 +194,10 @@ function SalesReport() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-start gap-3 flex-wrap">
         <h2 className="text-xl font-bold">Vendas por pedido</h2>
-        <div className="flex gap-2">
-          <Select value={period} onValueChange={(v) => setPeriod(v as PeriodKey)}>
-            <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Hoje</SelectItem>
-              <SelectItem value="week">Semana</SelectItem>
-              <SelectItem value="month">Mês</SelectItem>
-              <SelectItem value="all">Tudo</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex gap-2 flex-wrap items-center">
+          <PeriodFilter value={periodValue} onChange={setPeriodValue} />
           <Button variant="outline" onClick={exportCSV} disabled={exporting}>
             {exporting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
             CSV
@@ -279,54 +240,10 @@ function SalesReport() {
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <CardTitle className="text-lg">Faturamento por Pagamento</CardTitle>
-            <div className="flex gap-2 flex-wrap">
-              <Select value={revPeriod} onValueChange={(v) => { setRevPeriod(v as PeriodKey | "custom"); if (v !== "custom") setCustomApplied(false); }}>
-                <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="today">Hoje</SelectItem>
-                  <SelectItem value="week">Esta semana</SelectItem>
-                  <SelectItem value="month">Este mês</SelectItem>
-                  <SelectItem value="custom">Personalizado</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <PeriodFilter value={revPeriodValue} onChange={setRevPeriodValue} />
           </div>
 
-          {revPeriod === "custom" && (
-            <div className="flex gap-2 items-end flex-wrap mt-2">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">De:</p>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn("w-[140px] justify-start text-left text-sm", !revDateFrom && "text-muted-foreground")}>
-                      <CalendarIcon className="h-4 w-4 mr-1" />
-                      {revDateFrom ? format(revDateFrom, "dd/MM/yyyy") : "Início"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar mode="single" selected={revDateFrom} onSelect={setRevDateFrom} initialFocus className="p-3 pointer-events-auto" />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Até:</p>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn("w-[140px] justify-start text-left text-sm", !revDateTo && "text-muted-foreground")}>
-                      <CalendarIcon className="h-4 w-4 mr-1" />
-                      {revDateTo ? format(revDateTo, "dd/MM/yyyy") : "Fim"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar mode="single" selected={revDateTo} onSelect={setRevDateTo} initialFocus className="p-3 pointer-events-auto" />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <Button size="sm" onClick={() => setCustomApplied(true)} disabled={!revDateFrom}>Aplicar</Button>
-            </div>
-          )}
-
-          <p className="text-xs text-muted-foreground mt-2">{revenuePeriodLabel}</p>
+          <p className="text-xs text-muted-foreground mt-2">Exibindo: {periodLabel(periodRange(revPeriod))}</p>
         </CardHeader>
         <CardContent className="space-y-4">
           {revenueLoading && (

@@ -18,16 +18,14 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { adminApi, type ReceivableRow, type ReceivablesSummary, type OrderPaymentPayload } from "@/services/admin-api";
 import { buildReceivableMessage, openCustomerWhatsApp } from "@/services/whatsapp";
 import { PaymentEditDialog } from "@/components/admin/PaymentEditDialog";
+import { PeriodFilter } from "@/components/admin/PeriodFilter";
+import { makePeriod, periodRange, type PeriodValue } from "@/lib/period";
 
 const PAGE_SIZE = 50;
 
 /** Datas de vencimento e recebimento são sempre o dia de São Paulo. */
 function localToday(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-}
-
-function firstDayOfMonth(): string {
-  return localToday().slice(0, 8) + "01";
 }
 
 /** Converte "aaaa-mm-dd" sem passar pelo fuso do navegador. */
@@ -415,8 +413,10 @@ export function ReceivablesTab() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [dateStart, setDateStart] = useState(firstDayOfMonth);
-  const [dateEnd, setDateEnd] = useState(localToday);
+  // Período dos recebidos, pela data em que o dinheiro entrou
+  const [period, setPeriod] = useState<PeriodValue>(() => makePeriod("month"));
+  const debouncedPeriod = useDebounce(period, 300);
+  const { from: dateStart, to: dateEnd } = useMemo(() => periodRange(debouncedPeriod), [debouncedPeriod]);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 350);
   const [payTarget, setPayTarget] = useState<ReceivableRow | null>(null);
@@ -582,21 +582,7 @@ export function ReceivablesTab() {
         </div>
 
         {view === "paid" && (
-          <div className="flex items-center gap-2">
-            <Input
-              type="date"
-              className="w-[150px]"
-              value={dateStart}
-              onChange={(e) => { setDateStart(e.target.value); setPage(0); }}
-            />
-            <span className="text-sm text-muted-foreground">até</span>
-            <Input
-              type="date"
-              className="w-[150px]"
-              value={dateEnd}
-              onChange={(e) => { setDateEnd(e.target.value); setPage(0); }}
-            />
-          </div>
+          <PeriodFilter value={period} onChange={(v) => { setPeriod(v); setPage(0); }} />
         )}
 
         <div className="relative flex-1 min-w-[200px]">

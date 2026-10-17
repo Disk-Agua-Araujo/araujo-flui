@@ -3,19 +3,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PaymentIcon, PAYMENT_LABELS } from "@/components/PaymentIcon";
 import { Search, RefreshCw, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
-import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
+import { PeriodFilter } from "@/components/admin/PeriodFilter";
+import { makePeriod, periodBounds, periodLabel, periodRange, type PeriodValue } from "@/lib/period";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDebounce } from "@/hooks/use-debounce";
 import { adminApi, type CashReportResult } from "@/services/admin-api";
 
 const PAGE_SIZE = 50;
-
-type PeriodKey = "today" | "week" | "month" | "custom";
 
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -27,35 +25,19 @@ function formatDateBR(iso: string | null) {
   return `${d}/${m}/${y}`;
 }
 
-function toISO(d: Date) {
-  return format(d, "yyyy-MM-dd");
-}
-
-function periodRange(period: PeriodKey, customFrom: string, customTo: string) {
-  const now = new Date();
-  if (period === "today") return { start: toISO(startOfDay(now)), end: toISO(now) };
-  if (period === "week") return { start: toISO(startOfWeek(now, { weekStartsOn: 1 })), end: toISO(now) };
-  if (period === "month") return { start: toISO(startOfMonth(now)), end: toISO(now) };
-  return { start: customFrom, end: customTo };
-}
-
 export function CashReport() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
 
-  const [period, setPeriod] = useState<PeriodKey>("month");
-  const [customFrom, setCustomFrom] = useState(() => toISO(startOfMonth(new Date())));
-  const [customTo, setCustomTo] = useState(() => toISO(new Date()));
+  const [period, setPeriod] = useState<PeriodValue>(() => makePeriod("month"));
+  const debouncedPeriod = useDebounce(period, 300);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 350);
   const [page, setPage] = useState(0);
   const [data, setData] = useState<CashReportResult | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const { start, end } = useMemo(
-    () => periodRange(period, customFrom, customTo),
-    [period, customFrom, customTo],
-  );
+  const { from: start, to: end } = useMemo(() => periodBounds(periodRange(debouncedPeriod)), [debouncedPeriod]);
 
   const fetchData = useCallback(async () => {
     if (!start || !end) return;
@@ -114,33 +96,7 @@ export function CashReport() {
 
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={period} onValueChange={(v) => { setPeriod(v as PeriodKey); setPage(0); }}>
-          <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="today">Hoje</SelectItem>
-            <SelectItem value="week">Esta semana</SelectItem>
-            <SelectItem value="month">Este mês</SelectItem>
-            <SelectItem value="custom">Personalizado</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {period === "custom" && (
-          <div className="flex items-center gap-2">
-            <Input
-              type="date"
-              className="w-[150px]"
-              value={customFrom}
-              onChange={(e) => { setCustomFrom(e.target.value); setPage(0); }}
-            />
-            <span className="text-sm text-muted-foreground">até</span>
-            <Input
-              type="date"
-              className="w-[150px]"
-              value={customTo}
-              onChange={(e) => { setCustomTo(e.target.value); setPage(0); }}
-            />
-          </div>
-        )}
+        <PeriodFilter value={period} onChange={(v) => { setPeriod(v); setPage(0); }} />
 
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -158,7 +114,7 @@ export function CashReport() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Período: {formatDateBR(start)} a {formatDateBR(end)}
+        Período: {periodLabel(periodRange(debouncedPeriod))}
       </p>
 
       {/* Totais */}

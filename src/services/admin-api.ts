@@ -487,8 +487,8 @@ export const adminApi = {
     callAdminApi<{ pix_paid: boolean; pix_paid_at: string | null }>("orders.togglePixPaid", { orderId }),
   getRiderStats: (riderIds: string[]) =>
     callAdminApi<Record<string, { pedidos: number; galoes: number }>>("riders.stats", { riderIds }),
-  getRiderDailyStats: (riderIds: string[], dateFrom: string) =>
-    callAdminApi<Record<string, { dia: string; total_galoes: number; total_pedidos: number }[]>>("riders.dailyStats", { riderIds, dateFrom }),
+  getRiderDailyStats: (riderIds: string[], dateFrom: string, dateTo?: string) =>
+    callAdminApi<Record<string, { dia: string; total_galoes: number; total_pedidos: number }[]>>("riders.dailyStats", { riderIds, dateFrom, dateTo }),
   saveCustomerFromOrder: (payload: {
     orderId: string;
     customer: { name: string; phone?: string; type?: "PF" | "PJ" };

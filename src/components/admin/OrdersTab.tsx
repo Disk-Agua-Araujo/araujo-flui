@@ -20,7 +20,9 @@ import { PaymentIcon, PAYMENT_LABELS } from "@/components/PaymentIcon";
 import { Textarea } from "@/components/ui/textarea";
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { useToast } from "@/hooks/use-toast";
-import { format, startOfDay, startOfWeek, startOfMonth, addDays, addMonths } from "date-fns";
+import { format } from "date-fns";
+import { PeriodFilter } from "@/components/admin/PeriodFilter";
+import { inPeriod, isoDay, makePeriod, periodBounds, periodRange, type PeriodValue } from "@/lib/period";
 import { Constants } from "@/integrations/supabase/types";
 import { adminApi, type AdminOrderRow, type AdminCustomerRow, type DeliveryRider, type AdminProductRow, type OrderPaymentPayload, type InvoiceRow } from "@/services/admin-api";
 import {
@@ -99,39 +101,6 @@ const statusLabels: Record<string, string> = {
 
 const PAGE_SIZE = 20;
 
-const MONTH_NAMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-
-/** "aaaa-mm-dd" como meia-noite no horário local (new Date("aaaa-mm-dd") seria UTC). */
-function localDay(iso: string) {
-  return new Date(`${iso}T00:00:00`);
-}
-
-/**
- * Intervalo [início, fim) do filtro de período, pela data de criação do pedido.
- * month é "aaaa-mm"; weekDay é qualquer dia da semana escolhida (semana de segunda a domingo).
- */
-function periodRange(period: string, month: string, weekDay: string, from: string, to: string): { start?: Date; end?: Date } {
-  const now = new Date();
-  if (period === "today") return { start: startOfDay(now) };
-  if (period === "week") return { start: startOfWeek(now, { weekStartsOn: 1 }) };
-  if (period === "month") return { start: startOfMonth(now) };
-  if (period === "pick_month" && month) {
-    const start = localDay(`${month}-01`);
-    return { start, end: addMonths(start, 1) };
-  }
-  if (period === "pick_week" && weekDay) {
-    const start = startOfWeek(localDay(weekDay), { weekStartsOn: 1 });
-    return { start, end: addDays(start, 7) };
-  }
-  if (period === "range") {
-    return {
-      start: from ? localDay(from) : undefined,
-      end: to ? addDays(localDay(to), 1) : undefined,
-    };
-  }
-  return {};
-}
-
 function FulfillmentBadge({ type }: { type?: string }) {
   if (type === "pickup") {
     return (
@@ -174,7 +143,11 @@ function RiderManagementModal({
   const [saving, setSaving] = useState(false);
   const [dailyStats, setDailyStats] = useState<RiderDailyStats>({});
   const [statsLoading, setStatsLoading] = useState(false);
-  const [statsPeriod, setStatsPeriod] = useState("month");
+  const [statsPeriod, setStatsPeriod] = useState<PeriodValue>(() => makePeriod("month"));
+  const debouncedStatsPeriod = useDebounce(statsPeriod, 300);
+  const statsRange = periodRange(debouncedStatsPeriod);
+  const todayIso = isoDay(new Date());
+  const statsIncludesToday = (!statsRange.from || statsRange.from <= todayIso) && (!statsRange.to || statsRange.to >= todayIso);
   const [activeView, setActiveView] = useState<"stats" | "edit">("stats");
 
   useEffect(() => {
@@ -184,18 +157,13 @@ function RiderManagementModal({
   useEffect(() => {
     if (!open || riders.length === 0) return;
     loadStats();
-  }, [riders, open, statsPeriod]);
+  }, [riders, open, debouncedStatsPeriod]);
 
   const loadStats = async () => {
     setStatsLoading(true);
     try {
-      const now = new Date();
-      let dateFrom: string;
-      if (statsPeriod === "today") dateFrom = format(startOfDay(now), "yyyy-MM-dd");
-      else if (statsPeriod === "week") dateFrom = format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd");
-      else dateFrom = format(startOfMonth(now), "yyyy-MM-dd");
-
-      const data = await adminApi.getRiderDailyStats(riders.map((r) => r.id), dateFrom);
+      const { from, to } = periodBounds(statsRange);
+      const data = await adminApi.getRiderDailyStats(riders.map((r) => r.id), from, to);
       setDailyStats(data);
     } catch { /* silent */ }
     finally { setStatsLoading(false); }
@@ -266,14 +234,7 @@ function RiderManagementModal({
         {activeView === "stats" && (
           <div className="space-y-4">
             {/* Period filter */}
-            <Select value={statsPeriod} onValueChange={setStatsPeriod}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="today">Hoje</SelectItem>
-                <SelectItem value="week">Esta semana</SelectItem>
-                <SelectItem value="month">Este mês</SelectItem>
-              </SelectContent>
-            </Select>
+            <PeriodFilter value={statsPeriod} onChange={setStatsPeriod} />
 
             {/* Summary cards */}
             <div className="grid grid-cols-2 gap-3">
@@ -283,7 +244,7 @@ function RiderManagementModal({
                     <p className="text-2xl font-bold text-[hsl(var(--brand-blue))]">{r.label}</p>
                     <p className="text-sm font-medium">{r.name}</p>
                     <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
-                      <p>Hoje: <strong className="text-foreground">{getTodayTotal(r.id)} gal</strong></p>
+                      {statsIncludesToday && <p>Hoje: <strong className="text-foreground">{getTodayTotal(r.id)} gal</strong></p>}
                       <p>Período: <strong className="text-foreground">{getMonthTotal(r.id)} gal · {getPeriodPedidos(r.id)} ped.</strong></p>
                     </div>
                   </CardContent>
@@ -1208,11 +1169,8 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
   const [statusFilter, setStatusFilter] = useState("all");
-  const [periodFilter, setPeriodFilter] = useState("all");
-  const [periodMonth, setPeriodMonth] = useState(() => format(new Date(), "yyyy-MM"));
-  const [periodWeekDay, setPeriodWeekDay] = useState(() => format(new Date(), "yyyy-MM-dd"));
-  const [periodFrom, setPeriodFrom] = useState("");
-  const [periodTo, setPeriodTo] = useState("");
+  const [period, setPeriod] = useState<PeriodValue>(() => makePeriod("all"));
+  const debouncedPeriod = useDebounce(period, 300);
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
   const [labelData, setLabelData] = useState<LabelData | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -1222,10 +1180,10 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const [invoiceFilter, setInvoiceFilter] = useState("all");
 
   // Debounce dropdown filters (300ms) — UI updates instantly, list refiltra depois
-  const filterKey = `${statusFilter}|${periodFilter}|${paymentFilter}|${pixSubFilter}|${scheduleFilter}|${invoiceFilter}|${periodMonth}|${periodWeekDay}|${periodFrom}|${periodTo}`;
+  const filterKey = `${statusFilter}|${paymentFilter}|${pixSubFilter}|${scheduleFilter}|${invoiceFilter}`;
   const debouncedFilterKey = useDebounce(filterKey, 300);
-  const [dStatus, dPeriod, dPayment, dPix, dSchedule, dInvoice, dMonth, dWeekDay, dFrom, dTo] = debouncedFilterKey.split("|");
-  const isFiltering = filterKey !== debouncedFilterKey || search !== debouncedSearch;
+  const [dStatus, dPayment, dPix, dSchedule, dInvoice] = debouncedFilterKey.split("|");
+  const isFiltering = filterKey !== debouncedFilterKey || search !== debouncedSearch || period !== debouncedPeriod;
 
   // Action button loading state (Editar / Imprimir / WhatsApp)
   const [actionLoading, setActionLoading] = useState<{ id: string; action: string } | null>(null);
@@ -1398,13 +1356,9 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     let result = orders;
     if (dStatus !== "all") result = result.filter((o) => o.status === dStatus);
 
-    if (dPeriod !== "all") {
-      const { start, end } = periodRange(dPeriod, dMonth, dWeekDay, dFrom, dTo);
-      result = result.filter((o) => {
-        const created = new Date(o.created_at);
-        return (!start || created >= start) && (!end || created < end);
-      });
-    }
+    // Período pela data em que o pedido foi criado
+    const range = periodRange(debouncedPeriod);
+    if (range.from || range.to) result = result.filter((o) => inPeriod(o.created_at, range));
 
     if (dPayment !== "all") {
       result = result.filter((o) => o.payment_method === dPayment);
@@ -1462,29 +1416,22 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
     }
 
     return result;
-  }, [orders, dStatus, dPeriod, dPayment, dPix, dSchedule, dInvoice, dMonth, dWeekDay, dFrom, dTo, debouncedSearch, tickNow]);
+  }, [orders, dStatus, debouncedPeriod, dPayment, dPix, dSchedule, dInvoice, debouncedSearch, tickNow]);
 
-  // Anos do seletor de mês: do pedido mais antigo até o ano atual.
-  const periodYears = useMemo(() => {
-    const picked = Number(periodMonth.slice(0, 4));
-    const newest = Math.max(new Date().getFullYear(), picked);
-    const oldest = orders.reduce((min, o) => Math.min(min, new Date(o.created_at).getFullYear()), picked);
-    return Array.from({ length: newest - oldest + 1 }, (_, i) => newest - i);
-  }, [orders, periodMonth]);
-
-  const shiftMonth = (delta: number) => setPeriodMonth((m) => format(addMonths(localDay(`${m}-01`), delta), "yyyy-MM"));
-  const shiftWeek = (delta: number) => setPeriodWeekDay((d) => format(addDays(localDay(d), delta * 7), "yyyy-MM-dd"));
-  const pickedWeekStart = startOfWeek(localDay(periodWeekDay), { weekStartsOn: 1 });
+  const oldestOrderYear = useMemo(
+    () => orders.reduce((min, o) => Math.min(min, new Date(o.created_at).getFullYear()), new Date().getFullYear()),
+    [orders],
+  );
 
   useEffect(() => {
     setCurrentPage(1);
     setSelectedIds(new Set());
-  }, [debouncedSearch, debouncedFilterKey]);
+  }, [debouncedSearch, debouncedFilterKey, debouncedPeriod]);
 
   const hasActiveFilters =
     !!search ||
     statusFilter !== "all" ||
-    periodFilter !== "all" ||
+    period.preset !== "all" ||
     paymentFilter !== "all" ||
     pixSubFilter !== "all" ||
     scheduleFilter !== "all" ||
@@ -1493,7 +1440,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const clearFilters = () => {
     setSearch("");
     setStatusFilter("all");
-    setPeriodFilter("all");
+    setPeriod(makePeriod("all"));
     setPaymentFilter("all");
     setPixSubFilter("all");
     setScheduleFilter("all");
@@ -1737,19 +1684,6 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
           </SelectContent>
         </Select>
 
-        <Select value={periodFilter} onValueChange={setPeriodFilter}>
-          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Período" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Período: Todos</SelectItem>
-            <SelectItem value="today">Hoje</SelectItem>
-            <SelectItem value="week">Esta semana</SelectItem>
-            <SelectItem value="month">Este mês</SelectItem>
-            <SelectItem value="pick_month">Escolher mês</SelectItem>
-            <SelectItem value="pick_week">Escolher semana</SelectItem>
-            <SelectItem value="range">Entre datas</SelectItem>
-          </SelectContent>
-        </Select>
-
         <Select value={paymentFilter} onValueChange={(v) => { setPaymentFilter(v); if (v !== "pix") setPixSubFilter("all"); }}>
           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Pagamento" /></SelectTrigger>
           <SelectContent>
@@ -1802,58 +1736,8 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
         </div>
       </div>
 
-      {/* Período escolhido: mês, semana ou intervalo, pela data em que o pedido foi criado */}
-      {periodFilter === "pick_month" && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => shiftMonth(-1)} title="Mês anterior">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Select value={periodMonth.slice(5, 7)} onValueChange={(m) => setPeriodMonth(`${periodMonth.slice(0, 4)}-${m}`)}>
-            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {MONTH_NAMES.map((name, i) => (
-                <SelectItem key={name} value={String(i + 1).padStart(2, "0")}>{name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={periodMonth.slice(0, 4)} onValueChange={(y) => setPeriodMonth(`${y}-${periodMonth.slice(5, 7)}`)}>
-            <SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {periodYears.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => shiftMonth(1)} title="Próximo mês">
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
-
-      {periodFilter === "pick_week" && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => shiftWeek(-1)} title="Semana anterior">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm font-medium min-w-[170px] text-center">
-            {format(pickedWeekStart, "dd/MM")} a {format(addDays(pickedWeekStart, 6), "dd/MM/yyyy")}
-          </span>
-          <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => shiftWeek(1)} title="Próxima semana">
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <label className="text-xs text-muted-foreground flex items-center gap-2">
-            Ir para a semana do dia
-            <Input type="date" className="w-[160px]" value={periodWeekDay} onChange={(e) => { if (e.target.value) setPeriodWeekDay(e.target.value); }} />
-          </label>
-        </div>
-      )}
-
-      {periodFilter === "range" && (
-        <div className="flex items-center gap-2 flex-wrap text-sm">
-          <span className="text-muted-foreground">De</span>
-          <Input type="date" className="w-[160px]" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} />
-          <span className="text-muted-foreground">até</span>
-          <Input type="date" className="w-[160px]" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} />
-        </div>
-      )}
+      {/* Período pela data em que o pedido foi criado */}
+      <PeriodFilter value={period} onChange={setPeriod} minYear={oldestOrderYear} />
 
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-sm text-muted-foreground">

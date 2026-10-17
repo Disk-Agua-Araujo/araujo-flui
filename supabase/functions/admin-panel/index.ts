@@ -320,6 +320,9 @@ function normalizeSearch(str: string): string {
 }
 
 // A function roda em UTC. Vencimento e recebimento são sempre no dia de São Paulo.
+// Brasil sem horário de verão desde 2019: o dia de São Paulo começa às 03:00 UTC.
+const SAO_PAULO_OFFSET = "-03:00";
+
 function todayInSaoPaulo(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
 }
@@ -1318,8 +1321,8 @@ serve(async (req) => {
           .order("created_at", { ascending: false })
           .range(from, from + BATCH - 1);
 
-        if (dateStart) q = q.gte("created_at", `${dateStart}T00:00:00`);
-        if (dateEnd) q = q.lte("created_at", `${dateEnd}T23:59:59.999`);
+        if (dateStart) q = q.gte("created_at", `${dateStart}T00:00:00${SAO_PAULO_OFFSET}`);
+        if (dateEnd) q = q.lte("created_at", `${dateEnd}T23:59:59.999${SAO_PAULO_OFFSET}`);
 
         const { data, error } = await q;
         if (error) throw error;
@@ -2176,29 +2179,34 @@ serve(async (req) => {
 
     if (action === "riders.dailyStats") {
       const riderIds = (payload?.riderIds || []) as string[];
-      const dateFrom = (payload?.dateFrom as string) || "";
+      const dateFrom = isValidDate(payload?.dateFrom) ? payload.dateFrom : "";
+      const dateTo = isValidDate(payload?.dateTo) ? payload.dateTo : "";
       if (riderIds.length === 0) return json({ data: {} });
 
-      let query = adminClient
-        .from("orders")
-        .select("id, rider_id, created_at, order_items(qty, product_id, products(name, category_id, product_categories(name)))")
-        .in("rider_id", riderIds);
-
-      if (dateFrom) {
-        query = query.gte("created_at", `${dateFrom}T00:00:00`);
+      // Pagina para não parar nas 1.000 linhas por consulta; o dia é o de São Paulo.
+      const BATCH = 1000;
+      const orders: any[] = [];
+      for (let from = 0; from < 50000; from += BATCH) {
+        let query = adminClient
+          .from("orders")
+          .select("id, rider_id, created_at, order_items(qty, product_id, products(name, category_id, product_categories(name)))")
+          .in("rider_id", riderIds);
+        if (dateFrom) query = query.gte("created_at", `${dateFrom}T00:00:00${SAO_PAULO_OFFSET}`);
+        if (dateTo) query = query.lte("created_at", `${dateTo}T23:59:59.999${SAO_PAULO_OFFSET}`);
+        const { data, error } = await query.order("created_at", { ascending: false }).order("id").range(from, from + BATCH - 1);
+        if (error) throw error;
+        orders.push(...(data || []));
+        if (!data || data.length < BATCH) break;
       }
-
-      const { data: orders, error } = await query.order("created_at", { ascending: false });
-      if (error) throw error;
 
       // Group by rider then by day, counting only galão items
       const result: Record<string, { dia: string; total_galoes: number; total_pedidos: number }[]> = {};
       const riderDayMap: Record<string, Record<string, { galoes: number; orderIds: Set<string> }>> = {};
 
-      for (const o of (orders || []) as any[]) {
+      for (const o of orders) {
         const rid = o.rider_id;
         if (!rid) continue;
-        const day = (o.created_at as string).substring(0, 10);
+        const day = new Date(o.created_at).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
         if (!riderDayMap[rid]) riderDayMap[rid] = {};
         if (!riderDayMap[rid][day]) riderDayMap[rid][day] = { galoes: 0, orderIds: new Set() };
 
