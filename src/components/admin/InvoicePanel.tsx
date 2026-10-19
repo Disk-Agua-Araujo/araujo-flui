@@ -169,7 +169,11 @@ export function InvoicePanel({
             </p>
           )}
           {current.message && (
-            <p className={`text-xs ${current.status === "erro" ? "text-destructive" : "text-muted-foreground"}`}>{current.message}</p>
+            <p className={`text-xs ${current.status === "erro" ? "text-destructive" : "text-muted-foreground"}`}>
+              {/* A recusa fica na tela até a próxima tentativa: a data mostra que é antiga. */}
+              {current.status === "erro" && `Tentativa de ${new Date(current.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}: `}
+              {current.message}
+            </p>
           )}
         </div>
       )}

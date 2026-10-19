@@ -67,7 +67,7 @@ describe("Painel da nota fiscal", () => {
         onChange={() => {}}
       />,
     );
-    expect(screen.getByText("539: Rejeição: duplicidade")).toBeInTheDocument();
+    expect(screen.getByText(/^Tentativa de .*: 539: Rejeição: duplicidade$/)).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /Emitir de novo/ })).toBeInTheDocument();
   });
 
