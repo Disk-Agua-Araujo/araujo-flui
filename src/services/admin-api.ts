@@ -96,7 +96,7 @@ export type InvoiceFixes = {
     id: string; name: string; type: "PF" | "PJ"; cpf: string | null; cnpj: string | null;
     ie: string | null; ieIndicator: number | null; needs: ("cpf" | "cnpj" | "ie")[];
   } | null;
-  address: { id: string; label: string; zip: string | null } | null;
+  address: { id: string; label: string; zip: string | null; needs: ("zip" | "neighborhood")[] } | null;
 };
 
 /** Resumo da nota que vem junto da lista de pedidos. */
@@ -536,7 +536,7 @@ export const adminApi = {
     prices?: { product_id: string; unit_price: number }[];
     products?: { id: string; ncm?: string; cest?: string; cfop?: string; cst_csosn?: string; pis_cofins_cst?: string; origem?: number }[];
     customer?: { id: string; cpf?: string; cnpj?: string; ie?: string; ie_indicator?: 1 | 2 | 9 | null };
-    address?: { id: string; zip: string };
+    address?: { id: string; zip?: string; neighborhood?: string };
   }) => callAdminApi<{ ok: boolean }>("invoices.fixData", payload),
   /** Confere token, certificado e SEFAZ. ok quando a SEFAZ responde 107 (em operação). */
   sefazStatus: () =>

@@ -37,6 +37,8 @@ export function InvoiceFixForm({ orderId, fixes, onSaved }: { orderId: string; f
   const [ie, setIe] = useState(c?.ie ?? "");
   const [exempt, setExempt] = useState(false);
   const [zip, setZip] = useState(fixes.address?.zip ?? "");
+  const [neighborhood, setNeighborhood] = useState("");
+  const addressNeeds = fixes.address?.needs ?? [];
 
   const setProduct = (id: string, patch: Partial<ProductDraft>) =>
     setProducts((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
@@ -45,6 +47,10 @@ export function InvoiceFixForm({ orderId, fixes, onSaved }: { orderId: string; f
     const priceValues = priceItems.map((p) => ({ product_id: p.productId, unit_price: Number((prices[p.productId] ?? "").replace(",", ".")) }));
     if (priceValues.some((p) => !Number.isFinite(p.unit_price) || p.unit_price <= 0)) {
       toast({ title: "Informe o preço de cada item", variant: "destructive" });
+      return;
+    }
+    if (addressNeeds.includes("neighborhood") && !neighborhood.trim()) {
+      toast({ title: "Informe o bairro", variant: "destructive" });
       return;
     }
     setSaving(true);
@@ -64,7 +70,11 @@ export function InvoiceFixForm({ orderId, fixes, onSaved }: { orderId: string; f
           ...(c.needs.includes("cnpj") ? { cnpj } : {}),
           ...(c.needs.includes("ie") ? (exempt ? { ie: "", ie_indicator: 2 as const } : { ie, ie_indicator: 1 as const }) : {}),
         } : undefined,
-        address: fixes.address ? { id: fixes.address.id, zip } : undefined,
+        address: fixes.address ? {
+          id: fixes.address.id,
+          ...(addressNeeds.includes("zip") ? { zip } : {}),
+          ...(addressNeeds.includes("neighborhood") ? { neighborhood: neighborhood.trim() } : {}),
+        } : undefined,
       });
       toast({ title: "Cadastro completado" });
       onSaved();
@@ -138,10 +148,16 @@ export function InvoiceFixForm({ orderId, fixes, onSaved }: { orderId: string; f
         </div>
       )}
 
-      {fixes.address && (
+      {addressNeeds.includes("zip") && (
         <label className="space-y-0.5 block">
-          CEP de {fixes.address.label}
+          CEP de {fixes.address!.label}
           <Input className="h-8" inputMode="numeric" placeholder="00000000" value={zip} onChange={(e) => setZip(onlyDigits(e.target.value, 8))} />
+        </label>
+      )}
+      {addressNeeds.includes("neighborhood") && (
+        <label className="space-y-0.5 block">
+          Bairro de {fixes.address!.label}
+          <Input className="h-8" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value.slice(0, 100))} />
         </label>
       )}
 

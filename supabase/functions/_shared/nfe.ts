@@ -66,6 +66,9 @@ export type NfeInput = {
 
 const digits = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "");
 
+// Pedido sem bairro grava "—" no endereço, e a SEFAZ recusa o traço (xBairro).
+export const hasNeighborhood = (v: string | null | undefined) => /[\p{L}\d]/u.test(v ?? "");
+
 // Frase obrigatória na nota de empresa do Simples Nacional, no texto que o
 // contador do Disk já usa (NF-e 93, de 08/09/2026).
 export const SIMPLES_OBS = "DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL. NAO GERA DIREITO A CREDITO FISCAL DE ICMS, ISS E IPI.";
@@ -108,6 +111,7 @@ export function checkNfe(input: NfeInput): string[] {
     if (digits(a.zip).length !== 8) problems.push("Falta o CEP do endereço.");
     else if (digits(a.ibge).length !== 7) problems.push("Não foi possível achar o município pelo CEP. Confira o CEP do endereço.");
     if (!a.street || !a.number) problems.push("Endereço sem rua ou sem número.");
+    if (!hasNeighborhood(a.neighborhood)) problems.push("Falta o bairro do endereço.");
     // A tributação cadastrada é de venda dentro de SP (CFOP 5xxx). Venda para
     // outro estado muda CFOP (6xxx) e pode ter DIFAL: não sai sem o contador.
     const uf = (a.state || "SP").trim().toUpperCase();
@@ -145,11 +149,12 @@ export type NfeFixes = {
     id: string; name: string; type: "PF" | "PJ"; cpf: string | null; cnpj: string | null;
     ie: string | null; ieIndicator: number | null; needs: ("cpf" | "cnpj" | "ie")[];
   } | null;
-  address: { id: string; label: string; zip: string | null } | null;
+  /** needs diz o que falta: CEP (ou município que não saiu do CEP) e/ou bairro. */
+  address: { id: string; label: string; zip: string | null; needs: ("zip" | "neighborhood")[] } | null;
 };
 
 /** O que dá para completar no próprio bloco da nota: preço do item, dados
- *  fiscais do produto, documento e IE do cliente e CEP do endereço. */
+ *  fiscais do produto, documento e IE do cliente e CEP e bairro do endereço. */
 export function nfeFixes(input: NfeInput): NfeFixes {
   const prices = input.items
     .filter((it) => it.unitPrice === null)
@@ -181,8 +186,11 @@ export function nfeFixes(input: NfeInput): NfeFixes {
   }
 
   const a = input.address;
-  const address = a && input.addressId && (digits(a.zip).length !== 8 || digits(a.ibge).length !== 7)
-    ? { id: input.addressId, label: `${a.street}, ${a.number}`, zip: a.zip }
+  const addressNeeds: ("zip" | "neighborhood")[] = [];
+  if (a && (digits(a.zip).length !== 8 || digits(a.ibge).length !== 7)) addressNeeds.push("zip");
+  if (a && !hasNeighborhood(a.neighborhood)) addressNeeds.push("neighborhood");
+  const address = a && input.addressId && addressNeeds.length
+    ? { id: input.addressId, label: `${a.street}, ${a.number}`, zip: a.zip, needs: addressNeeds }
     : null;
 
   return { prices, products, customer, address };

@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { buildNfePayload, checkNfe, describeNfeError, isStillProcessing, nfeFixes, type NfeInput } from "../_shared/nfe.ts";
+import { buildNfePayload, checkNfe, describeNfeError, hasNeighborhood, isStillProcessing, nfeFixes, type NfeInput } from "../_shared/nfe.ts";
 
 type AdminRole = "admin_owner" | "admin_manager";
 
@@ -217,6 +217,7 @@ async function loadNfeInput(orderId: string): Promise<NfeInput> {
       order_items(qty, unit_price, product_id, products(name, ncm, cest, cfop, cst_csosn, pis_cofins_cst, origem, unidade, tax_group))
     `)
     .eq("id", orderId)
+    .order("created_at", { referencedTable: "customers.addresses", ascending: false })
     .single();
   if (error) throw error;
   const order = o as any;
@@ -928,6 +929,9 @@ serve(async (req) => {
           .from("customers")
           .select("*, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
           .order("created_at", { ascending: false })
+          // Mais recente primeiro: a tela usa o primeiro principal da lista,
+          // o mesmo que customers.save atualiza.
+          .order("created_at", { referencedTable: "addresses", ascending: false })
           .range(from, from + 999);
         if (error) throw error;
         all.push(...(data ?? []));
@@ -999,15 +1003,21 @@ serve(async (req) => {
       // Handle address if provided
       const addr = payload?.address;
       if (addr && addr.street && addr.number && addr.neighborhood) {
-        const { data: existingAddr } = await adminClient
+        // Pedido antigo deixou vários endereços marcados como principal no mesmo
+        // cliente. Com maybeSingle a busca dava erro calado e cada "Salvar"
+        // criava mais um endereço, sem mexer no que aparece na tela.
+        const { data: primaries, error: primErr } = await adminClient
           .from("addresses")
           .select("id")
           .eq("customer_id", data.id)
           .eq("is_primary", true)
-          .maybeSingle();
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (primErr) throw primErr;
+        const existingAddr = primaries?.[0];
 
         if (existingAddr) {
-          await adminClient.from("addresses").update({
+          const { error: updErr } = await adminClient.from("addresses").update({
             street: addr.street,
             number: addr.number,
             neighborhood: addr.neighborhood,
@@ -1018,8 +1028,9 @@ serve(async (req) => {
             ibge_code: digitsOrNull(addr.ibge_code),
             reference: addr.reference || null,
           }).eq("id", existingAddr.id);
+          if (updErr) throw updErr;
         } else {
-          await adminClient.from("addresses").insert({
+          const { error: insErr } = await adminClient.from("addresses").insert({
             customer_id: data.id,
             street: addr.street,
             number: addr.number,
@@ -1032,6 +1043,7 @@ serve(async (req) => {
             reference: addr.reference || null,
             is_primary: true,
           });
+          if (insErr) throw insErr;
         }
       }
 
@@ -1049,6 +1061,7 @@ serve(async (req) => {
         .select("id, name, legal_name, notes, price_model, phone, type, cnpj, cpf, ie, ie_indicator, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
         .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
         .order("name")
+        .order("created_at", { referencedTable: "addresses", ascending: false })
         .limit(15);
       if (e1) throw e1;
 
@@ -1070,6 +1083,7 @@ serve(async (req) => {
           .select("id, name, legal_name, notes, price_model, phone, type, cnpj, cpf, ie, ie_indicator, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
           .in("id", streetCustomerIds)
           .order("name")
+          .order("created_at", { referencedTable: "addresses", ascending: false })
           .limit(10);
         if (e3) throw e3;
         byStreet = streetCustomers || [];
@@ -1799,6 +1813,12 @@ serve(async (req) => {
         const ibge = zip ? await lookupIbge(zip) : null;
         if (zip && !ibge) throw new Error("CEP não encontrado. Confira o número.");
         const { error } = await adminClient.from("addresses").update({ zip, ibge_code: ibge }).eq("id", addr.id);
+        if (error) throw error;
+      }
+      if (addr?.id && "neighborhood" in addr) {
+        const neighborhood = String(addr.neighborhood ?? "").trim().slice(0, 100);
+        if (!hasNeighborhood(neighborhood)) throw new Error("Informe o bairro.");
+        const { error } = await adminClient.from("addresses").update({ neighborhood }).eq("id", addr.id);
         if (error) throw error;
       }
 

@@ -171,8 +171,14 @@ describe("nfeFixes", () => {
     }));
     expect(f.products.map((p) => p.id)).toEqual(["a1b2c3d4-0000-0000-0000-000000000000"]);
     expect(f.customer?.needs).toEqual(["ie"]);
-    expect(f.address).toEqual({ id: "a1", label: "Rua A, 10", zip: null });
+    expect(f.address).toEqual({ id: "a1", label: "Rua A, 10", zip: null, needs: ["zip"] });
     expect(f.prices).toEqual([]);
+  });
+
+  it("bairro \"—\" bloqueia a nota e entra para completar", () => {
+    const input = base({ customerId: "c1", addressId: "a1", address: { ...base().address!, neighborhood: "—" } });
+    expect(checkNfe(input)).toContain("Falta o bairro do endereço.");
+    expect(nfeFixes(input).address).toEqual({ id: "a1", label: "Rua A, 10", zip: "09015000", needs: ["neighborhood"] });
   });
 
   it("cadastro completo não pede nada", () => {
