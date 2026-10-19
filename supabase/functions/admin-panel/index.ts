@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { buildNfePayload, checkNfe, describeNfeError, hasNeighborhood, isStillProcessing, nfeFixes, type NfeInput } from "../_shared/nfe.ts";
+import { buildNfePayload, checkNfe, describeNfeError, hasNeighborhood, NFE_BLOQUEIO_MIN, isStillProcessing, nfeFixes, type NfeInput } from "../_shared/nfe.ts";
 
 type AdminRole = "admin_owner" | "admin_manager";
 
@@ -1874,6 +1874,22 @@ serve(async (req) => {
       input.notes = payload?.notes ? String(payload.notes) : null;
       const problems = checkNfe(input);
       if (problems.length) return json({ data: { problems } });
+
+      // Depois de um 656 a SEFAZ bloqueia o CNPJ do Disk (não só o pedido), e
+      // cada envio nesse tempo renova o bloqueio. Segura aqui até passar.
+      const { data: blocked, error: blockErr } = await adminClient
+        .from("invoices")
+        .select("created_at")
+        .eq("sefaz_code", 656)
+        .gte("created_at", new Date(Date.now() - NFE_BLOQUEIO_MIN * 60_000).toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (blockErr) throw blockErr;
+      if (blocked?.length) {
+        const until = new Date(new Date(blocked[0].created_at).getTime() + NFE_BLOQUEIO_MIN * 60_000);
+        const hora = until.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+        throw new Error(`A SEFAZ bloqueou a emissão por excesso de tentativas recusadas. Emita de novo a partir das ${hora}.`);
+      }
 
       const { data: created, error: insErr } = await adminClient
         .from("invoices")

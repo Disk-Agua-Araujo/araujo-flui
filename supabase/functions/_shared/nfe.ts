@@ -352,8 +352,19 @@ export function describeNfeError(resp: BrasilNfeErrors): string {
   if (r?.CodStatusRespostaSefaz === 539 || r?.CodStatusRespostaSefaz === 204) {
     parts.push("Esse número de nota já foi usado. Ajuste a série ou o próximo número no painel da Brasil NFe e emita de novo.");
   }
+  // 234: a IE do cadastro é de outra empresa. Reenviar a mesma nota só leva ao 656.
+  if (r?.CodStatusRespostaSefaz === 234) {
+    parts.push("A inscrição estadual do cadastro não é deste CNPJ. Confira a IE no Cadesp ou no Sintegra e corrija no cadastro do cliente antes de emitir de novo.");
+  }
+  // 656: a SEFAZ suspende o emissor por cerca de 1 hora depois de recusas repetidas.
+  if (r?.CodStatusRespostaSefaz === 656) {
+    parts.push(`A SEFAZ bloqueou a emissão por excesso de tentativas recusadas. Espere ${NFE_BLOQUEIO_MIN} minutos sem emitir nenhuma nota; cada tentativa nesse tempo renova o bloqueio.`);
+  }
   return [...new Set(parts.filter(Boolean))].join(" · ") || "A Brasil NFe recusou a nota sem dizer o motivo.";
 }
+
+/** Minutos de espera depois de um 656 (Consumo Indevido). */
+export const NFE_BLOQUEIO_MIN = 60;
 
 /** SEFAZ respondeu "lote em processamento": a nota ainda pode sair autorizada. */
 export function isStillProcessing(code: number | undefined): boolean {

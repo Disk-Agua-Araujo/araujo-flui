@@ -160,6 +160,15 @@ describe("buildNfePayload", () => {
   });
 });
 
+describe("recusas da SEFAZ explicadas", () => {
+  it("234 manda conferir a IE e 656 manda esperar", () => {
+    expect(describeNfeError({ ReturnNF: { CodStatusRespostaSefaz: 234, DsStatusRespostaSefaz: "Rejeição: IE do destinatário não vinculada ao CNPJ" } }))
+      .toContain("Confira a IE no Cadesp");
+    expect(describeNfeError({ ReturnNF: { CodStatusRespostaSefaz: 656, DsStatusRespostaSefaz: "Rejeição: Consumo Indevido" } }))
+      .toContain("Espere 60 minutos");
+  });
+});
+
 describe("nfeFixes", () => {
   it("lista o que dá para completar no bloco da nota", () => {
     const f = nfeFixes(base({
