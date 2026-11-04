@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Package, ClipboardList, TrendingUp, Wallet, Loader2 } from "lucide-react";
+import { Download, Package, ClipboardList, TrendingUp, Wallet, Loader2, Scale } from "lucide-react";
 import { PaymentIcon } from "@/components/PaymentIcon";
 import { format } from "date-fns";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { adminApi, type AdminOrderRow, type ReportsSummary } from "@/services/admin-api";
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from "recharts";
 import { CashReport } from "@/components/admin/CashReport";
+import { FinanceReport } from "@/components/admin/FinanceReport";
 
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -332,23 +333,28 @@ function SalesReport() {
 }
 
 /**
- * Relatórios em duas visões: por pedido (competência, conta na data do
- * pedido) e caixa (conta na data em que o dinheiro entrou).
+ * Relatórios em três visões: por pedido (competência, conta na data do
+ * pedido), caixa (conta na data em que o dinheiro entrou) e entradas e
+ * saídas (o caixa contra os gastos lançados à mão).
  */
 export function ReportsTab() {
   return (
     <Tabs defaultValue="por-pedido" className="space-y-4">
-      <TabsList className="grid w-full max-w-md grid-cols-2">
+      <TabsList className="grid w-full max-w-xl grid-cols-3">
         <TabsTrigger value="por-pedido" className="gap-1">
           <ClipboardList className="h-4 w-4" /> Por pedido
         </TabsTrigger>
         <TabsTrigger value="caixa" className="gap-1">
           <Wallet className="h-4 w-4" /> Caixa
         </TabsTrigger>
+        <TabsTrigger value="entradas-saidas" className="gap-1">
+          <Scale className="h-4 w-4" /> Entradas e saídas
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="por-pedido"><SalesReport /></TabsContent>
       <TabsContent value="caixa"><CashReport /></TabsContent>
+      <TabsContent value="entradas-saidas"><FinanceReport /></TabsContent>
     </Tabs>
   );
 }

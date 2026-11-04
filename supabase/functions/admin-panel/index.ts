@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { buildNfePayload, checkNfe, describeNfeError, hasNeighborhood, NFE_BLOQUEIO_MIN, isStillProcessing, nfeFixes, type NfeInput } from "../_shared/nfe.ts";
+import { buildNfePayload, checkNfe, describeNfeError, hasNeighborhood, NFE_BLOQUEIO_MIN, isStillProcessing, mergeGroupOrders, nfeFixes, type NfeInput } from "../_shared/nfe.ts";
 
 type AdminRole = "admin_owner" | "admin_manager";
 
@@ -202,34 +202,12 @@ async function lookupIbge(zip: string): Promise<string | null> {
   }
 }
 
-// Junta pedido, cliente, endereço e produtos no formato do montador da nota.
-// Retirada usa o endereço principal do cliente. Endereço com CEP e sem código
+// Endereço da nota. Pedido antigo, com endereço sem CEP, usa o CEP do mesmo
+// endereço no cadastro do cliente, se existir. Endereço com CEP e sem código
 // IBGE ganha o código aqui (ViaCEP) e fica salvo para a próxima vez.
-async function loadNfeInput(orderId: string): Promise<NfeInput> {
-  const { data: o, error } = await adminClient
-    .from("orders")
-    .select(`
-      id, channel, fulfillment_type, total_amount, payment_method, payment_method_2, payment_amount_1,
-      payment_amount_2, is_split_payment, payment_due_date, paid_at,
-      customers(id, name, legal_name, type, cpf, cnpj, ie, ie_indicator, email, phone,
-        addresses(id, street, number, neighborhood, city, state, zip, complement, ibge_code, is_primary)),
-      addresses(id, street, number, neighborhood, city, state, zip, complement, ibge_code),
-      order_items(qty, unit_price, product_id, products(name, ncm, cest, cfop, cst_csosn, pis_cofins_cst, origem, unidade, tax_group))
-    `)
-    .eq("id", orderId)
-    .order("created_at", { referencedTable: "customers.addresses", ascending: false })
-    .single();
-  if (error) throw error;
-  const order = o as any;
-  const c = order.customers;
-  const addr = order.addresses
-    ?? c?.addresses?.find((a: any) => a.is_primary)
-    ?? c?.addresses?.[0]
-    ?? null;
-  // Pedido antigo, com endereço sem CEP: usa o CEP do mesmo endereço no
-  // cadastro do cliente, se existir.
+async function completeNfeAddress(addr: any, customerAddresses: any[] | undefined) {
   if (addr && !digitsOrNull(addr.zip)) {
-    const twin = c?.addresses?.find((a: any) =>
+    const twin = customerAddresses?.find((a: any) =>
       digitsOrNull(a.zip) && normalizeSearch(a.street || "") === normalizeSearch(addr.street || "") &&
       String(a.number || "").trim() === String(addr.number || "").trim());
     if (twin) {
@@ -242,6 +220,70 @@ async function loadNfeInput(orderId: string): Promise<NfeInput> {
     addr.ibge_code = await lookupIbge(digitsOrNull(addr.zip)!);
     if (addr.ibge_code) await adminClient.from("addresses").update({ ibge_code: addr.ibge_code }).eq("id", addr.id);
   }
+}
+
+const NFE_CUSTOMER_SELECT = `id, name, legal_name, type, cpf, cnpj, ie, ie_indicator, email, phone,
+  addresses(id, street, number, neighborhood, city, state, zip, complement, ibge_code, is_primary)`;
+const NFE_ITEMS_SELECT = "order_items(qty, unit_price, product_id, products(name, ncm, cest, cfop, cst_csosn, pis_cofins_cst, origem, unidade, tax_group))";
+const NFE_PAYMENT_SELECT = "fulfillment_type, total_amount, payment_method, payment_method_2, payment_amount_1, payment_amount_2, is_split_payment, payment_due_date, paid_at";
+
+const nfePayment = (o: any): NfeInput["payment"] => ({
+  method: o.payment_method,
+  method2: o.payment_method_2,
+  amount1: o.payment_amount_1,
+  amount2: o.payment_amount_2,
+  isSplit: !!o.is_split_payment,
+  dueDate: o.payment_due_date,
+  paidAt: o.paid_at,
+});
+
+const nfeCustomer = (c: any): NfeInput["customer"] => c ? {
+  name: c.name, legalName: c.legal_name, type: c.type, cpf: c.cpf, cnpj: c.cnpj, ie: c.ie,
+  ieIndicator: c.ie_indicator, email: c.email, phone: c.phone,
+} : null;
+
+const nfeAddress = (addr: any): NfeInput["address"] => addr ? {
+  street: addr.street, number: addr.number, neighborhood: addr.neighborhood, city: addr.city,
+  state: addr.state, zip: addr.zip, complement: addr.complement, ibge: addr.ibge_code,
+} : null;
+
+const nfeItems = (o: any): NfeInput["items"] => (o.order_items ?? []).map((i: any) => ({
+  productId: i.product_id,
+  name: i.products?.name ?? "Produto",
+  qty: i.qty,
+  unitPrice: i.unit_price,
+  ncm: i.products?.ncm ?? null,
+  cest: i.products?.cest ?? null,
+  cfop: i.products?.cfop ?? null,
+  cstCsosn: i.products?.cst_csosn ?? null,
+  pisCofinsCst: i.products?.pis_cofins_cst ?? null,
+  origem: i.products?.origem ?? 0,
+  unidade: i.products?.unidade ?? "UN",
+  taxGroup: i.products?.tax_group ?? null,
+}));
+
+// Junta pedido, cliente, endereço e produtos no formato do montador da nota.
+// Retirada usa o endereço principal do cliente.
+async function loadNfeInput(orderId: string): Promise<NfeInput> {
+  const { data: o, error } = await adminClient
+    .from("orders")
+    .select(`
+      id, channel, ${NFE_PAYMENT_SELECT},
+      customers(${NFE_CUSTOMER_SELECT}),
+      addresses(id, street, number, neighborhood, city, state, zip, complement, ibge_code),
+      ${NFE_ITEMS_SELECT}
+    `)
+    .eq("id", orderId)
+    .order("created_at", { referencedTable: "customers.addresses", ascending: false })
+    .single();
+  if (error) throw error;
+  const order = o as any;
+  const c = order.customers;
+  const addr = order.addresses
+    ?? c?.addresses?.find((a: any) => a.is_primary)
+    ?? c?.addresses?.[0]
+    ?? null;
+  await completeNfeAddress(addr, c?.addresses);
 
   return {
     orderId: order.id,
@@ -250,37 +292,85 @@ async function loadNfeInput(orderId: string): Promise<NfeInput> {
     channel: order.channel,
     fulfillmentType: order.fulfillment_type,
     totalAmount: order.total_amount,
-    payment: {
-      method: order.payment_method,
-      method2: order.payment_method_2,
-      amount1: order.payment_amount_1,
-      amount2: order.payment_amount_2,
-      isSplit: !!order.is_split_payment,
-      dueDate: order.payment_due_date,
-      paidAt: order.paid_at,
-    },
-    customer: c ? {
-      name: c.name, legalName: c.legal_name, type: c.type, cpf: c.cpf, cnpj: c.cnpj, ie: c.ie,
-      ieIndicator: c.ie_indicator, email: c.email, phone: c.phone,
-    } : null,
-    address: addr ? {
-      street: addr.street, number: addr.number, neighborhood: addr.neighborhood, city: addr.city,
-      state: addr.state, zip: addr.zip, complement: addr.complement, ibge: addr.ibge_code,
-    } : null,
-    items: (order.order_items ?? []).map((i: any) => ({
-      productId: i.product_id,
-      name: i.products?.name ?? "Produto",
-      qty: i.qty,
-      unitPrice: i.unit_price,
-      ncm: i.products?.ncm ?? null,
-      cest: i.products?.cest ?? null,
-      cfop: i.products?.cfop ?? null,
-      cstCsosn: i.products?.cst_csosn ?? null,
-      pisCofinsCst: i.products?.pis_cofins_cst ?? null,
-      origem: i.products?.origem ?? 0,
-      unidade: i.products?.unidade ?? "UN",
-      taxGroup: i.products?.tax_group ?? null,
-    })),
+    payment: nfePayment(order),
+    customer: nfeCustomer(c),
+    address: nfeAddress(addr),
+    items: nfeItems(order),
+  };
+}
+
+// Nota agrupada: um destinatário (o cliente do agrupamento) e os itens de
+// todos os pedidos somados. O id do agrupamento faz o papel do id do pedido
+// (IdentificadorInterno na Brasil NFe).
+async function loadGroupNfeInput(groupId: string): Promise<NfeInput> {
+  const { data: g, error } = await adminClient
+    .from("invoice_groups")
+    .select(`id, address_id, dissolved_at, customers(${NFE_CUSTOMER_SELECT}), invoice_group_orders(order_id)`)
+    .eq("id", groupId)
+    .order("created_at", { referencedTable: "customers.addresses", ascending: false })
+    .single();
+  if (error) throw error;
+  const group = g as any;
+  if (group.dissolved_at) throw new Error("Este agrupamento foi desfeito.");
+
+  const orderIds = ((group.invoice_group_orders ?? []) as { order_id: string }[]).map((l) => l.order_id);
+  let orders: any[] = [];
+  if (orderIds.length) {
+    const { data, error: ordErr } = await adminClient
+      .from("orders")
+      .select(`id, created_at, ${NFE_PAYMENT_SELECT}, ${NFE_ITEMS_SELECT}`)
+      .in("id", orderIds)
+      .order("created_at");
+    if (ordErr) throw ordErr;
+    orders = data ?? [];
+  }
+
+  const c = group.customers;
+  const addr = c?.addresses?.find((a: any) => a.id === group.address_id)
+    ?? c?.addresses?.find((a: any) => a.is_primary)
+    ?? c?.addresses?.[0]
+    ?? null;
+  await completeNfeAddress(addr, c?.addresses);
+
+  const merged = mergeGroupOrders(orders.map((o) => ({
+    id: o.id,
+    fulfillmentType: o.fulfillment_type,
+    totalAmount: o.total_amount,
+    payment: nfePayment(o),
+    items: nfeItems(o),
+  })));
+
+  return {
+    orderId: group.id,
+    customerId: c?.id ?? null,
+    addressId: addr?.id ?? null,
+    // Venda faturada no mês, sem presença definida: indicador 9 (outros).
+    channel: "agrupado",
+    payment: { method: null, method2: null, amount1: null, amount2: null, isSplit: false, dueDate: null, paidAt: null },
+    customer: nfeCustomer(c),
+    address: nfeAddress(addr),
+    ...merged,
+  };
+}
+
+// A nota é de um pedido ou de uma nota agrupada (payload com groupId).
+// Pedido que está numa nota agrupada não emite nota própria.
+async function loadInvoiceTarget(payload: any): Promise<{ input: NfeInput; groupId: string | null; blocked: string | null }> {
+  const groupId = payload?.groupId ? String(payload.groupId) : null;
+  if (groupId) return { input: await loadGroupNfeInput(groupId), groupId, blocked: null };
+
+  const orderId = String(payload?.orderId || "");
+  const input = await loadNfeInput(orderId);
+  const { data: link, error } = await adminClient
+    .from("invoice_group_orders")
+    .select("group_id")
+    .eq("order_id", orderId)
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    input,
+    groupId: null,
+    blocked: link ? "Este pedido está numa nota agrupada. Emita pelo botão Nota agrupada, na aba Pedidos." : null,
   };
 }
 
@@ -297,7 +387,7 @@ type NfeResponse = {
 
 type NfeEvent = { Status?: number; DsMotivo?: string; Error?: string; CodStatusRespostaSefaz?: number };
 
-const INVOICE_COLUMNS = "id, order_id, environment, status, numero, serie, chave, protocolo, sefaz_code, message, total, correction_seq, created_at, updated_at, authorized_at, cancelled_at";
+const INVOICE_COLUMNS = "id, order_id, group_id, environment, status, numero, serie, chave, protocolo, sefaz_code, message, total, correction_seq, created_at, updated_at, authorized_at, cancelled_at";
 
 async function updateInvoice(id: string, patch: Record<string, unknown>) {
   const { data, error } = await adminClient
@@ -534,6 +624,148 @@ async function upsertCustomerByPhone(payload: {
   return data;
 }
 
+// Erro do Supabase vem como objeto simples. O de regra de negócio (RAISE nas
+// funções do banco, código P0001) vira Error para chegar ao usuário.
+function dbError(e: { code?: string; message?: string }) {
+  return e?.code === "P0001" ? new Error(e.message) : e;
+}
+
+// ---- Nota agrupada ----
+// Rua sem o "Rua"/"Av." da frente e sem acento: "R. Bresser" e "bresser" batem.
+const streetKey = (street: string) =>
+  normalizeSearch(street || "")
+    .replace(/^(rua|r\.?|avenida|av\.?|travessa|tv\.?|alameda|al\.?)\s+/, "")
+    .replace(/\s+/g, " ");
+
+const ACTIVE_INVOICE = ["processando", "autorizada"];
+
+// O vínculo pedido -> agrupamento é único (order_id UNIQUE), e o PostgREST
+// devolve relação um-para-um como objeto, não lista.
+const asList = <T>(v: T | T[] | null | undefined): T[] => (Array.isArray(v) ? v : v ? [v] : []);
+
+type GroupOrderRow = {
+  id: string;
+  created_at: string;
+  status: string;
+  total: number;
+  address: string | null;
+  items: string;
+  a_prazo: boolean;
+};
+
+const orderTotal = (o: any) =>
+  o.total_amount != null
+    ? Number(o.total_amount)
+    : Math.round(((o.order_items ?? []) as any[]).reduce((s, i) => s + i.qty * Number(i.unit_price ?? 0) * 100, 0)) / 100;
+
+const groupOrderRow = (o: any): GroupOrderRow => ({
+  id: o.id,
+  created_at: o.created_at,
+  status: o.status,
+  total: orderTotal(o),
+  address: o.addresses ? `${o.addresses.street}, ${o.addresses.number}` : null,
+  items: ((o.order_items ?? []) as any[]).map((i) => `${i.qty}x ${i.products?.name ?? "Produto"}`).join(", "),
+  a_prazo: !!o.payment_due_date && !o.paid_at,
+});
+
+const GROUP_ORDER_SELECT = `id, created_at, status, customer_id, total_amount, payment_due_date, paid_at,
+  addresses(street, number), order_items(qty, unit_price, products(name)),
+  invoices(environment, status), invoice_group_orders(group_id)`;
+
+// Pedido livre para entrar numa nota agrupada: não cancelado, fora de outro
+// agrupamento e sem nota própria viva no ambiente atual.
+const groupable = (o: any) =>
+  o.status !== "cancelado" &&
+  !asList(o.invoice_group_orders).length &&
+  !((o.invoices ?? []) as any[]).some((i) => i.environment === NFE_AMBIENTE && ACTIVE_INVOICE.includes(i.status));
+
+// Pedidos do período que podem ir para a nota agrupada do cliente: os
+// vinculados a ele e os feitos num endereço dele sem cliente vinculado (no
+// Disk muito pedido fica só com rua e número).
+async function groupCandidates(customerId: string, dateStart: string, dateEnd: string): Promise<GroupOrderRow[]> {
+  const { data: own, error: ownErr } = await adminClient.from("addresses").select("street, number").eq("customer_id", customerId);
+  if (ownErr) throw ownErr;
+
+  const addressIds = new Set<string>();
+  for (const a of own ?? []) {
+    const number = String(a.number || "").trim();
+    const key = streetKey(a.street);
+    if (!number || !key) continue;
+    const { data: same, error } = await adminClient
+      .from("addresses")
+      .select("id, street, number, customer_id")
+      .ilike("number", `${number}%`)
+      .limit(2000);
+    if (error) throw error;
+    for (const x of same ?? []) {
+      if (String(x.number || "").trim() !== number || streetKey(x.street) !== key) continue;
+      if (x.customer_id && x.customer_id !== customerId) continue;
+      addressIds.add(x.id);
+    }
+  }
+
+  const filters = [`customer_id.eq.${customerId}`];
+  if (addressIds.size) filters.push(`address_id.in.(${[...addressIds].join(",")})`);
+  const { data, error } = await adminClient
+    .from("orders")
+    .select(GROUP_ORDER_SELECT)
+    .or(filters.join(","))
+    .gte("created_at", `${dateStart}T00:00:00${SAO_PAULO_OFFSET}`)
+    .lte("created_at", `${dateEnd}T23:59:59.999${SAO_PAULO_OFFSET}`)
+    .order("created_at")
+    .limit(1000);
+  if (error) throw error;
+  return ((data ?? []) as any[])
+    .filter((o) => (!o.customer_id || o.customer_id === customerId) && groupable(o))
+    .map(groupOrderRow);
+}
+
+const GROUP_SELECT = `id, created_at, created_by, address_id,
+  customers(id, name, legal_name, type, cpf, cnpj, addresses(id, street, number, neighborhood, city, is_primary)),
+  invoice_group_orders(orders(id, created_at, status, total_amount, payment_due_date, paid_at,
+    addresses(street, number), order_items(qty, unit_price, products(name)))),
+  invoices(id, status, numero, serie, environment, message, created_at)`;
+
+const groupRow = (g: any) => {
+  const orders = ((g.invoice_group_orders ?? []) as any[])
+    .map((l) => l.orders)
+    .filter(Boolean)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .map(groupOrderRow);
+  return {
+    id: g.id,
+    created_at: g.created_at,
+    created_by: g.created_by,
+    address_id: g.address_id,
+    customer: g.customers,
+    orders,
+    total: Math.round(orders.reduce((s, o) => s + o.total * 100, 0)) / 100,
+    invoices: g.invoices ?? [],
+  };
+};
+
+// ---- Entradas e saídas ----
+// Categorias dos lançamentos à mão. Vendas entram sozinhas, pelo caixa.
+const FINANCE_CATEGORIES: Record<"entrada" | "saida", string[]> = {
+  saida: ["fornecedor", "combustivel", "salarios", "aluguel", "contas", "manutencao", "impostos", "outras_saidas"],
+  entrada: ["venda_avulsa", "aporte", "outras_entradas"],
+};
+
+// ---- Estoque ----
+// O status muda pelo banco (set_orders_status): o gatilho baixa ou devolve o
+// estoque na mesma transação. Devolve os pedidos que não mudaram e o motivo.
+async function setOrdersStatus(orderIds: string[], status: string, by: string) {
+  const { data, error } = await adminClient.rpc("set_orders_status", {
+    p_order_ids: orderIds,
+    p_status: status,
+    p_created_by: by,
+  });
+  if (error) throw error;
+  return ((data as { order_id: string; ok: boolean; error?: string }[] | null) ?? [])
+    .filter((r) => !r.ok)
+    .map((r) => ({ id: r.order_id, error: r.error || "Não foi possível mudar o status." }));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -560,7 +792,8 @@ serve(async (req) => {
           customers(id, name, phone, cnpj, type),
           addresses(street, number, neighborhood, city, complement, reference, zip, ibge_code),
           order_items(qty, product_id, unit_price, products(name)),
-          invoices(id, status, numero, serie, environment, message, created_at)
+          invoices(id, status, numero, serie, environment, message, created_at),
+          invoice_group_orders(group_id)
         `, { count: "exact" })
         .order("created_at", { ascending: false })
         .range(from, to);
@@ -573,7 +806,11 @@ serve(async (req) => {
         const { data: ridersData } = await adminClient.from("delivery_riders").select("id, name").in("id", riderIds);
         (ridersData || []).forEach((r: any) => { ridersMap[r.id] = r.name; });
       }
-      const enriched = (data || []).map((o: any) => ({ ...o, rider_name: o.rider_id ? ridersMap[o.rider_id] || "—" : undefined }));
+      const enriched = (data || []).map((o: any) => ({
+        ...o,
+        invoice_group_orders: asList(o.invoice_group_orders),
+        rider_name: o.rider_id ? ridersMap[o.rider_id] || "—" : undefined,
+      }));
       return json({ data: { rows: enriched, total: count ?? 0, page, pageSize } });
     }
 
@@ -582,23 +819,9 @@ serve(async (req) => {
       const newStatus = payload?.status as string;
       if (!orderId || !newStatus) throw new Error("Pedido/status inválido");
 
-      if (newStatus === "em_rota") {
-        const { data: results, error: rotaError } = await adminClient.rpc("mark_orders_em_rota", {
-          p_order_ids: [orderId],
-          p_created_by: admin.username,
-        });
-        if (rotaError) throw rotaError;
-        const result = (results as { ok: boolean; error?: string }[] | null)?.[0];
-        if (result && !result.ok) throw new Error(result.error || "Não foi possível colocar o pedido em rota.");
-        return json({ ok: true });
-      }
-
-      const { error } = await adminClient
-        .from("orders")
-        .update({ status: newStatus })
-        .eq("id", orderId);
-
-      if (error) throw error;
+      // Status e estoque juntos: em rota ou entregue baixa, cancelado devolve.
+      const failed = await setOrdersStatus([orderId], newStatus, admin.username);
+      if (failed.length) throw new Error(failed[0].error);
       return json({ ok: true });
     }
 
@@ -1159,6 +1382,26 @@ serve(async (req) => {
         productData.origem = Number.isInteger(origem) && origem >= 0 && origem <= 8 ? origem : 0;
       }
       if ("tax_group" in product) productData.tax_group = String(product.tax_group || "").trim().slice(0, 40) || null;
+      // Produto de atacado que baixa o estoque do produto de varejo. Um nível só:
+      // o produto base não pode, ele mesmo, baixar de outro.
+      if ("stock_product_id" in product) {
+        const baseId = product.stock_product_id ? String(product.stock_product_id) : null;
+        if (baseId) {
+          if (baseId === product.id) throw new Error("O produto não pode baixar o estoque dele mesmo.");
+          const { data: base, error: baseErr } = await adminClient
+            .from("products").select("id, name, stock_product_id").eq("id", baseId).maybeSingle();
+          if (baseErr) throw baseErr;
+          if (!base) throw new Error("Produto do estoque não encontrado.");
+          if (base.stock_product_id) throw new Error(`${base.name} já baixa o estoque de outro produto. Escolha o produto de varejo.`);
+          if (product.id) {
+            const { count, error: depErr } = await adminClient
+              .from("products").select("id", { count: "exact", head: true }).eq("stock_product_id", product.id);
+            if (depErr) throw depErr;
+            if (count) throw new Error("Outros produtos baixam o estoque deste. Ele não pode baixar de outro.");
+          }
+        }
+        productData.stock_product_id = baseId;
+      }
       if ("unidade" in product) {
         productData.unidade = String(product.unidade || "").trim().toUpperCase().slice(0, 6) || "UN";
       }
@@ -1391,27 +1634,27 @@ serve(async (req) => {
         throw new Error("Forma de pagamento inválida.");
       }
 
-      // Status change to em_rota: atomic stock deduction + status via RPC
-      if (orderData.status === "em_rota") {
-        const { data: results, error: rotaError } = await adminClient.rpc("mark_orders_em_rota", {
-          p_order_ids: [orderId],
-          p_created_by: admin.username,
+      // Estoque: confere antes de gravar qualquer coisa, para a edição não ficar
+      // pela metade quando faltar produto.
+      const newStatus = typeof orderData.status === "string" ? orderData.status : null;
+      const hasItems = !!items && items.length > 0;
+      if (newStatus || hasItems) {
+        const { error: stockErr } = await adminClient.rpc("check_order_stock", {
+          p_order_id: orderId,
+          p_new_status: newStatus,
+          p_new_items: hasItems ? items!.map((i) => ({ product_id: i.product_id, qty: i.qty })) : null,
         });
-        if (rotaError) throw rotaError;
-        const result = (results as { ok: boolean; error?: string }[] | null)?.[0];
-        if (result && !result.ok) throw new Error(result.error || "Não foi possível colocar o pedido em rota.");
-        delete updateFields.status;
+        if (stockErr) throw dbError(stockErr);
       }
-
-      const { error: updateErr } = await adminClient.from("orders").update(updateFields).eq("id", orderId);
-      if (updateErr) throw updateErr;
 
       // Update items: DELETE + INSERT. Item sem preço informado mantém o preço
       // que já tinha neste pedido, para a edição não trocar pelo preço de hoje.
+      // Os itens vão antes do status: a baixa do gatilho, quando o pedido vira
+      // em rota ou entregue, já usa os itens novos.
       if (items && items.length > 0) {
         const { data: currentItems, error: curErr } = await adminClient
           .from("order_items")
-          .select("product_id, unit_price")
+          .select("product_id, unit_price, qty")
           .eq("order_id", orderId);
         if (curErr) throw curErr;
         const previousPrice = new Map<string, number | null>(
@@ -1429,7 +1672,19 @@ serve(async (req) => {
           }))
         );
         if (insErr) throw insErr;
+
+        // Pedido já baixado: sai ou volta só a diferença entre os itens.
+        const { error: moveErr } = await adminClient.rpc("apply_order_items_stock", {
+          p_order_id: orderId,
+          p_old_items: (currentItems ?? []).map((i: { product_id: string; qty: number }) => ({ product_id: i.product_id, qty: i.qty })),
+          p_by: admin.username,
+        });
+        if (moveErr) throw dbError(moveErr);
       }
+
+      // Mudança de status baixa ou devolve o estoque pelo gatilho do banco.
+      const { error: updateErr } = await adminClient.from("orders").update(updateFields).eq("id", orderId);
+      if (updateErr) throw dbError(updateErr);
 
       // Update / create address conforme o tipo de atendimento
       const fulfillmentType = orderData.fulfillment_type;
@@ -1506,6 +1761,15 @@ serve(async (req) => {
 
       if ((count ?? 0) > 0) {
         return json({ error: "Este cliente possui pedidos registrados e não pode ser excluído. Remova os pedidos primeiro." }, 400);
+      }
+
+      const { count: groupCount, error: groupErr } = await adminClient
+        .from("invoice_groups")
+        .select("id", { count: "exact", head: true })
+        .eq("customer_id", customerId);
+      if (groupErr) throw groupErr;
+      if ((groupCount ?? 0) > 0) {
+        return json({ error: "Este cliente é destinatário de uma nota agrupada e não pode ser excluído." }, 400);
       }
 
       // Delete addresses first
@@ -1737,8 +2001,14 @@ serve(async (req) => {
 
     // ---- Nota fiscal ----
     if (action === "invoices.check") {
-      const input = await loadNfeInput(String(payload?.orderId || ""));
-      return json({ data: { problems: checkNfe(input), environment: NFE_AMBIENTE, fixes: nfeFixes(input) } });
+      const { input, groupId, blocked } = await loadInvoiceTarget(payload);
+      if (blocked) {
+        return json({ data: { problems: [blocked], environment: NFE_AMBIENTE, fixes: { prices: [], products: [], customer: null, address: null } } });
+      }
+      const fixes = nfeFixes(input);
+      // Preço que falta em nota agrupada se completa no pedido, não aqui.
+      if (groupId) fixes.prices = [];
+      return json({ data: { problems: checkNfe(input), environment: NFE_AMBIENTE, fixes } });
     }
 
     // "Completar agora": grava só os dados fiscais que faltavam para a nota,
@@ -1848,10 +2118,10 @@ serve(async (req) => {
     // Monta o DANFE com a tarja "sem valor fiscal" sem passar pela SEFAZ.
     // Serve para conferir a nota antes de emitir, e funciona sem certificado.
     if (action === "invoices.preview") {
-      const input = await loadNfeInput(String(payload?.orderId || ""));
+      const { input, groupId, blocked } = await loadInvoiceTarget(payload);
       input.purchaseOrder = payload?.purchaseOrder ? String(payload.purchaseOrder) : null;
       input.notes = payload?.notes ? String(payload.notes) : null;
-      const problems = checkNfe(input);
+      const problems = blocked ? [blocked] : checkNfe(input);
       if (problems.length) return json({ data: { problems } });
 
       const resp = await brasilNfe<{ Status?: boolean; Base64File?: string; Error?: string; Avisos?: string[] }>(
@@ -1864,15 +2134,14 @@ serve(async (req) => {
         },
       );
       if (!resp.Status || !resp.Base64File) throw new Error(describeNfeError(resp));
-      return json({ data: { base64: resp.Base64File, filename: `previa-pedido-${input.orderId.slice(0, 8).toUpperCase()}.pdf` } });
+      return json({ data: { base64: resp.Base64File, filename: `previa-${groupId ? "nota-agrupada" : "pedido"}-${input.orderId.slice(0, 8).toUpperCase()}.pdf` } });
     }
 
     if (action === "invoices.emit") {
-      const orderId = String(payload?.orderId || "");
-      const input = await loadNfeInput(orderId);
+      const { input, groupId, blocked: inGroup } = await loadInvoiceTarget(payload);
       input.purchaseOrder = payload?.purchaseOrder ? String(payload.purchaseOrder) : null;
       input.notes = payload?.notes ? String(payload.notes) : null;
-      const problems = checkNfe(input);
+      const problems = inGroup ? [inGroup] : checkNfe(input);
       if (problems.length) return json({ data: { problems } });
 
       // Depois de um 656 a SEFAZ bloqueia o CNPJ do Disk (não só o pedido), e
@@ -1894,7 +2163,8 @@ serve(async (req) => {
       const { data: created, error: insErr } = await adminClient
         .from("invoices")
         .insert({
-          order_id: orderId,
+          order_id: groupId ? null : input.orderId,
+          group_id: groupId,
           environment: NFE_AMBIENTE,
           status: "processando",
           total: input.totalAmount,
@@ -1903,7 +2173,9 @@ serve(async (req) => {
         .select("id")
         .single();
       if (insErr) {
-        if ((insErr as { code?: string }).code === "23505") throw new Error("Este pedido já tem uma nota emitida ou em emissão.");
+        if ((insErr as { code?: string }).code === "23505") {
+          throw new Error(groupId ? "Esta nota agrupada já foi emitida ou está em emissão." : "Este pedido já tem uma nota emitida ou em emissão.");
+        }
         throw insErr;
       }
 
@@ -1962,7 +2234,7 @@ serve(async (req) => {
         {
           TipoAmbiente: inv.environment,
           TipoDocumentoFiscal: 1,
-          IdentificadorInterno: inv.order_id,
+          IdentificadorInterno: inv.order_id ?? inv.group_id,
           DtInicio: new Date(created - day).toISOString().slice(0, 19),
           DtFim: new Date(Date.now() + day).toISOString().slice(0, 19),
         },
@@ -2046,6 +2318,175 @@ serve(async (req) => {
       const b64 = await brasilNfe<string>("ObterArquivoNotaFiscal", { ChaveNF: inv.chave, FileType: 2, TipoDocumentoFiscal: 1 });
       if (typeof b64 !== "string" || !b64) throw new Error("A Brasil NFe não devolveu o DANFE.");
       return json({ data: { base64: b64, filename: `DANFE-${inv.numero ?? inv.chave}.pdf` } });
+    }
+
+    // ---- Nota agrupada ----
+    // Vários pedidos de um cliente numa NF-e só. Os pedidos não mudam; a nota
+    // sai pelas ações invoices.* com groupId.
+
+    if (action === "groups.candidates") {
+      const customerId = String(payload?.customerId || "");
+      // O id entra no filtro or() do PostgREST: só passa uuid.
+      if (!/^[0-9a-f-]{36}$/i.test(customerId)) throw new Error("Escolha o cliente.");
+      if (!isValidDate(payload?.dateStart) || !isValidDate(payload?.dateEnd)) throw new Error("Período inválido.");
+      return json({ data: await groupCandidates(customerId, payload.dateStart, payload.dateEnd) });
+    }
+
+    if (action === "groups.create") {
+      const customerId = String(payload?.customerId || "");
+      const addressId = payload?.addressId ? String(payload.addressId) : null;
+      const orderIds = [...new Set(((payload?.orderIds ?? []) as unknown[]).map(String))];
+      if (!customerId) throw new Error("Escolha o cliente.");
+      if (orderIds.length < 2) throw new Error("Escolha pelo menos dois pedidos para agrupar.");
+      if (orderIds.length > 300) throw new Error("Máximo de 300 pedidos por nota agrupada.");
+
+      const { data: cust, error: custErr } = await adminClient
+        .from("customers").select("id, addresses(id)").eq("id", customerId).maybeSingle();
+      if (custErr) throw custErr;
+      if (!cust) throw new Error("Cliente não encontrado.");
+      if (addressId && !((cust.addresses ?? []) as { id: string }[]).some((a) => a.id === addressId)) {
+        throw new Error("O endereço da nota precisa ser um endereço do cliente.");
+      }
+
+      // Confere de novo cada pedido: a lista pode ter mudado desde a busca.
+      const { data: rows, error: rowsErr } = await adminClient.from("orders").select(GROUP_ORDER_SELECT).in("id", orderIds);
+      if (rowsErr) throw rowsErr;
+      if ((rows ?? []).length !== orderIds.length) throw new Error("Algum pedido não foi encontrado. Busque de novo.");
+      const bad = ((rows ?? []) as any[]).find((o) => (o.customer_id && o.customer_id !== customerId) || !groupable(o));
+      if (bad) {
+        throw new Error(`O pedido ${bad.id.slice(0, 8).toUpperCase()} não pode entrar: está cancelado, em outra nota agrupada, com nota própria ou é de outro cliente. Busque de novo.`);
+      }
+
+      const { data: group, error: gErr } = await adminClient
+        .from("invoice_groups")
+        .insert({ customer_id: customerId, address_id: addressId, created_by: admin.username })
+        .select("id")
+        .single();
+      if (gErr) throw gErr;
+      const { error: linkErr } = await adminClient
+        .from("invoice_group_orders")
+        .insert(orderIds.map((order_id) => ({ group_id: group.id, order_id })));
+      if (linkErr) {
+        await adminClient.from("invoice_groups").delete().eq("id", group.id);
+        if ((linkErr as { code?: string }).code === "23505") throw new Error("Algum pedido acabou de entrar em outra nota agrupada. Busque de novo.");
+        throw linkErr;
+      }
+      return json({ data: { id: group.id } });
+    }
+
+    if (action === "groups.list") {
+      const { data, error } = await adminClient
+        .from("invoice_groups")
+        .select(GROUP_SELECT)
+        .is("dissolved_at", null)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return json({ data: (data ?? []).map(groupRow) });
+    }
+
+    if (action === "groups.get") {
+      const { data, error } = await adminClient
+        .from("invoice_groups")
+        .select(GROUP_SELECT)
+        .eq("id", String(payload?.groupId || ""))
+        .is("dissolved_at", null)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error("Nota agrupada não encontrada.");
+      return json({ data: groupRow(data) });
+    }
+
+    // Desfazer libera os pedidos. Nota viva precisa ser cancelada antes; a que
+    // já foi recusada ou cancelada fica guardada no agrupamento desfeito.
+    if (action === "groups.undo") {
+      const groupId = String(payload?.groupId || "");
+      const { data: inv, error: invErr } = await adminClient.from("invoices").select("status").eq("group_id", groupId);
+      if (invErr) throw invErr;
+      if ((inv ?? []).some((i) => ACTIVE_INVOICE.includes(i.status))) {
+        throw new Error("Esta nota agrupada já foi emitida. Cancele a nota antes de desfazer o agrupamento.");
+      }
+      if ((inv ?? []).length) {
+        const { error: delErr } = await adminClient.from("invoice_group_orders").delete().eq("group_id", groupId);
+        if (delErr) throw delErr;
+        const { error } = await adminClient.from("invoice_groups").update({ dissolved_at: new Date().toISOString() }).eq("id", groupId);
+        if (error) throw error;
+      } else {
+        const { error } = await adminClient.from("invoice_groups").delete().eq("id", groupId);
+        if (error) throw error;
+      }
+      return json({ ok: true });
+    }
+
+    // ---- Entradas e saídas (só o proprietário, como os relatórios) ----
+
+    if (action === "finance.summary") {
+      if (admin.role !== "admin_owner") {
+        return json({ error: "Acesso negado. Apenas o proprietário pode acessar relatórios." }, 403);
+      }
+      const dateStart = payload?.dateStart;
+      const dateEnd = payload?.dateEnd;
+      if (!isValidDate(dateStart) || !isValidDate(dateEnd)) throw new Error("Período inválido.");
+
+      const [cashRes, entriesRes] = await Promise.all([
+        adminClient.rpc("get_cash_by_payment_method", { date_start: dateStart, date_end: dateEnd }),
+        adminClient
+          .from("cash_flow_entries")
+          .select("id, kind, category, description, amount, entry_date, created_by, created_at")
+          .gte("entry_date", dateStart)
+          .lte("entry_date", dateEnd)
+          .order("entry_date", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(2000),
+      ]);
+      if (cashRes.error) throw cashRes.error;
+      if (entriesRes.error) throw entriesRes.error;
+
+      // Vendas pelo regime de caixa, o mesmo número do relatório Caixa.
+      const sales = Math.round(((cashRes.data ?? []) as any[]).reduce((s, r) => s + Number(r.total ?? 0) * 100, 0)) / 100;
+      return json({
+        data: {
+          sales,
+          entries: (entriesRes.data ?? []).map((e: any) => ({ ...e, amount: Number(e.amount) })),
+        },
+      });
+    }
+
+    if (action === "finance.save") {
+      if (admin.role !== "admin_owner") return json({ error: "Acesso negado." }, 403);
+      const e = (payload?.entry ?? {}) as Record<string, unknown>;
+      const kind = e.kind === "entrada" ? "entrada" : e.kind === "saida" ? "saida" : null;
+      if (!kind) throw new Error("Escolha entrada ou saída.");
+      const category = String(e.category || "");
+      if (!FINANCE_CATEGORIES[kind].includes(category)) throw new Error("Escolha a categoria.");
+      const amount = Math.round(Number(e.amount) * 100) / 100;
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error("Informe o valor.");
+      if (amount > 9_999_999) throw new Error("Valor alto demais. Confira o número.");
+      if (!isValidDate(e.entry_date)) throw new Error("Informe a data.");
+      const row = {
+        kind,
+        category,
+        amount,
+        entry_date: e.entry_date,
+        description: String(e.description ?? "").trim().slice(0, 200) || null,
+        updated_by: admin.username,
+        updated_at: new Date().toISOString(),
+      };
+      if (e.id) {
+        const { error } = await adminClient.from("cash_flow_entries").update(row).eq("id", String(e.id));
+        if (error) throw error;
+      } else {
+        const { error } = await adminClient.from("cash_flow_entries").insert({ ...row, created_by: admin.username });
+        if (error) throw error;
+      }
+      return json({ ok: true });
+    }
+
+    if (action === "finance.delete") {
+      if (admin.role !== "admin_owner") return json({ error: "Acesso negado." }, 403);
+      const { error } = await adminClient.from("cash_flow_entries").delete().eq("id", String(payload?.id || ""));
+      if (error) throw error;
+      return json({ ok: true });
     }
 
     // ---- Riders ----
@@ -2349,17 +2790,10 @@ serve(async (req) => {
 
       if (Object.keys(allowed).length === 0) throw new Error("Nenhum campo válido para atualizar");
 
-      if (allowed.status === "em_rota") {
-        // Atomic per order: stock deduction + status together; one failure
-        // does not block the rest of the batch
-        const { data: results, error: rotaError } = await adminClient.rpc("mark_orders_em_rota", {
-          p_order_ids: orderIds,
-          p_created_by: admin.username,
-        });
-        if (rotaError) throw rotaError;
-        const failed = ((results as { order_id: string; ok: boolean; error?: string }[] | null) ?? [])
-          .filter((r) => !r.ok)
-          .map((r) => ({ id: r.order_id, error: r.error || "Erro desconhecido" }));
+      if (typeof allowed.status === "string") {
+        // Pedido por pedido: status e estoque juntos; a falta de estoque em um
+        // não trava o resto do lote.
+        const failed = await setOrdersStatus(orderIds, allowed.status, admin.username);
         delete allowed.status;
         if (Object.keys(allowed).length > 0) {
           const { error } = await adminClient.from("orders").update(allowed).in("id", orderIds);
@@ -2403,6 +2837,16 @@ serve(async (req) => {
         const fiscal = new Set(
           (inv ?? []).filter((i) => i.environment === 1 && i.status !== "erro").map((i) => i.order_id),
         );
+        // Pedido de nota agrupada já emitida também é guardado.
+        const { data: links, error: linkErr } = await adminClient
+          .from("invoice_group_orders")
+          .select("order_id, invoice_groups(invoices(environment, status))")
+          .in("order_id", candidates);
+        if (linkErr) throw linkErr;
+        for (const l of (links ?? []) as any[]) {
+          const groupInvoices = (l.invoice_groups?.invoices ?? []) as { environment: number; status: string }[];
+          if (groupInvoices.some((i) => i.environment === 1 && i.status !== "erro")) fiscal.add(l.order_id);
+        }
         skippedFiscal = fiscal.size;
         deletable = candidates.filter((id) => !fiscal.has(id));
       }
@@ -2412,6 +2856,8 @@ serve(async (req) => {
       if (deletable.length > 0) {
         const { error: invDelErr } = await adminClient.from("invoices").delete().in("order_id", deletable);
         if (invDelErr) throw invDelErr;
+        const { error: linkDelErr } = await adminClient.from("invoice_group_orders").delete().in("order_id", deletable);
+        if (linkDelErr) throw linkDelErr;
         const { error: itemsErr } = await adminClient.from("order_items").delete().in("order_id", deletable);
         if (itemsErr) throw itemsErr;
         const { error } = await adminClient.from("orders").delete().in("id", deletable);

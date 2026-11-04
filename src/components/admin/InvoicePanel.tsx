@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { InvoiceFixForm } from "@/components/admin/InvoiceFixForm";
 import { FileText, FileCode, Loader2, RefreshCw, Receipt, Ban, PenLine, Eye, Wifi } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { adminApi, type InvoiceFixes, type InvoiceRow, type InvoiceSummary } from "@/services/admin-api";
+import { adminApi, type InvoiceFixes, type InvoiceRow, type InvoiceSummary, type InvoiceTarget } from "@/services/admin-api";
 
 type AnyInvoice = InvoiceSummary & Partial<InvoiceRow>;
 
@@ -47,13 +47,18 @@ function download(blob: Blob, filename: string) {
 }
 
 export function InvoicePanel({
-  orderId, invoices, onChange,
+  orderId, groupId, invoices, onChange,
 }: {
-  orderId: string;
+  /** Nota de um pedido... */
+  orderId?: string;
+  /** ...ou de uma nota agrupada (vários pedidos do mesmo cliente). */
+  groupId?: string;
   invoices?: InvoiceSummary[];
   onChange: (invoice: InvoiceRow) => void;
 }) {
   const { toast } = useToast();
+  const target: InvoiceTarget = groupId ? { groupId } : orderId!;
+  const targetKey = groupId ?? orderId;
   const [current, setCurrent] = useState<AnyInvoice | null>(latestInvoice(invoices));
   const [problems, setProblems] = useState<string[] | null>(null);
   const [fixes, setFixes] = useState<InvoiceFixes | null>(null);
@@ -78,11 +83,12 @@ export function InvoicePanel({
   // Confere o cadastro e descobre o ambiente atual (teste ou produção).
   useEffect(() => {
     let cancelled = false;
-    adminApi.checkInvoice(orderId)
+    adminApi.checkInvoice(target)
       .then((r) => { if (!cancelled) { setProblems(r.problems); setEnvironment(r.environment); setFixes(r.fixes ?? null); } })
       .catch(() => { if (!cancelled) setProblems(null); });
     return () => { cancelled = true; };
-  }, [orderId, current?.status, checkKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- target muda junto com targetKey
+  }, [targetKey, current?.status, checkKey]);
 
   const hasFixes = !!fixes && ((fixes.prices?.length ?? 0) > 0 || fixes.products.length > 0 || !!fixes.customer || !!fixes.address);
 
@@ -102,7 +108,7 @@ export function InvoicePanel({
   };
 
   const emit = () => run("emit", async () => {
-    const r = await adminApi.emitInvoice(orderId, { purchaseOrder, notes: invoiceNotes });
+    const r = await adminApi.emitInvoice(target, { purchaseOrder, notes: invoiceNotes });
     if (r.problems) {
       setProblems(r.problems);
       return;
@@ -118,7 +124,7 @@ export function InvoicePanel({
   };
 
   const preview = () => run("preview", async () => {
-    const r = await adminApi.previewInvoice(orderId, { purchaseOrder, notes: invoiceNotes });
+    const r = await adminApi.previewInvoice(target, { purchaseOrder, notes: invoiceNotes });
     if (r.problems) {
       setProblems(r.problems);
       return;

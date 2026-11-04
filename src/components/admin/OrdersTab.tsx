@@ -15,7 +15,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Switch } from "@/components/ui/switch";
 import { OrderLabel, type LabelData } from "@/components/OrderLabel";
 import { openWhatsApp, buildOrderMessage } from "@/services/whatsapp";
-import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2, Trash2, Pencil, CalendarClock, Bell, X, StickyNote } from "lucide-react";
+import { Search, MessageCircle, Printer, Eye, RefreshCw, ChevronLeft, ChevronRight, Truck, Store, Settings, Plus, UserPlus, Loader2, Trash2, Pencil, CalendarClock, Bell, X, StickyNote, Layers } from "lucide-react";
 import { PaymentIcon, PAYMENT_LABELS } from "@/components/PaymentIcon";
 import { Textarea } from "@/components/ui/textarea";
 import { QuantityInput } from "@/components/ui/quantity-input";
@@ -31,6 +31,7 @@ import {
 } from "@/components/admin/SplitPaymentSection";
 import { PaymentEditDialog } from "@/components/admin/PaymentEditDialog";
 import { InvoiceBadge, InvoicePanel, latestInvoice } from "@/components/admin/InvoicePanel";
+import { InvoiceGroupsDialog } from "@/components/admin/InvoiceGroups";
 import { lookupCep } from "@/lib/cep";
 import { PRICE_MODELS, modelPrice, priceModelLabel, type PriceModel } from "@/lib/price-models";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -720,6 +721,7 @@ function OrderCard({
             <FulfillmentBadge type={o.fulfillment_type} />
             <ScheduledBadge order={o} />
             <InvoiceBadge invoices={o.invoices} />
+            <GroupedBadge order={o} />
             <NotesBadge notes={o.notes} />
           </div>
         </div>
@@ -800,6 +802,16 @@ function OrderCard({
 }
 
 /** Selo "Obs" na lista: avisa que o pedido tem observação; o texto aparece ao passar o mouse. */
+/** Selo do pedido que está numa nota agrupada. */
+function GroupedBadge({ order }: { order: AdminOrderRow }) {
+  if (!order.invoice_group_orders?.length) return null;
+  return (
+    <Badge variant="outline" className="text-xs gap-1">
+      <Layers className="h-3 w-3" /> Nota agrupada
+    </Badge>
+  );
+}
+
 function NotesBadge({ notes }: { notes: string | null }) {
   if (!notes?.trim()) return null;
   return (
@@ -1230,6 +1242,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   // Riders
   const [riders, setRiders] = useState<DeliveryRider[]>([]);
   const [riderModalOpen, setRiderModalOpen] = useState(false);
+  const [groupsOpen, setGroupsOpen] = useState(false);
 
   // Save customer from order
   const [saveCustomerOrder, setSaveCustomerOrder] = useState<AdminOrderRow | null>(null);
@@ -1764,6 +1777,9 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
           <Button variant="outline" size="icon" onClick={() => setRiderModalOpen(true)} title="Gerenciar motoboys">
             <Settings className="h-4 w-4" />
           </Button>
+          <Button variant="outline" onClick={() => setGroupsOpen(true)} title="Vários pedidos de um cliente numa nota só">
+            <Layers className="h-4 w-4 mr-1" /> Nota agrupada
+          </Button>
         </div>
       </div>
 
@@ -1971,6 +1987,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                         <div className="flex flex-col gap-1 items-start">
                           <FulfillmentBadge type={o.fulfillment_type} />
                           <InvoiceBadge invoices={o.invoices} />
+                          <GroupedBadge order={o} />
                           <NotesBadge notes={o.notes} />
                         </div>
                       </TableCell>
@@ -2179,7 +2196,16 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                 {selectedOrder.order_items.map((i, idx) => (<li key={idx}>{i.products?.name}: {i.qty}</li>))}
               </ul>
               {/* key com o cliente: trocar o cliente refaz a conferência da nota */}
-              <InvoicePanel key={`${selectedOrder.id}-${selectedOrder.customers?.id ?? ""}`} orderId={selectedOrder.id} invoices={selectedOrder.invoices} onChange={handleInvoiceChange} />
+              {selectedOrder.invoice_group_orders?.length ? (
+                <div className="border rounded-md p-3 text-sm space-y-2">
+                  <p>Este pedido está numa <strong>nota agrupada</strong>: a nota sai junto com os outros pedidos do cliente.</p>
+                  <Button size="sm" variant="outline" onClick={() => { setSelectedOrder(null); setGroupsOpen(true); }}>
+                    <Layers className="h-4 w-4 mr-1" /> Abrir notas agrupadas
+                  </Button>
+                </div>
+              ) : (
+                <InvoicePanel key={`${selectedOrder.id}-${selectedOrder.customers?.id ?? ""}`} orderId={selectedOrder.id} invoices={selectedOrder.invoices} onChange={handleInvoiceChange} />
+              )}
               <div className="flex gap-2 pt-2 flex-wrap">
                 <Button size="sm" variant="outline" onClick={() => { setEditOrder(selectedOrder); setSelectedOrder(null); }}>
                   <Pencil className="h-4 w-4 mr-1" /> Editar pedido
@@ -2219,6 +2245,8 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
         riders={riders}
         onSave={fetchRiders}
       />
+
+      <InvoiceGroupsDialog open={groupsOpen} onOpenChange={setGroupsOpen} onChanged={fetchOrders} />
 
       <SaveCustomerModal
         open={!!saveCustomerOrder}

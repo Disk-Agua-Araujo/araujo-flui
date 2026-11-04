@@ -77,10 +77,54 @@ export type AdminOrderRow = {
   addresses: { street: string; number: string; neighborhood: string; city: string; complement: string | null; reference?: string | null; zip?: string | null; ibge_code?: string | null } | null;
   order_items: { qty: number; product_id?: string; unit_price?: number | null; products: { name: string } | null }[];
   invoices?: InvoiceSummary[];
+  /** Presente quando o pedido está numa nota agrupada. */
+  invoice_group_orders?: { group_id: string }[];
   rider_name?: string;
 };
 
 export type InvoiceStatus = "processando" | "autorizada" | "erro" | "cancelada";
+
+/** A nota é de um pedido (id) ou de uma nota agrupada. */
+export type InvoiceTarget = string | { groupId: string };
+const invoiceTarget = (t: InvoiceTarget) => (typeof t === "string" ? { orderId: t } : { groupId: t.groupId });
+
+/** Pedido dentro de uma nota agrupada (ou candidato a entrar). */
+export type GroupOrderRow = {
+  id: string;
+  created_at: string;
+  status: string;
+  total: number;
+  address: string | null;
+  items: string;
+  a_prazo: boolean;
+};
+
+export type InvoiceGroupRow = {
+  id: string;
+  created_at: string;
+  created_by: string | null;
+  address_id: string | null;
+  customer: {
+    id: string; name: string; legal_name: string | null; type: "PF" | "PJ"; cpf: string | null; cnpj: string | null;
+    addresses: { id: string; street: string; number: string; neighborhood: string; city: string; is_primary: boolean }[];
+  } | null;
+  orders: GroupOrderRow[];
+  total: number;
+  invoices: InvoiceSummary[];
+};
+
+export type FinanceKind = "entrada" | "saida";
+
+export type FinanceEntry = {
+  id: string;
+  kind: FinanceKind;
+  category: string;
+  description: string | null;
+  amount: number;
+  entry_date: string;
+  created_by: string | null;
+  created_at: string;
+};
 
 /** Textos opcionais que saem nas informações complementares da nota. */
 export type InvoiceExtras = { purchaseOrder?: string; notes?: string };
@@ -110,7 +154,8 @@ export type InvoiceSummary = {
 };
 
 export type InvoiceRow = InvoiceSummary & {
-  order_id: string;
+  order_id: string | null;
+  group_id?: string | null;
   serie: number | null;
   chave: string | null;
   protocolo: string | null;
@@ -186,6 +231,8 @@ export type AdminProductRow = {
   unidade: string;
   /** Grupo tributário do painel da Brasil NFe; dispensa CFOP e CST no item. */
   tax_group: string | null;
+  /** Produto (de varejo) de onde sai o estoque deste, ex.: o atacado. */
+  stock_product_id?: string | null;
 };
 
 export type AdminTierRow = {
@@ -528,8 +575,8 @@ export const adminApi = {
   undoReceivablePaid: (orderId: string) =>
     callAdminApi<{ ok: boolean }>("receivables.undoPaid", { orderId }),
 
-  checkInvoice: (orderId: string) =>
-    callAdminApi<{ problems: string[]; environment: 1 | 2; fixes?: InvoiceFixes }>("invoices.check", { orderId }),
+  checkInvoice: (target: InvoiceTarget) =>
+    callAdminApi<{ problems: string[]; environment: 1 | 2; fixes?: InvoiceFixes }>("invoices.check", invoiceTarget(target)),
   /** Grava só os dados fiscais que faltavam (produto, cliente, CEP). */
   fixInvoiceData: (payload: {
     orderId?: string;
@@ -542,11 +589,11 @@ export const adminApi = {
   sefazStatus: () =>
     callAdminApi<{ ok: boolean; message: string; environment: 1 | 2; detail: string }>("invoices.sefazStatus"),
   /** DANFE de conferência, sem valor fiscal e sem passar pela SEFAZ. */
-  previewInvoice: (orderId: string, extras: InvoiceExtras = {}) =>
-    callAdminApi<{ base64?: string; filename?: string; problems?: string[] }>("invoices.preview", { orderId, ...extras }),
+  previewInvoice: (target: InvoiceTarget, extras: InvoiceExtras = {}) =>
+    callAdminApi<{ base64?: string; filename?: string; problems?: string[] }>("invoices.preview", { ...invoiceTarget(target), ...extras }),
   /** Devolve a nota, ou a lista do que falta acertar antes de emitir. */
-  emitInvoice: (orderId: string, extras: InvoiceExtras = {}) =>
-    callAdminApi<{ invoice?: InvoiceRow; problems?: string[] }>("invoices.emit", { orderId, ...extras }),
+  emitInvoice: (target: InvoiceTarget, extras: InvoiceExtras = {}) =>
+    callAdminApi<{ invoice?: InvoiceRow; problems?: string[] }>("invoices.emit", { ...invoiceTarget(target), ...extras }),
   refreshInvoice: (invoiceId: string) =>
     callAdminApi<{ invoice: InvoiceRow }>("invoices.refresh", { invoiceId }),
   cancelInvoice: (invoiceId: string, reason: string) =>
@@ -555,6 +602,22 @@ export const adminApi = {
     callAdminApi<{ invoice: InvoiceRow }>("invoices.correct", { invoiceId, text }),
   getInvoiceFile: (invoiceId: string, type: "xml" | "danfe") =>
     callAdminApi<{ content?: string; base64?: string; filename: string }>("invoices.file", { invoiceId, type }),
+
+  // Nota agrupada: vários pedidos de um cliente numa NF-e só.
+  groupCandidates: (customerId: string, dateStart: string, dateEnd: string) =>
+    callAdminApi<GroupOrderRow[]>("groups.candidates", { customerId, dateStart, dateEnd }),
+  createGroup: (payload: { customerId: string; addressId?: string | null; orderIds: string[] }) =>
+    callAdminApi<{ id: string }>("groups.create", payload),
+  listGroups: () => callAdminApi<InvoiceGroupRow[]>("groups.list"),
+  getGroup: (groupId: string) => callAdminApi<InvoiceGroupRow>("groups.get", { groupId }),
+  undoGroup: (groupId: string) => callAdminApi<{ ok: boolean }>("groups.undo", { groupId }),
+
+  // Entradas e saídas de dinheiro (balanço).
+  getFinance: (dateStart: string, dateEnd: string) =>
+    callAdminApi<{ sales: number; entries: FinanceEntry[] }>("finance.summary", { dateStart, dateEnd }),
+  saveFinanceEntry: (entry: { id?: string; kind: FinanceKind; category: string; description?: string | null; amount: number; entry_date: string }) =>
+    callAdminApi<{ ok: boolean }>("finance.save", { entry }),
+  deleteFinanceEntry: (id: string) => callAdminApi<{ ok: boolean }>("finance.delete", { id }),
 
   bulkDeleteOrders: (orderIds: string[]) =>
     callAdminApi<{ ok: boolean; deleted: number; deletedIds?: string[]; skipped: number; skippedFiscal?: number }>("orders.bulkDelete", { orderIds }),

@@ -279,6 +279,7 @@ export function ProductsTab() {
           origem: editProduct.origem ?? 0,
           unidade: editProduct.unidade || "UN",
           tax_group: editProduct.tax_group?.trim() || null,
+          stock_product_id: editProduct.stock_product_id || null,
         },
         tiers: editTiers
           .filter((t) => Number(t.min_qty) > 0)
@@ -432,7 +433,7 @@ export function ProductsTab() {
                 <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Nenhum produto encontrado.</TableCell></TableRow>
               ) : (
                 filteredProducts.map((p) => {
-                  const lowStock = p.track_stock && p.stock_qty <= p.min_stock_qty;
+                  const lowStock = p.track_stock && !p.stock_product_id && p.stock_qty <= p.min_stock_qty;
                   return (
                     <TableRow key={p.id}>
                       <TableCell>
@@ -458,7 +459,11 @@ export function ProductsTab() {
                           )}
                       </TableCell>
                       <TableCell>
-                        {p.track_stock ? (
+                        {p.stock_product_id ? (
+                          <span className="text-xs text-muted-foreground">
+                            Baixa de {products.find((b) => b.id === p.stock_product_id)?.name ?? "outro produto"}
+                          </span>
+                        ) : p.track_stock ? (
                           <div className="flex items-center gap-1">
                             <span className={`font-medium ${lowStock ? "text-destructive" : ""}`}>{p.stock_qty}</span>
                             {lowStock && <AlertTriangle className="h-3.5 w-3.5 text-destructive" />}
@@ -470,7 +475,7 @@ export function ProductsTab() {
                       <TableCell>{p.active ? <Badge className="bg-green-100 text-green-800">Sim</Badge> : <Badge variant="secondary">Não</Badge>}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
-                          {p.track_stock && (
+                          {p.track_stock && !p.stock_product_id && (
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setStockDialog(p); setStockAdjust({ qty: 0, type: "in", reason: "" }); }} title="Ajustar estoque">
                               <Package className="h-3.5 w-3.5" />
                             </Button>
@@ -602,11 +607,37 @@ export function ProductsTab() {
               )}
 
               <div className="border-t pt-4">
+                {/* Atacado e varejo do mesmo item físico dividem um estoque só. */}
+                <div className="mb-3 space-y-1">
+                  <Label>Estoque</Label>
+                  <Select
+                    value={editProduct.stock_product_id ?? "own"}
+                    onValueChange={(v) => setEditProduct({ ...editProduct, stock_product_id: v === "own" ? null : v })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="own">Estoque próprio</SelectItem>
+                      {products
+                        .filter((b) => b.id !== editProduct.id && !b.stock_product_id)
+                        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+                        .map((b) => (
+                          <SelectItem key={b.id} value={b.id}>Baixa do estoque de {b.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  {editProduct.stock_product_id && (
+                    <p className="text-xs text-muted-foreground">
+                      Cada unidade vendida deste produto sai do estoque do produto escolhido (ex.: o atacado baixa do varejo).
+                    </p>
+                  )}
+                </div>
+                {!editProduct.stock_product_id && (
                 <div className="flex items-center gap-2 mb-3">
                   <Switch checked={editProduct.track_stock ?? false} onCheckedChange={(v) => setEditProduct({ ...editProduct, track_stock: v })} />
                   <Label>Controlar estoque</Label>
                 </div>
-                {editProduct.track_stock && (
+                )}
+                {editProduct.track_stock && !editProduct.stock_product_id && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>Estoque atual</Label>

@@ -16,7 +16,7 @@ type ProductDraft = { ncm: string; cest: string; cfop: string; cst: string; pis:
 const onlyDigits = (v: string, max: number) => v.replace(/\D/g, "").slice(0, max);
 
 /** "Completar agora": os dados fiscais que faltam para a nota, no próprio pedido. */
-export function InvoiceFixForm({ orderId, fixes, onSaved }: { orderId: string; fixes: InvoiceFixes; onSaved: () => void }) {
+export function InvoiceFixForm({ orderId, fixes, onSaved }: { orderId?: string; fixes: InvoiceFixes; onSaved: () => void }) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
   const priceItems = fixes.prices ?? [];

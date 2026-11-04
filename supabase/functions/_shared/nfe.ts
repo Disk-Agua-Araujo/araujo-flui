@@ -62,6 +62,19 @@ export type NfeInput = {
     ibge: string | null;
   } | null;
   items: NfeItem[];
+  /** Nota agrupada: códigos dos pedidos, que saem nas informações complementares. */
+  orderCodes?: string[];
+  /** Nota agrupada: pagamento já somado por forma (substitui payment). */
+  payments?: { method: string | null; value: number; aPrazo: boolean }[];
+};
+
+/** Pedido que entra numa nota agrupada. */
+export type NfeGroupOrder = {
+  id: string;
+  fulfillmentType: string;
+  totalAmount: number | null;
+  payment: NfeInput["payment"];
+  items: NfeItem[];
 };
 
 const digits = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "");
@@ -196,6 +209,67 @@ export function nfeFixes(input: NfeInput): NfeFixes {
   return { prices, products, customer, address };
 }
 
+/** Junta os pedidos de uma nota agrupada. Item do mesmo produto pelo mesmo
+ *  preço soma a quantidade; preço diferente vira outra linha. O total é a
+ *  soma dos totais dos pedidos (com os descontos de cada um) e o pagamento
+ *  soma por forma: a prazo em aberto conta como crediário. */
+export function mergeGroupOrders(
+  orders: NfeGroupOrder[],
+): Pick<NfeInput, "items" | "totalAmount" | "payments" | "orderCodes" | "fulfillmentType"> {
+  const items: NfeItem[] = [];
+  const sameLine = new Map<string, NfeItem>();
+  const byMethod = new Map<string, { method: string | null; cents: number; aPrazo: boolean }>();
+  const pay = (method: string | null, aPrazo: boolean, value: number) => {
+    const key = aPrazo ? "a-prazo" : method ?? "sem-forma";
+    const p = byMethod.get(key) ?? { method: aPrazo ? null : method, cents: 0, aPrazo };
+    p.cents += value;
+    byMethod.set(key, p);
+  };
+  let total = 0;
+
+  for (const o of orders) {
+    const code = o.id.slice(0, 8).toUpperCase();
+    for (const it of o.items) {
+      // Item sem preço não soma com nada: a conferência aponta o pedido dele.
+      if (it.unitPrice === null) {
+        items.push({ ...it, name: `${it.name} (pedido ${code})` });
+        continue;
+      }
+      const key = `${it.productId}|${cents(it.unitPrice)}`;
+      const line = sameLine.get(key);
+      if (line) {
+        line.qty += it.qty;
+      } else {
+        const copy = { ...it };
+        sameLine.set(key, copy);
+        items.push(copy);
+      }
+    }
+
+    const sum = o.items.reduce((s, it) => s + cents((it.unitPrice ?? 0) * it.qty), 0);
+    const orderTotal = o.totalAmount != null ? cents(o.totalAmount) : sum;
+    total += orderTotal;
+    const p = o.payment;
+    const aPrazo = !!p.dueDate && !p.paidAt;
+    if (!aPrazo && p.isSplit && p.amount1 && p.amount2 && cents(p.amount1 + p.amount2) === orderTotal) {
+      pay(p.method, false, cents(p.amount1));
+      pay(p.method2, false, cents(p.amount2));
+    } else {
+      pay(p.method, aPrazo, orderTotal);
+    }
+  }
+
+  return {
+    items,
+    totalAmount: total / 100,
+    payments: [...byMethod.values()]
+      .filter((p) => p.cents > 0)
+      .map((p) => ({ method: p.method, value: p.cents / 100, aPrazo: p.aPrazo })),
+    orderCodes: orders.map((o) => o.id.slice(0, 8).toUpperCase()),
+    fulfillmentType: orders.length > 0 && orders.every((o) => o.fulfillmentType === "pickup") ? "pickup" : "delivery",
+  };
+}
+
 /** Payload de /Fiscal/EnviarNotaFiscal. Chame checkNfe antes. */
 export function buildNfePayload(input: NfeInput, ambiente: 1 | 2): Record<string, unknown> {
   const c = input.customer!;
@@ -266,8 +340,8 @@ export function buildNfePayload(input: NfeInput, ambiente: 1 | 2): Record<string
 
   const p = input.payment;
   const aPrazo = !!p.dueDate && !p.paidAt;
-  const pagamento = (method: string | null, value: number) => {
-    if (aPrazo) return { IndicadorPagamento: 1, FormaPagamento: "05", VlPago: value / 100 };
+  const pagamento = (method: string | null, value: number, prazo = aPrazo) => {
+    if (prazo) return { IndicadorPagamento: 1, FormaPagamento: "05", VlPago: value / 100 };
     const m = method ? PAYMENT_CODES[method] : undefined;
     const code = m?.code ?? "99";
     return {
@@ -278,9 +352,16 @@ export function buildNfePayload(input: NfeInput, ambiente: 1 | 2): Record<string
     };
   };
   const split = p.isSplit && p.amount1 && p.amount2 && cents(p.amount1 + p.amount2) === total;
-  const pagamentos = split
+  let pagamentos = split
     ? [pagamento(p.method, cents(p.amount1!)), pagamento(p.method2, cents(p.amount2!))]
     : [pagamento(p.method, total)];
+  // Nota agrupada: uma linha por forma. A última absorve o arredondamento
+  // para a soma bater com o total da nota.
+  if (input.payments?.length) {
+    const values = input.payments.map((g) => cents(g.value));
+    values[values.length - 1] += total - values.reduce((s, v) => s + v, 0);
+    pagamentos = input.payments.map((g, i) => pagamento(g.method, values[i], g.aPrazo));
+  }
 
   return {
     TipoAmbiente: ambiente,
@@ -293,7 +374,9 @@ export function buildNfePayload(input: NfeInput, ambiente: 1 | 2): Record<string
     IdentificadorInterno: input.orderId,
     EnviarEmail: !!c.email,
     Observacao: [
-      `Pedido ${input.orderId.slice(0, 8).toUpperCase()}`,
+      input.orderCodes?.length
+        ? `Nota referente a ${input.orderCodes.length} pedido${input.orderCodes.length > 1 ? "s" : ""}: ${input.orderCodes.join(", ")}`
+        : `Pedido ${input.orderId.slice(0, 8).toUpperCase()}`,
       input.purchaseOrder?.trim() ? `Nº Pedido de compras: ${input.purchaseOrder.trim().slice(0, 60)}` : null,
       // Quebra de linha vira " / ": caractere de controle pode ser recusado pela SEFAZ.
       input.notes?.trim()
