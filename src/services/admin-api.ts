@@ -92,6 +92,10 @@ const invoiceTarget = (t: InvoiceTarget) => (typeof t === "string" ? { orderId: 
 export type GroupOrderRow = {
   id: string;
   created_at: string;
+  /** Dia da entrega (AAAA-MM-DD), o mesmo que sai na nota. */
+  delivered_on: string;
+  /** Ligado ao cliente da nota; os outros são do mesmo endereço, sem cliente. */
+  linked: boolean;
   status: string;
   total: number;
   address: string | null;

@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { buildNfePayload, checkNfe, describeNfeError, hasNeighborhood, NFE_BLOQUEIO_MIN, isStillProcessing, mergeGroupOrders, nfeFixes, type NfeInput } from "../_shared/nfe.ts";
+import { buildNfePayload, checkNfe, describeNfeError, hasNeighborhood, NFE_BLOQUEIO_MIN, isStillProcessing, mergeGroupOrders, deliveryDay, nfeFixes, type NfeInput } from "../_shared/nfe.ts";
 
 type AdminRole = "admin_owner" | "admin_manager";
 
@@ -318,7 +318,7 @@ async function loadGroupNfeInput(groupId: string): Promise<NfeInput> {
   if (orderIds.length) {
     const { data, error: ordErr } = await adminClient
       .from("orders")
-      .select(`id, created_at, ${NFE_PAYMENT_SELECT}, ${NFE_ITEMS_SELECT}`)
+      .select(`id, created_at, delivery_date, notes, ${NFE_PAYMENT_SELECT}, ${NFE_ITEMS_SELECT}`)
       .in("id", orderIds)
       .order("created_at");
     if (ordErr) throw ordErr;
@@ -334,6 +334,7 @@ async function loadGroupNfeInput(groupId: string): Promise<NfeInput> {
 
   const merged = mergeGroupOrders(orders.map((o) => ({
     id: o.id,
+    date: deliveryDay(o),
     fulfillmentType: o.fulfillment_type,
     totalAmount: o.total_amount,
     payment: nfePayment(o),
@@ -646,6 +647,10 @@ const asList = <T>(v: T | T[] | null | undefined): T[] => (Array.isArray(v) ? v 
 type GroupOrderRow = {
   id: string;
   created_at: string;
+  /** Dia da entrega (AAAA-MM-DD), o mesmo que sai na nota. */
+  delivered_on: string;
+  /** Pedido ligado ao cliente da nota; os outros são do mesmo endereço, sem cliente. */
+  linked: boolean;
   status: string;
   total: number;
   address: string | null;
@@ -658,18 +663,22 @@ const orderTotal = (o: any) =>
     ? Number(o.total_amount)
     : Math.round(((o.order_items ?? []) as any[]).reduce((s, i) => s + i.qty * Number(i.unit_price ?? 0) * 100, 0)) / 100;
 
-const groupOrderRow = (o: any): GroupOrderRow => ({
+const groupOrderRow = (o: any, customerId?: string): GroupOrderRow => ({
   id: o.id,
   created_at: o.created_at,
+  delivered_on: deliveryDay(o),
+  linked: !customerId || o.customer_id === customerId,
   status: o.status,
   total: orderTotal(o),
-  address: o.addresses ? `${o.addresses.street}, ${o.addresses.number}` : null,
+  address: o.addresses
+    ? `${o.addresses.street}, ${o.addresses.number}${o.addresses.complement?.trim() ? ` (${o.addresses.complement.trim().replace(/\s+/g, " ")})` : ""}`
+    : null,
   items: ((o.order_items ?? []) as any[]).map((i) => `${i.qty}x ${i.products?.name ?? "Produto"}`).join(", "),
   a_prazo: !!o.payment_due_date && !o.paid_at,
 });
 
-const GROUP_ORDER_SELECT = `id, created_at, status, customer_id, total_amount, payment_due_date, paid_at,
-  addresses(street, number), order_items(qty, unit_price, products(name)),
+const GROUP_ORDER_SELECT = `id, created_at, delivery_date, notes, status, customer_id, total_amount, payment_due_date, paid_at,
+  addresses(street, number, complement), order_items(qty, unit_price, products(name)),
   invoices(environment, status), invoice_group_orders(group_id)`;
 
 // Pedido livre para entrar numa nota agrupada: não cancelado, fora de outro
@@ -681,27 +690,29 @@ const groupable = (o: any) =>
 
 // Pedidos do período que podem ir para a nota agrupada do cliente: os
 // vinculados a ele e os feitos num endereço dele sem cliente vinculado (no
-// Disk muito pedido fica só com rua e número).
+// Disk muito pedido fica só com rua e número). Endereço que outro cliente
+// também usa (shopping, prédio comercial: as lojas do Grand Plaza são todas
+// Av. Industrial, 600) não puxa pedido sem cliente, que pode ser de qualquer loja.
 async function groupCandidates(customerId: string, dateStart: string, dateEnd: string): Promise<GroupOrderRow[]> {
   const { data: own, error: ownErr } = await adminClient.from("addresses").select("street, number").eq("customer_id", customerId);
   if (ownErr) throw ownErr;
 
   const addressIds = new Set<string>();
+  const seen = new Set<string>();
   for (const a of own ?? []) {
     const number = String(a.number || "").trim();
     const key = streetKey(a.street);
-    if (!number || !key) continue;
+    if (!number || !key || seen.has(`${key}|${number}`)) continue;
+    seen.add(`${key}|${number}`);
     const { data: same, error } = await adminClient
       .from("addresses")
       .select("id, street, number, customer_id")
       .ilike("number", `${number}%`)
       .limit(2000);
     if (error) throw error;
-    for (const x of same ?? []) {
-      if (String(x.number || "").trim() !== number || streetKey(x.street) !== key) continue;
-      if (x.customer_id && x.customer_id !== customerId) continue;
-      addressIds.add(x.id);
-    }
+    const here = (same ?? []).filter((x) => String(x.number || "").trim() === number && streetKey(x.street) === key);
+    if (here.some((x) => x.customer_id && x.customer_id !== customerId)) continue;
+    for (const x of here) addressIds.add(x.id);
   }
 
   const filters = [`customer_id.eq.${customerId}`];
@@ -717,21 +728,22 @@ async function groupCandidates(customerId: string, dateStart: string, dateEnd: s
   if (error) throw error;
   return ((data ?? []) as any[])
     .filter((o) => (!o.customer_id || o.customer_id === customerId) && groupable(o))
-    .map(groupOrderRow);
+    .map((o) => groupOrderRow(o, customerId))
+    .sort((a, b) => a.delivered_on.localeCompare(b.delivered_on) || a.created_at.localeCompare(b.created_at));
 }
 
 const GROUP_SELECT = `id, created_at, created_by, address_id,
   customers(id, name, legal_name, type, cpf, cnpj, addresses(id, street, number, neighborhood, city, is_primary)),
-  invoice_group_orders(orders(id, created_at, status, total_amount, payment_due_date, paid_at,
-    addresses(street, number), order_items(qty, unit_price, products(name)))),
+  invoice_group_orders(orders(id, created_at, delivery_date, notes, status, customer_id, total_amount, payment_due_date, paid_at,
+    addresses(street, number, complement), order_items(qty, unit_price, products(name)))),
   invoices(id, status, numero, serie, environment, message, created_at)`;
 
 const groupRow = (g: any) => {
   const orders = ((g.invoice_group_orders ?? []) as any[])
     .map((l) => l.orders)
     .filter(Boolean)
-    .sort((a, b) => a.created_at.localeCompare(b.created_at))
-    .map(groupOrderRow);
+    .map((o: any) => groupOrderRow(o))
+    .sort((a, b) => a.delivered_on.localeCompare(b.delivered_on) || a.created_at.localeCompare(b.created_at));
   return {
     id: g.id,
     created_at: g.created_at,

@@ -14,7 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 import { adminApi, type AdminCustomerRow, type GroupOrderRow, type InvoiceGroupRow } from "@/services/admin-api";
 
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const day = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+/** "2026-10-05" -> "05/10/2026". */
+const dayBR = (isoDay: string) => isoDay.split("-").reverse().join("/");
 const code = (id: string) => id.slice(0, 8).toUpperCase();
 
 const STATUS: Record<string, string> = {
@@ -105,7 +106,7 @@ function GroupList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) 
                 <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
                   <span>
                     {g.orders.length} pedido{g.orders.length !== 1 ? "s" : ""}
-                    {g.orders.length > 0 && `, de ${day(g.orders[0].created_at)} a ${day(g.orders[g.orders.length - 1].created_at)}`}
+                    {g.orders.length > 0 && `, entregas de ${dayBR(g.orders[0].delivered_on)} a ${dayBR(g.orders[g.orders.length - 1].delivered_on)}`}
                   </span>
                   {g.invoices.length ? <InvoiceBadge invoices={g.invoices} /> : <Badge variant="outline" className="text-xs">Sem nota</Badge>}
                 </div>
@@ -152,7 +153,8 @@ function NewGroup({ onCancel, onCreated }: { onCancel: () => void; onCreated: (i
     try {
       const rows = await adminApi.groupCandidates(customer.id, range.from, range.to);
       setCandidates(rows);
-      setSelected(new Set(rows.map((r) => r.id)));
+      // Só os pedidos do cliente vêm marcados; os sem cliente ele confere um a um.
+      setSelected(new Set(rows.filter((r) => r.linked).map((r) => r.id)));
     } catch (err) {
       setCandidates([]);
       toast({ title: "Erro ao buscar pedidos", description: err instanceof Error ? err.message : "Erro", variant: "destructive" });
@@ -170,6 +172,9 @@ function NewGroup({ onCancel, onCreated }: { onCancel: () => void; onCreated: (i
 
   const chosen = (candidates ?? []).filter((o) => selected.has(o.id));
   const total = Math.round(chosen.reduce((s, o) => s + o.total * 100, 0)) / 100;
+
+  const own = (candidates ?? []).filter((o) => o.linked);
+  const loose = (candidates ?? []).filter((o) => !o.linked);
 
   const toggle = (id: string) => setSelected((prev) => {
     const next = new Set(prev);
@@ -248,8 +253,8 @@ function NewGroup({ onCancel, onCreated }: { onCancel: () => void; onCreated: (i
           <p className="text-sm font-medium">2. Pedidos do período</p>
           <PeriodFilter value={period} onChange={setPeriod} allowAll={false} />
           <p className="text-xs text-muted-foreground">
-            Entram os pedidos ligados ao cliente e os feitos num endereço dele, de {periodLabel(range)}. Pedido cancelado,
-            já agrupado ou com nota própria fica de fora.
+            Pedidos lançados de {periodLabel(range)}, na ordem da entrega. Pedido cancelado, já agrupado ou com nota
+            própria fica de fora.
           </p>
 
           {!candidates ? (
@@ -257,23 +262,24 @@ function NewGroup({ onCancel, onCreated }: { onCancel: () => void; onCreated: (i
           ) : candidates.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum pedido livre desse cliente no período.</p>
           ) : (
-            <ul className="border rounded-md divide-y max-h-72 overflow-y-auto">
-              {candidates.map((o) => (
-                <li key={o.id} className="flex items-start gap-2 p-2 text-sm">
-                  <Checkbox checked={selected.has(o.id)} onCheckedChange={() => toggle(o.id)} aria-label={`Pedido ${code(o.id)}`} className="mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between gap-2">
-                      <span>{day(o.created_at)} · {code(o.id)}</span>
-                      <span className="font-medium">{brl(o.total)}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">{o.items}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {STATUS[o.status] ?? o.status}{o.address ? ` · ${o.address}` : ""}{o.a_prazo ? " · a prazo" : ""}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <>
+              <OrderChecklist
+                title={`Pedidos do cliente (${own.length})`}
+                orders={own}
+                selected={selected}
+                onToggle={toggle}
+                empty="Nenhum pedido ligado a este cliente no período."
+              />
+              {loose.length > 0 && (
+                <OrderChecklist
+                  title={`Sem cliente, no mesmo endereço (${loose.length})`}
+                  hint="Pedidos lançados só com o endereço. Marque os que são deste cliente."
+                  orders={loose}
+                  selected={selected}
+                  onToggle={toggle}
+                />
+              )}
+            </>
           )}
 
           {candidates && candidates.length > 0 && (
@@ -286,6 +292,45 @@ function NewGroup({ onCancel, onCreated }: { onCancel: () => void; onCreated: (i
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function OrderChecklist({
+  title, hint, orders, selected, onToggle, empty,
+}: {
+  title: string;
+  hint?: string;
+  orders: GroupOrderRow[];
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+  empty?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="text-sm font-medium">{title}</p>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {orders.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{empty}</p>
+      ) : (
+        <ul className="border rounded-md divide-y max-h-72 overflow-y-auto">
+          {orders.map((o) => (
+            <li key={o.id} className="flex items-start gap-2 p-2 text-sm">
+              <Checkbox checked={selected.has(o.id)} onCheckedChange={() => onToggle(o.id)} aria-label={`Pedido ${code(o.id)}`} className="mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between gap-2">
+                  <span>Entregue {dayBR(o.delivered_on)} · {code(o.id)}</span>
+                  <span className="font-medium">{brl(o.total)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground truncate">{o.items}</p>
+                <p className="text-xs text-muted-foreground">
+                  {STATUS[o.status] ?? o.status}{o.address ? ` · ${o.address}` : ""}{o.a_prazo ? " · a prazo" : ""}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -340,7 +385,7 @@ function GroupDetail({ id, onBack, onUndone }: { id: string; onBack: () => void;
         {group.orders.map((o) => (
           <li key={o.id} className="p-2 text-sm">
             <div className="flex justify-between gap-2">
-              <span>{day(o.created_at)} · {code(o.id)}</span>
+              <span>Entregue {dayBR(o.delivered_on)} · {code(o.id)}</span>
               <span className="font-medium">{brl(o.total)}</span>
             </div>
             <p className="text-xs text-muted-foreground truncate">{o.items}</p>

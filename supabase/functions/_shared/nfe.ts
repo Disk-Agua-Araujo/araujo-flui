@@ -62,8 +62,9 @@ export type NfeInput = {
     ibge: string | null;
   } | null;
   items: NfeItem[];
-  /** Nota agrupada: códigos dos pedidos, que saem nas informações complementares. */
-  orderCodes?: string[];
+  /** Nota agrupada: uma linha por pedido (data da entrega, itens e valor),
+   *  que sai nas informações complementares. */
+  orderLines?: string[];
   /** Nota agrupada: pagamento já somado por forma (substitui payment). */
   payments?: { method: string | null; value: number; aPrazo: boolean }[];
 };
@@ -71,6 +72,8 @@ export type NfeInput = {
 /** Pedido que entra numa nota agrupada. */
 export type NfeGroupOrder = {
   id: string;
+  /** Dia da entrega, AAAA-MM-DD (ver deliveryDay). */
+  date: string;
   fulfillmentType: string;
   totalAmount: number | null;
   payment: NfeInput["payment"];
@@ -93,6 +96,30 @@ const UF_SEM_ISENTO = new Set(["AM", "BA", "CE", "GO", "MG", "MS", "MT", "PE", "
 // Em homologação a SEFAZ recusa (rejeição 598) destinatário com outro nome.
 export const HOMOLOGACAO_NOME = "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL";
 const cents = (n: number) => Math.round(n * 100);
+/** 3705 -> "37,05"; 123400 -> "1.234,00". */
+const brl = (c: number) => {
+  const [int, dec] = (c / 100).toFixed(2).split(".");
+  return `R$ ${int.replace(/\B(?=(\d{3})+(?!\d))/g, ".")},${dec}`;
+};
+
+/** Dia em que o pedido foi entregue, AAAA-MM-DD. O Disk costuma lançar o
+ *  pedido dias depois e escrever "ENTREGUE EM 05/10/26" na observação, então
+ *  vale nessa ordem: data de entrega do pedido, data escrita na observação,
+ *  dia em que o pedido foi criado (horário de São Paulo). */
+export function deliveryDay(o: { delivery_date?: string | null; notes?: string | null; created_at: string }): string {
+  if (o.delivery_date) return o.delivery_date.slice(0, 10);
+  const created = new Date(new Date(o.created_at).getTime() - 3 * 3600_000).toISOString().slice(0, 10);
+  const m = (o.notes ?? "").match(/entregue\s*(?:em\s*|dia\s*)?(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?(?!\d)/i);
+  if (m) {
+    const day = Number(m[1]);
+    const month = Number(m[2]);
+    const year = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : Number(created.slice(0, 4));
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+  return created;
+}
 
 // Forma de pagamento da NF-e (tPag). Pix do Disk é chave fixa (estático, 20);
 // cartão sem saber se é crédito ou débito vai como 99 com descrição; venda a
@@ -215,7 +242,7 @@ export function nfeFixes(input: NfeInput): NfeFixes {
  *  soma por forma: a prazo em aberto conta como crediário. */
 export function mergeGroupOrders(
   orders: NfeGroupOrder[],
-): Pick<NfeInput, "items" | "totalAmount" | "payments" | "orderCodes" | "fulfillmentType"> {
+): Pick<NfeInput, "items" | "totalAmount" | "payments" | "orderLines" | "fulfillmentType"> {
   const items: NfeItem[] = [];
   const sameLine = new Map<string, NfeItem>();
   const byMethod = new Map<string, { method: string | null; cents: number; aPrazo: boolean }>();
@@ -226,8 +253,9 @@ export function mergeGroupOrders(
     byMethod.set(key, p);
   };
   let total = 0;
+  const orderLines: string[] = [];
 
-  for (const o of orders) {
+  for (const o of [...orders].sort((a, b) => a.date.localeCompare(b.date))) {
     const code = o.id.slice(0, 8).toUpperCase();
     for (const it of o.items) {
       // Item sem preço não soma com nada: a conferência aponta o pedido dele.
@@ -249,6 +277,14 @@ export function mergeGroupOrders(
     const sum = o.items.reduce((s, it) => s + cents((it.unitPrice ?? 0) * it.qty), 0);
     const orderTotal = o.totalAmount != null ? cents(o.totalAmount) : sum;
     total += orderTotal;
+    // Como o Disk já escreve no fechamento: "05/10/26 - 2 Galão R$ 19,00 cada = R$ 38,00".
+    const [y, mo, d] = o.date.split("-");
+    const what = o.items.map((it) => {
+      if (it.unitPrice === null) return `${it.qty} ${it.name}`;
+      return `${it.qty} ${it.name} ${brl(cents(it.unitPrice))}${it.qty > 1 ? " cada" : ""}`;
+    }).join(", ");
+    orderLines.push(`${d}/${mo}/${y.slice(2)} - ${what} = ${brl(orderTotal)}`);
+
     const p = o.payment;
     const aPrazo = !!p.dueDate && !p.paidAt;
     if (!aPrazo && p.isSplit && p.amount1 && p.amount2 && cents(p.amount1 + p.amount2) === orderTotal) {
@@ -265,9 +301,30 @@ export function mergeGroupOrders(
     payments: [...byMethod.values()]
       .filter((p) => p.cents > 0)
       .map((p) => ({ method: p.method, value: p.cents / 100, aPrazo: p.aPrazo })),
-    orderCodes: orders.map((o) => o.id.slice(0, 8).toUpperCase()),
+    orderLines,
     fulfillmentType: orders.length > 0 && orders.every((o) => o.fulfillmentType === "pickup") ? "pickup" : "delivery",
   };
+}
+
+/** Entregas da nota agrupada nas informações complementares. A SEFAZ aceita
+ *  até 5.000 caracteres no campo: passando de 3.500, as últimas entregas
+ *  viram um resumo para sobrar espaço para o resto da observação. */
+function groupObservation(lines: string[], totalCents: number): string {
+  const head = `Entregas (${lines.length}): `;
+  const tail = ` / Total ${brl(totalCents)}`;
+  const kept: string[] = [];
+  let size = head.length + tail.length;
+  for (const [i, line] of lines.entries()) {
+    const rest = lines.length - i;
+    const more = ` / e mais ${rest} entrega${rest > 1 ? "s" : ""}`;
+    if (size + line.length + 3 + (rest > 1 ? more.length : 0) > 3500) {
+      kept.push(more.slice(3));
+      break;
+    }
+    kept.push(line);
+    size += line.length + 3;
+  }
+  return head + kept.join(" / ") + tail;
 }
 
 /** Payload de /Fiscal/EnviarNotaFiscal. Chame checkNfe antes. */
@@ -374,8 +431,8 @@ export function buildNfePayload(input: NfeInput, ambiente: 1 | 2): Record<string
     IdentificadorInterno: input.orderId,
     EnviarEmail: !!c.email,
     Observacao: [
-      input.orderCodes?.length
-        ? `Nota referente a ${input.orderCodes.length} pedido${input.orderCodes.length > 1 ? "s" : ""}: ${input.orderCodes.join(", ")}`
+      input.orderLines?.length
+        ? groupObservation(input.orderLines, total)
         : `Pedido ${input.orderId.slice(0, 8).toUpperCase()}`,
       input.purchaseOrder?.trim() ? `Nº Pedido de compras: ${input.purchaseOrder.trim().slice(0, 60)}` : null,
       // Quebra de linha vira " / ": caractere de controle pode ser recusado pela SEFAZ.

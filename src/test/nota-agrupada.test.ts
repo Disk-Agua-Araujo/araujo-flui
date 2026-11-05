@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildNfePayload, checkNfe, mergeGroupOrders, type NfeGroupOrder, type NfeInput } from "../../supabase/functions/_shared/nfe";
+import { buildNfePayload, checkNfe, deliveryDay, mergeGroupOrders, type NfeGroupOrder, type NfeInput } from "../../supabase/functions/_shared/nfe";
 
 const item = (over: Partial<NfeInput["items"][number]> = {}): NfeInput["items"][number] => ({
   productId: "a1b2c3d4-0000-0000-0000-000000000000",
@@ -21,6 +21,7 @@ const pix = { method: "pix", method2: null, amount1: null, amount2: null, isSpli
 
 const order = (id: string, over: Partial<NfeGroupOrder> = {}): NfeGroupOrder => ({
   id,
+  date: "2026-10-05",
   fulfillmentType: "delivery",
   totalAmount: 30,
   payment: pix,
@@ -37,6 +38,16 @@ const groupInput = (orders: NfeGroupOrder[]): NfeInput => ({
   ...mergeGroupOrders(orders),
 });
 
+describe("dia da entrega", () => {
+  it("usa a data de entrega, depois a escrita na observação, depois o dia do lançamento", () => {
+    expect(deliveryDay({ delivery_date: "2026-10-04", notes: "ENTREGUE EM 05/10/26", created_at: "2026-10-08T13:00:00Z" })).toBe("2026-10-04");
+    expect(deliveryDay({ notes: "PEDIDO ENTREGUE EM 05/10/26 - 3 galões", created_at: "2026-10-14T13:00:00Z" })).toBe("2026-10-05");
+    expect(deliveryDay({ notes: "entregue 20/10/2026", created_at: "2026-10-21T13:00:00Z" })).toBe("2026-10-20");
+    expect(deliveryDay({ notes: "Fazer nf", created_at: "2026-11-01T02:00:00Z" })).toBe("2026-10-31");
+    expect(deliveryDay({ notes: "entregue 45/10/26", created_at: "2026-10-21T13:00:00Z" })).toBe("2026-10-21");
+  });
+});
+
 describe("nota agrupada", () => {
   it("soma o mesmo produto pelo mesmo preço e separa preço diferente", () => {
     const m = mergeGroupOrders([
@@ -46,7 +57,7 @@ describe("nota agrupada", () => {
     ]);
     expect(m.items.map((i) => [i.qty, i.unitPrice])).toEqual([[5, 15], [1, 14]]);
     expect(m.totalAmount).toBe(89);
-    expect(m.orderCodes).toEqual(["AAAAAAAA", "BBBBBBBB", "CCCCCCCC"]);
+    expect(m.orderLines).toHaveLength(3);
   });
 
   it("não mexe nos itens dos pedidos originais", () => {
@@ -78,9 +89,32 @@ describe("nota agrupada", () => {
     ]);
   });
 
-  it("a nota leva os códigos dos pedidos e o desconto de cada um", () => {
+  it("a nota lista cada entrega como o fechamento do Disk, em ordem de data", () => {
+    const p = buildNfePayload(groupInput([
+      order("bbbbbbbb-2", {
+        date: "2026-10-13",
+        items: [item({ name: "Galão Crystal Premier 20L", qty: 3, unitPrice: 19 }), item({ productId: "copo", name: "Copo descartável 100 uni", qty: 1, unitPrice: 7 })],
+        totalAmount: 64,
+      }),
+      order("aaaaaaaa-1", { items: [item({ name: "Galão Crystal Premier 20L", qty: 2, unitPrice: 19 })], totalAmount: 38 }),
+    ]), 1) as any;
+    expect(p.Observacao).toContain(
+      "Entregas (2): 05/10/26 - 2 Galão Crystal Premier 20L R$ 19,00 cada = R$ 38,00"
+      + " / 13/10/26 - 3 Galão Crystal Premier 20L R$ 19,00 cada, 1 Copo descartável 100 uni R$ 7,00 = R$ 64,00"
+      + " / Total R$ 102,00",
+    );
+    expect(p.Observacao).not.toMatch(/[\r\n]/);
+  });
+
+  it("muitas entregas viram resumo no fim sem estourar o campo da SEFAZ", () => {
+    const many = Array.from({ length: 120 }, (_, i) => order(`${String(i).padStart(8, "0")}-x`, { date: `2026-10-${String((i % 28) + 1).padStart(2, "0")}` }));
+    const p = buildNfePayload(groupInput(many), 1) as any;
+    expect(p.Observacao.length).toBeLessThan(5000);
+    expect(p.Observacao).toMatch(/e mais \d+ entregas \/ Total R\$ 3\.600,00/);
+  });
+
+  it("a nota leva o desconto de cada pedido", () => {
     const p = buildNfePayload(groupInput([order("aaaaaaaa-1", { totalAmount: 28 }), order("bbbbbbbb-2")]), 1) as any;
-    expect(p.Observacao).toContain("Nota referente a 2 pedidos: AAAAAAAA, BBBBBBBB");
     expect(p.IdentificadorInterno).toBe("77777777-aaaa-bbbb-cccc-000000000000");
     expect(p.Produtos).toHaveLength(1);
     expect(p.Produtos[0].Quantidade).toBe(4);

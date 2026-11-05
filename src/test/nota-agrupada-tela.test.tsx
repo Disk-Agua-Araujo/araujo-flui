@@ -29,9 +29,10 @@ const customer = {
   addresses: [{ id: "a1", street: "Rua Bresser", number: "33", neighborhood: "Brás", city: "São Paulo", state: "SP", complement: null, zip: null, reference: null, is_primary: true }],
 };
 const orders = [
-  { id: "aaaaaaaa-1", created_at: "2026-10-02T13:00:00Z", status: "entregue", total: 30, address: "bresser, 33", items: "2x Galão", a_prazo: false },
-  { id: "bbbbbbbb-2", created_at: "2026-10-09T13:00:00Z", status: "entregue", total: 45, address: "Bresser, 33", items: "3x Galão", a_prazo: true },
-  { id: "cccccccc-3", created_at: "2026-10-16T13:00:00Z", status: "entregue", total: 15, address: null, items: "1x Galão", a_prazo: false },
+  { id: "aaaaaaaa-1", created_at: "2026-10-08T13:00:00Z", delivered_on: "2026-10-05", linked: true, status: "entregue", total: 30, address: "bresser, 33", items: "2x Galão", a_prazo: false },
+  { id: "bbbbbbbb-2", created_at: "2026-10-09T13:00:00Z", delivered_on: "2026-10-09", linked: true, status: "entregue", total: 45, address: "Bresser, 33", items: "3x Galão", a_prazo: true },
+  { id: "cccccccc-3", created_at: "2026-10-16T13:00:00Z", delivered_on: "2026-10-16", linked: true, status: "entregue", total: 15, address: null, items: "1x Galão", a_prazo: false },
+  { id: "dddddddd-4", created_at: "2026-10-20T13:00:00Z", delivered_on: "2026-10-20", linked: false, status: "entregue", total: 20, address: "bresser, 33 (fundos)", items: "1x Galão", a_prazo: false },
 ];
 
 describe("Nota agrupada na tela", () => {
@@ -49,7 +50,7 @@ describe("Nota agrupada na tela", () => {
     api.checkInvoice.mockResolvedValue({ problems: [], environment: 2 });
   });
 
-  it("escolhe o cliente, desmarca um pedido e agrupa o resto numa nota", async () => {
+  it("escolhe o cliente, desmarca um pedido, marca um sem cliente e agrupa numa nota", async () => {
     const onChanged = vi.fn();
     render(<InvoiceGroupsDialog open onOpenChange={() => {}} onChanged={onChanged} />);
 
@@ -57,13 +58,20 @@ describe("Nota agrupada na tela", () => {
     fireEvent.change(screen.getByPlaceholderText("Nome, telefone ou rua"), { target: { value: "bresser" } });
     fireEvent.click(await screen.findByRole("button", { name: /Loja Bresser/ }));
 
+    // Só os pedidos ligados ao cliente vêm marcados; o sem cliente fica à parte.
     expect(await screen.findByText(/R\$\s*90,00/)).toBeInTheDocument();
+    expect(screen.getByText("Pedidos do cliente (3)")).toBeInTheDocument();
+    expect(screen.getByText("Sem cliente, no mesmo endereço (1)")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Pedido DDDDDDDD" })).not.toBeChecked();
+    // A data é a da entrega, não a do lançamento.
+    expect(screen.getByText(/Entregue 05\/10\/2026 · AAAAAAAA/)).toBeInTheDocument();
     expect(api.groupCandidates).toHaveBeenCalledWith("c1", expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Pedido CCCCCCCC" }));
-    fireEvent.click(screen.getByRole("button", { name: "Agrupar 2 pedidos" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Pedido DDDDDDDD" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agrupar 3 pedidos" }));
 
-    await waitFor(() => expect(api.createGroup).toHaveBeenCalledWith({ customerId: "c1", addressId: "a1", orderIds: ["aaaaaaaa-1", "bbbbbbbb-2"] }));
+    await waitFor(() => expect(api.createGroup).toHaveBeenCalledWith({ customerId: "c1", addressId: "a1", orderIds: ["aaaaaaaa-1", "bbbbbbbb-2", "dddddddd-4"] }));
     expect(onChanged).toHaveBeenCalled();
     // Abre o agrupamento com o bloco da nota apontando para ele.
     expect(await screen.findByText("LOJA BRESSER LTDA")).toBeInTheDocument();
