@@ -29,18 +29,21 @@ type View = { kind: "list" } | { kind: "new" } | { kind: "detail"; id: string };
  * Os pedidos continuam como estão no relatório e no contas a receber.
  */
 export function InvoiceGroupsDialog({
-  open, onOpenChange, onChanged,
+  open, onOpenChange, onChanged, presetOrderIds,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Agrupamento criado ou desfeito: a lista de pedidos precisa recarregar. */
   onChanged: () => void;
+  /** Pedidos marcados na lista de Pedidos: abre direto o agrupamento deles. */
+  presetOrderIds?: string[];
 }) {
   const [view, setView] = useState<View>({ kind: "list" });
+  const fromOrders = !!presetOrderIds?.length;
 
   useEffect(() => {
-    if (open) setView({ kind: "list" });
-  }, [open]);
+    if (open) setView(fromOrders ? { kind: "new" } : { kind: "list" });
+  }, [open, fromOrders]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -53,7 +56,8 @@ export function InvoiceGroupsDialog({
         )}
         {view.kind === "new" && (
           <NewGroup
-            onCancel={() => setView({ kind: "list" })}
+            presetOrderIds={fromOrders ? presetOrderIds : undefined}
+            onCancel={() => (fromOrders ? onOpenChange(false) : setView({ kind: "list" }))}
             onCreated={(id) => { onChanged(); setView({ kind: "detail", id }); }}
           />
         )}
@@ -119,7 +123,14 @@ function GroupList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) 
   );
 }
 
-function NewGroup({ onCancel, onCreated }: { onCancel: () => void; onCreated: (id: string) => void }) {
+function NewGroup({
+  onCancel, onCreated, presetOrderIds,
+}: {
+  onCancel: () => void;
+  onCreated: (id: string) => void;
+  /** Agrupamento a partir dos pedidos marcados na lista: sem busca por período. */
+  presetOrderIds?: string[];
+}) {
   const { toast } = useToast();
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebounce(query, 350);
@@ -130,6 +141,8 @@ function NewGroup({ onCancel, onCreated }: { onCancel: () => void; onCreated: (i
   const [period, setPeriod] = useState<PeriodValue>(() => makePeriod(new Date().getDate() <= 10 ? "last_month" : "month"));
   const debouncedPeriod = useDebounce(period, 300);
   const [candidates, setCandidates] = useState<GroupOrderRow[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [presetInfo, setPresetInfo] = useState<{ skipped: number; customers: number } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
 
@@ -147,9 +160,38 @@ function NewGroup({ onCancel, onCreated }: { onCancel: () => void; onCreated: (i
 
   const range = useMemo(() => periodBounds(periodRange(debouncedPeriod)), [debouncedPeriod]);
 
-  const loadCandidates = useCallback(async () => {
-    if (!customer) return;
+  const presetKey = presetOrderIds?.join(",") ?? "";
+
+  // Pedidos marcados na lista: carrega uma vez e já sugere o cliente deles.
+  useEffect(() => {
+    if (!presetKey) return;
+    let cancelled = false;
     setCandidates(null);
+    setLoadError(null);
+    adminApi.groupFromOrders(presetKey.split(","))
+      .then((r) => {
+        if (cancelled) return;
+        setCandidates(r.orders);
+        setSelected(new Set(r.orders.map((o) => o.id)));
+        setPresetInfo({ skipped: r.skipped, customers: r.customers });
+        if (r.customer) {
+          const addresses = r.customer.addresses ?? [];
+          setCustomer(r.customer);
+          setAddressId((addresses.find((a) => a.is_primary) ?? addresses[0])?.id ?? null);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setCandidates([]);
+        setLoadError(err instanceof Error ? err.message : "Erro ao carregar os pedidos.");
+      });
+    return () => { cancelled = true; };
+  }, [presetKey]);
+
+  const loadCandidates = useCallback(async () => {
+    if (!customer || presetKey) return;
+    setCandidates(null);
+    setLoadError(null);
     try {
       const rows = await adminApi.groupCandidates(customer.id, range.from, range.to);
       setCandidates(rows);
@@ -157,9 +199,9 @@ function NewGroup({ onCancel, onCreated }: { onCancel: () => void; onCreated: (i
       setSelected(new Set(rows.filter((r) => r.linked).map((r) => r.id)));
     } catch (err) {
       setCandidates([]);
-      toast({ title: "Erro ao buscar pedidos", description: err instanceof Error ? err.message : "Erro", variant: "destructive" });
+      setLoadError(err instanceof Error ? err.message : "Erro ao buscar os pedidos.");
     }
-  }, [customer, range.from, range.to, toast]);
+  }, [customer, presetKey, range.from, range.to]);
 
   useEffect(() => { loadCandidates(); }, [loadCandidates]);
 
@@ -208,7 +250,7 @@ function NewGroup({ onCancel, onCreated }: { onCancel: () => void; onCreated: (i
               <p className="font-medium">{customer.name}</p>
               <p className="text-xs text-muted-foreground">{customer.type === "PJ" ? customer.cnpj || "Sem CNPJ" : customer.cpf || "Sem CPF"}</p>
             </div>
-            <Button size="sm" variant="outline" onClick={() => { setCustomer(null); setCandidates(null); }}>Trocar</Button>
+            <Button size="sm" variant="outline" onClick={() => { setCustomer(null); if (!presetKey) setCandidates(null); }}>Trocar</Button>
           </div>
         ) : (
           <div className="space-y-1">
@@ -248,7 +290,32 @@ function NewGroup({ onCancel, onCreated }: { onCancel: () => void; onCreated: (i
         </label>
       )}
 
-      {customer && (
+      {presetKey ? (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">2. Pedidos marcados na lista</p>
+          {presetInfo && presetInfo.skipped > 0 && (
+            <p className="text-xs text-amber-700">
+              {presetInfo.skipped} pedido{presetInfo.skipped > 1 ? "s" : ""} marcado{presetInfo.skipped > 1 ? "s" : ""} ficou de fora:
+              cancelado, já em outra nota agrupada ou com nota própria.
+            </p>
+          )}
+          {presetInfo && presetInfo.customers > 1 && (
+            <p className="text-xs text-destructive">
+              Os pedidos marcados são de {presetInfo.customers} clientes diferentes. A nota sai para um cliente só: desmarque
+              os que não são dele.
+            </p>
+          )}
+          {loadError ? (
+            <p className="text-sm text-destructive">Não foi possível carregar os pedidos: {loadError}</p>
+          ) : !candidates ? (
+            <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Carregando pedidos...</p>
+          ) : candidates.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum dos pedidos marcados pode entrar numa nota agrupada.</p>
+          ) : (
+            <OrderChecklist title={`Pedidos (${candidates.length})`} orders={candidates} selected={selected} onToggle={toggle} />
+          )}
+        </div>
+      ) : customer && (
         <div className="space-y-2">
           <p className="text-sm font-medium">2. Pedidos do período</p>
           <PeriodFilter value={period} onChange={setPeriod} allowAll={false} />
@@ -257,10 +324,18 @@ function NewGroup({ onCancel, onCreated }: { onCancel: () => void; onCreated: (i
             própria fica de fora.
           </p>
 
-          {!candidates ? (
+          {loadError ? (
+            <p className="text-sm text-destructive">Não foi possível buscar os pedidos: {loadError}</p>
+          ) : !candidates ? (
             <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Buscando pedidos...</p>
           ) : candidates.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhum pedido livre desse cliente no período.</p>
+            <div className="text-sm text-muted-foreground space-y-1">
+              <p>Nenhum pedido livre desse cliente em {periodLabel(range)}.</p>
+              <p className="text-xs">
+                Se os pedidos foram lançados sem o cliente, marque-os na lista de Pedidos e use o botão Nota agrupada da
+                barra de seleção.
+              </p>
+            </div>
           ) : (
             <>
               <OrderChecklist
@@ -281,11 +356,15 @@ function NewGroup({ onCancel, onCreated }: { onCancel: () => void; onCreated: (i
               )}
             </>
           )}
+        </div>
+      )}
 
+      {customer && (
+        <div className="space-y-2">
           {candidates && candidates.length > 0 && (
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <p className="text-sm">{chosen.length} pedido{chosen.length !== 1 ? "s" : ""} · <strong>{brl(total)}</strong></p>
-              <Button onClick={create} disabled={saving || chosen.length < 2}>
+              <Button onClick={create} disabled={saving || chosen.length < 2 || !customer}>
                 {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
                 Agrupar {chosen.length} pedidos
               </Button>

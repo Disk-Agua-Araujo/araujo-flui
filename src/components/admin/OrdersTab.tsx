@@ -1243,6 +1243,8 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
   const [riders, setRiders] = useState<DeliveryRider[]>([]);
   const [riderModalOpen, setRiderModalOpen] = useState(false);
   const [groupsOpen, setGroupsOpen] = useState(false);
+  // Pedidos marcados que vão para a nota agrupada (barra de seleção).
+  const [groupPreset, setGroupPreset] = useState<string[] | undefined>(undefined);
 
   // Save customer from order
   const [saveCustomerOrder, setSaveCustomerOrder] = useState<AdminOrderRow | null>(null);
@@ -1777,7 +1779,7 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
           <Button variant="outline" size="icon" onClick={() => setRiderModalOpen(true)} title="Gerenciar motoboys">
             <Settings className="h-4 w-4" />
           </Button>
-          <Button variant="outline" onClick={() => setGroupsOpen(true)} title="Vários pedidos de um cliente numa nota só">
+          <Button variant="outline" onClick={() => { setGroupPreset(undefined); setGroupsOpen(true); }} title="Vários pedidos de um cliente numa nota só">
             <Layers className="h-4 w-4 mr-1" /> Nota agrupada
           </Button>
         </div>
@@ -1849,6 +1851,10 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
                   <SelectItem value="card">Cartão</SelectItem>
                 </SelectContent>
               </Select>
+              <Button size="sm" variant="secondary" className="h-8" title="Juntar os pedidos marcados numa nota fiscal só"
+                onClick={() => { setGroupPreset(Array.from(selectedIds)); setGroupsOpen(true); }}>
+                <Layers className="h-3.5 w-3.5 mr-1" /> Nota agrupada
+              </Button>
               <Button size="sm" variant="destructive" className="h-8" onClick={() => setConfirmAction({ type: "delete" })}>
                 <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
               </Button>
@@ -2246,7 +2252,12 @@ export function OrdersTab({ onScheduledCount }: { onScheduledCount?: (count: num
         onSave={fetchRiders}
       />
 
-      <InvoiceGroupsDialog open={groupsOpen} onOpenChange={setGroupsOpen} onChanged={fetchOrders} />
+      <InvoiceGroupsDialog
+        open={groupsOpen}
+        onOpenChange={(open) => { setGroupsOpen(open); if (!open) setGroupPreset(undefined); }}
+        onChanged={() => { if (groupPreset) clearSelection(); fetchOrders(); }}
+        presetOrderIds={groupPreset}
+      />
 
       <SaveCustomerModal
         open={!!saveCustomerOrder}

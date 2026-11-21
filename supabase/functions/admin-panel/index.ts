@@ -314,15 +314,15 @@ async function loadGroupNfeInput(groupId: string): Promise<NfeInput> {
   if (group.dissolved_at) throw new Error("Este agrupamento foi desfeito.");
 
   const orderIds = ((group.invoice_group_orders ?? []) as { order_id: string }[]).map((l) => l.order_id);
-  let orders: any[] = [];
-  if (orderIds.length) {
+  const orders: any[] = [];
+  // Em lotes: centenas de ids numa URL só passam do limite do gateway.
+  for (let i = 0; i < orderIds.length; i += 80) {
     const { data, error: ordErr } = await adminClient
       .from("orders")
       .select(`id, created_at, delivery_date, notes, ${NFE_PAYMENT_SELECT}, ${NFE_ITEMS_SELECT}`)
-      .in("id", orderIds)
-      .order("created_at");
+      .in("id", orderIds.slice(i, i + 80));
     if (ordErr) throw ordErr;
-    orders = data ?? [];
+    orders.push(...(data ?? []));
   }
 
   const c = group.customers;
@@ -638,6 +638,14 @@ const streetKey = (street: string) =>
     .replace(/^(rua|r\.?|avenida|av\.?|travessa|tv\.?|alameda|al\.?)\s+/, "")
     .replace(/\s+/g, " ");
 
+// Complemento comparável: "apto 04" e "apt 4" viram "4"; "Bloco B ap 12" vira "b 12".
+const complementKey = (c: string | null | undefined) =>
+  normalizeSearch(c || "")
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t && !/^(apartamento|apto|apt|ap|casa|cs|bloco|bl|torre|loja|lj|sala|sl|n|no|numero)$/.test(t))
+    .map((t) => (/^\d+$/.test(t) ? String(Number(t)) : t))
+    .join(" ");
+
 const ACTIVE_INVOICE = ["processando", "autorizada"];
 
 // O vínculo pedido -> agrupamento é único (order_id UNIQUE), e o PostgREST
@@ -691,10 +699,10 @@ const groupable = (o: any) =>
 // Pedidos do período que podem ir para a nota agrupada do cliente: os
 // vinculados a ele e os feitos num endereço dele sem cliente vinculado (no
 // Disk muito pedido fica só com rua e número). Endereço que outro cliente
-// também usa (shopping, prédio comercial: as lojas do Grand Plaza são todas
-// Av. Industrial, 600) não puxa pedido sem cliente, que pode ser de qualquer loja.
+// também usa (condomínio, shopping: as lojas do Grand Plaza são todas
+// Av. Industrial, 600) só puxa pedido sem cliente com o mesmo complemento.
 async function groupCandidates(customerId: string, dateStart: string, dateEnd: string): Promise<GroupOrderRow[]> {
-  const { data: own, error: ownErr } = await adminClient.from("addresses").select("street, number").eq("customer_id", customerId);
+  const { data: own, error: ownErr } = await adminClient.from("addresses").select("street, number, complement").eq("customer_id", customerId);
   if (ownErr) throw ownErr;
 
   const addressIds = new Set<string>();
@@ -706,12 +714,23 @@ async function groupCandidates(customerId: string, dateStart: string, dateEnd: s
     seen.add(`${key}|${number}`);
     const { data: same, error } = await adminClient
       .from("addresses")
-      .select("id, street, number, customer_id")
+      .select("id, street, number, complement, customer_id")
       .ilike("number", `${number}%`)
-      .limit(2000);
+      .limit(1000);
     if (error) throw error;
     const here = (same ?? []).filter((x) => String(x.number || "").trim() === number && streetKey(x.street) === key);
-    if (here.some((x) => x.customer_id && x.customer_id !== customerId)) continue;
+    if (here.some((x) => x.customer_id && x.customer_id !== customerId)) {
+      const mine = new Set(
+        (own ?? [])
+          .filter((o) => String(o.number || "").trim() === number && streetKey(o.street) === key)
+          .map((o) => complementKey(o.complement))
+          .filter(Boolean),
+      );
+      for (const x of here) {
+        if ((!x.customer_id || x.customer_id === customerId) && mine.has(complementKey(x.complement))) addressIds.add(x.id);
+      }
+      continue;
+    }
     for (const x of here) addressIds.add(x.id);
   }
 
@@ -2344,6 +2363,44 @@ serve(async (req) => {
       return json({ data: await groupCandidates(customerId, payload.dateStart, payload.dateEnd) });
     }
 
+    // Pedidos marcados na lista de Pedidos: devolve os que podem ir para a
+    // nota agrupada e o cliente deles, quando é um só.
+    if (action === "groups.fromOrders") {
+      const orderIds = [...new Set(((payload?.orderIds ?? []) as unknown[]).map(String))];
+      if (!orderIds.length) throw new Error("Selecione os pedidos.");
+      if (orderIds.length > 300) throw new Error("Máximo de 300 pedidos por nota agrupada.");
+      const rows: any[] = [];
+      // Em lotes: 300 ids numa URL só passam do limite do gateway.
+      for (let i = 0; i < orderIds.length; i += 80) {
+        const { data, error } = await adminClient.from("orders").select(GROUP_ORDER_SELECT).in("id", orderIds.slice(i, i + 80));
+        if (error) throw error;
+        rows.push(...(data ?? []));
+      }
+      const free = rows.filter(groupable);
+      const customerIds = [...new Set(free.map((o) => o.customer_id).filter(Boolean))] as string[];
+      let customer = null;
+      if (customerIds.length === 1) {
+        const { data, error } = await adminClient
+          .from("customers")
+          .select("id, name, legal_name, notes, price_model, phone, type, cnpj, cpf, ie, ie_indicator, email, created_at, addresses(id, street, number, neighborhood, city, state, complement, zip, ibge_code, reference, is_primary)")
+          .eq("id", customerIds[0])
+          .order("created_at", { referencedTable: "addresses", ascending: false })
+          .maybeSingle();
+        if (error) throw error;
+        customer = data;
+      }
+      return json({
+        data: {
+          orders: free
+            .map((o) => groupOrderRow(o))
+            .sort((a, b) => a.delivered_on.localeCompare(b.delivered_on) || a.created_at.localeCompare(b.created_at)),
+          skipped: rows.length - free.length,
+          customers: customerIds.length,
+          customer,
+        },
+      });
+    }
+
     if (action === "groups.create") {
       const customerId = String(payload?.customerId || "");
       const addressId = payload?.addressId ? String(payload.addressId) : null;
@@ -2361,8 +2418,12 @@ serve(async (req) => {
       }
 
       // Confere de novo cada pedido: a lista pode ter mudado desde a busca.
-      const { data: rows, error: rowsErr } = await adminClient.from("orders").select(GROUP_ORDER_SELECT).in("id", orderIds);
-      if (rowsErr) throw rowsErr;
+      const rows: any[] = [];
+      for (let i = 0; i < orderIds.length; i += 80) {
+        const { data, error: rowsErr } = await adminClient.from("orders").select(GROUP_ORDER_SELECT).in("id", orderIds.slice(i, i + 80));
+        if (rowsErr) throw rowsErr;
+        rows.push(...(data ?? []));
+      }
       if ((rows ?? []).length !== orderIds.length) throw new Error("Algum pedido não foi encontrado. Busque de novo.");
       const bad = ((rows ?? []) as any[]).find((o) => (o.customer_id && o.customer_id !== customerId) || !groupable(o));
       if (bad) {

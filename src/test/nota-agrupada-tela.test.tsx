@@ -5,6 +5,7 @@ const api = {
   listGroups: vi.fn(),
   searchCustomers: vi.fn(),
   groupCandidates: vi.fn(),
+  groupFromOrders: vi.fn(),
   createGroup: vi.fn(),
   getGroup: vi.fn(),
   undoGroup: vi.fn(),
@@ -77,6 +78,47 @@ describe("Nota agrupada na tela", () => {
     expect(await screen.findByText("LOJA BRESSER LTDA")).toBeInTheDocument();
     await waitFor(() => expect(api.checkInvoice).toHaveBeenCalledWith({ groupId: "g1" }));
     expect(await screen.findByRole("button", { name: /Emitir nota fiscal/ })).toBeInTheDocument();
+  });
+
+  it("mostra o erro da busca em vez de dizer que não há pedido", async () => {
+    api.groupCandidates.mockRejectedValue(new Error("Tempo esgotado"));
+    render(<InvoiceGroupsDialog open onOpenChange={() => {}} onChanged={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Novo agrupamento/ }));
+    fireEvent.change(screen.getByPlaceholderText("Nome, telefone ou rua"), { target: { value: "bresser" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Loja Bresser/ }));
+    expect(await screen.findByText(/Não foi possível buscar os pedidos: Tempo esgotado/)).toBeInTheDocument();
+    expect(screen.queryByText(/Nenhum pedido livre/)).not.toBeInTheDocument();
+  });
+
+  it("agrupa os pedidos marcados na lista com o cliente deles já escolhido", async () => {
+    api.groupFromOrders.mockResolvedValue({ orders: orders.slice(0, 2), skipped: 1, customers: 1, customer });
+    render(<InvoiceGroupsDialog open onOpenChange={() => {}} onChanged={() => {}} presetOrderIds={["aaaaaaaa-1", "bbbbbbbb-2", "zzzzzzzz-9"]} />);
+
+    expect(await screen.findByText("Pedidos (2)")).toBeInTheDocument();
+    expect(api.groupFromOrders).toHaveBeenCalledWith(["aaaaaaaa-1", "bbbbbbbb-2", "zzzzzzzz-9"]);
+    expect(screen.getByText(/1 pedido marcado ficou de fora/)).toBeInTheDocument();
+    expect(screen.getByText("Loja Bresser")).toBeInTheDocument();
+    expect(api.groupCandidates).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Agrupar 2 pedidos" }));
+    await waitFor(() => expect(api.createGroup).toHaveBeenCalledWith({ customerId: "c1", addressId: "a1", orderIds: ["aaaaaaaa-1", "bbbbbbbb-2"] }));
+  });
+
+  it("pedidos marcados sem cliente pedem para escolher quem recebe a nota", async () => {
+    const loose = orders.map((o) => ({ ...o, linked: true }));
+    api.groupFromOrders.mockResolvedValue({ orders: loose.slice(2), skipped: 0, customers: 0, customer: null });
+    render(<InvoiceGroupsDialog open onOpenChange={() => {}} onChanged={() => {}} presetOrderIds={["cccccccc-3", "dddddddd-4"]} />);
+
+    expect(await screen.findByText("Pedidos (2)")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Agrupar/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("Nome, telefone ou rua"), { target: { value: "bresser" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Loja Bresser/ }));
+    // Escolher o cliente não troca a lista pelos pedidos do período.
+    expect(screen.getByText("Pedidos (2)")).toBeInTheDocument();
+    expect(api.groupCandidates).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Agrupar 2 pedidos" }));
+    await waitFor(() => expect(api.createGroup).toHaveBeenCalledWith({ customerId: "c1", addressId: "a1", orderIds: ["cccccccc-3", "dddddddd-4"] }));
   });
 
   it("desfaz o agrupamento depois de confirmar", async () => {

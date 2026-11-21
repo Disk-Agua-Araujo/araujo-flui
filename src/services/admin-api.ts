@@ -610,6 +610,9 @@ export const adminApi = {
   // Nota agrupada: vários pedidos de um cliente numa NF-e só.
   groupCandidates: (customerId: string, dateStart: string, dateEnd: string) =>
     callAdminApi<GroupOrderRow[]>("groups.candidates", { customerId, dateStart, dateEnd }),
+  /** Pedidos marcados na lista: os que podem ir para a nota agrupada e o cliente deles. */
+  groupFromOrders: (orderIds: string[]) =>
+    callAdminApi<{ orders: GroupOrderRow[]; skipped: number; customers: number; customer: AdminCustomerRow | null }>("groups.fromOrders", { orderIds }),
   createGroup: (payload: { customerId: string; addressId?: string | null; orderIds: string[] }) =>
     callAdminApi<{ id: string }>("groups.create", payload),
   listGroups: () => callAdminApi<InvoiceGroupRow[]>("groups.list"),
